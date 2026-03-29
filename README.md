@@ -228,6 +228,33 @@ Then create or publish the GitHub Release for the version you want to ship. The 
 
 If you want fresh installs to ship with indexed media and metadata, make sure the updated `src-tauri/resources/library.seed.db` is committed before publishing the release.
 
+### macOS signing and notarization
+
+If macOS release downloads say the app is **damaged** or cannot be opened, that usually means the app was built without a trusted Apple signature/notarization and Gatekeeper blocked it.
+
+The GitHub workflow now supports macOS signing automatically when these repository secrets are configured:
+
+- required for signing:
+  - `APPLE_CERTIFICATE`
+  - `APPLE_CERTIFICATE_PASSWORD`
+  - `KEYCHAIN_PASSWORD`
+- optional for notarization via Apple ID:
+  - `APPLE_ID`
+  - `APPLE_PASSWORD`
+  - `APPLE_TEAM_ID`
+- optional for notarization via App Store Connect API:
+  - `APPLE_API_KEY`
+  - `APPLE_API_ISSUER`
+  - `APPLE_API_KEY_CONTENT`
+
+Notes:
+
+- `APPLE_CERTIFICATE` should contain the base64-encoded `.p12` certificate export
+- `APPLE_API_KEY_CONTENT` should contain the contents of the downloaded `.p8` key file
+- if `APPLE_CERTIFICATE` is missing, the workflow now falls back to ad-hoc signing (`APPLE_SIGNING_IDENTITY=-`) for macOS builds
+- ad-hoc signing is useful for testing and is better than a completely unsigned app on Apple Silicon, but it is still not equivalent to Developer ID signing + notarization
+- without a real Apple Developer signing setup, macOS may still show warnings for GitHub-downloaded builds
+
 ## Current updater status
 
 The runtime updater is currently disabled/removed. Versioning and release preparation are in place, but in-app update checking/install flow is not active right now.
