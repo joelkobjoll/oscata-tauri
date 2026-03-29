@@ -150,7 +150,7 @@ fn parse_with_context(ftp_path: Option<&str>, filename: &str) -> ParsedMedia {
         episode,
         episode_end,
         resolution: find(r"(?i)\b(2160p|4K|UHD|1080p|1080i|720p|480p)\b"),
-        codec: find(r"(?i)\b(x265|x264|HEVC|AVC|AV1|VP9)\b"),
+        codec: find(r"(?i)\b(x265|h\.?265|x264|h\.?264|HEVC|AVC|AV1|VP9)\b"),
         audio_codec: find(r"(?i)\b(DTS[-.]?HD|TrueHD|Atmos|DTS|EAC3|AC3|DD\+?|AAC|FLAC)\b"),
         hdr: find(r"(?i)\b(DV|Dolby\.?Vision|HDR10\+?|HDR)\b"),
         languages,
@@ -311,6 +311,13 @@ mod tests {
         assert_eq!(p.title, "Interstellar");
         assert_eq!(p.year, None);
         assert_eq!(p.resolution.as_deref(), Some("1080P"));
+        assert_eq!(p.codec.as_deref(), Some("X264"));
+    }
+
+    #[test]
+    fn parses_h264_codec() {
+        let p = parse_media_path("", "Sinners.2025.1080p.H264.mkv");
+        assert_eq!(p.codec.as_deref(), Some("H264"));
     }
 
     #[test]

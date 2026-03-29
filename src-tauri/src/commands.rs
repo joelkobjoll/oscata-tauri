@@ -751,6 +751,7 @@ pub async fn get_downloads(
 #[tauri::command]
 pub async fn cancel_download(
     db: tauri::State<'_, crate::db::Db>,
+    window: WebviewWindow,
     queue: tauri::State<'_, crate::downloads::SharedQueue>,
     id: u64,
 ) -> Result<(), String> {
@@ -759,6 +760,12 @@ pub async fn cancel_download(
     let snapshot = queue.items.clone();
     drop(queue);
     db.save_download_state(&snapshot).ok();
+    window.emit("download:update", serde_json::json!({
+        "id": id,
+        "status": "cancelled",
+        "error": serde_json::Value::Null,
+        "completed_at_ms": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64,
+    })).ok();
     Ok(())
 }
 
@@ -769,6 +776,20 @@ pub async fn clear_completed(
 ) -> Result<(), String> {
     let mut queue = queue.lock().unwrap();
     queue.clear_completed();
+    let snapshot = queue.items.clone();
+    drop(queue);
+    db.save_download_state(&snapshot).ok();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_download(
+    db: tauri::State<'_, crate::db::Db>,
+    queue: tauri::State<'_, crate::downloads::SharedQueue>,
+    id: u64,
+) -> Result<(), String> {
+    let mut queue = queue.lock().unwrap();
+    queue.delete(id);
     let snapshot = queue.items.clone();
     drop(queue);
     db.save_download_state(&snapshot).ok();

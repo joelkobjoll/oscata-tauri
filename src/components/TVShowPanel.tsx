@@ -273,11 +273,13 @@ function EpisodeRow({
   language,
   onDownload,
   onFixMatch,
+  downloadMap,
 }: {
   episode: MediaItem;
   language: AppLanguage;
   onDownload: (item: MediaItem) => void;
   onFixMatch: (items: MediaItem[]) => void;
+  downloadMap: Map<string, any>;
 }) {
   const episodeData = resolvedEpisodeData(episode);
   const season = resolvedSeason(episode);
@@ -290,6 +292,16 @@ function EpisodeRow({
       ?.split(",")
       .map((l) => l.trim())
       .filter(Boolean) ?? [];
+
+  const downloadItem = downloadMap.get(episode.ftp_path);
+  const isDownloading =
+    downloadItem && ["queued", "downloading"].includes(downloadItem.status);
+  const isDownloaded = downloadItem && ["done"].includes(downloadItem.status);
+  const downloadTooltip = isDownloaded
+    ? t(language, "detail.alreadyDownloaded")
+    : isDownloading
+      ? t(language, "downloads.downloading")
+      : t(language, "tv.downloadEpisode");
 
   return (
     <div
@@ -388,10 +400,11 @@ function EpisodeRow({
           onClick={() => onFixMatch([episode])}
         />
         <IconActionButton
-          title={t(language, "tv.downloadEpisode")}
+          title={downloadTooltip}
           icon="download"
-          tone="primary"
+          tone={isDownloaded ? "muted" : "primary"}
           onClick={() => onDownload(episode)}
+          disabled={isDownloading || isDownloaded}
         />
       </div>
     </div>
@@ -492,6 +505,7 @@ function SeasonGroup({
   onDownload,
   onDownloadSeason,
   onFixMatch,
+  downloadMap,
 }: {
   season: number | null;
   episodes: MediaItem[];
@@ -499,6 +513,7 @@ function SeasonGroup({
   onDownload: (item: MediaItem) => void;
   onDownloadSeason: (episodes: MediaItem[]) => void;
   onFixMatch: (items: MediaItem[]) => void;
+  downloadMap: Map<string, any>;
 }) {
   const [open, setOpen] = useState(true);
 
@@ -639,6 +654,7 @@ function SeasonGroup({
                     language={language}
                     onDownload={onDownload}
                     onFixMatch={onFixMatch}
+                    downloadMap={downloadMap}
                   />
                 ))}
             </div>
@@ -657,6 +673,7 @@ export default function TVShowPanel({
   onDownload,
   onDownloadSeason,
   onFixMatch,
+  downloadMap,
 }: {
   show: MediaItem;
   allEpisodes: MediaItem[];
@@ -665,6 +682,7 @@ export default function TVShowPanel({
   onDownload: (item: MediaItem) => void;
   onDownloadSeason: (episodes: MediaItem[]) => void;
   onFixMatch: (items: MediaItem[]) => void;
+  downloadMap: Map<string, any>;
 }) {
   const [filterRelease, setFilterRelease] = useState("all");
   const [filterResolution, setFilterResolution] = useState("all");
@@ -1247,6 +1265,7 @@ export default function TVShowPanel({
                 onDownload={onDownload}
                 onDownloadSeason={onDownloadSeason}
                 onFixMatch={onFixMatch}
+                downloadMap={downloadMap}
               />
             ))
           )}

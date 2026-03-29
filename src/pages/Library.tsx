@@ -6,7 +6,6 @@ import { useDownloads } from "../hooks/useDownloads";
 import AppIcon from "../components/AppIcon";
 import FilterBar, {
   Filters,
-  normalizeCodec,
   normalizeHdr,
   normalizeReleaseType,
   normalizeResolution,
@@ -38,7 +37,6 @@ const defaultFilters = (): Filters => ({
   search: "",
   releaseType: "",
   resolution: "",
-  codec: "",
   hdr: "",
   sort: "release-desc",
 });
@@ -186,6 +184,7 @@ export default function Library() {
     clearCompleted,
     retryDownload,
     openDownloadFolder,
+    deleteDownload,
   } = useDownloads();
   const downloadMap = useMemo(
     () => new Map(downloads.map((d) => [d.ftp_path, d])),
@@ -420,7 +419,6 @@ export default function Library() {
             normalizeReleaseType(item.release_type) === filters.releaseType) &&
           (!filters.resolution ||
             normalizeResolution(item.resolution) === filters.resolution) &&
-          (!filters.codec || normalizeCodec(item.codec) === filters.codec) &&
           (!filters.hdr || normalizeHdr(item.hdr) === filters.hdr)
         );
       })
@@ -467,7 +465,7 @@ export default function Library() {
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const currentPage = Math.min(page, pageCount);
-  const pageResetKey = `${activeTab}:${filters.search}:${filters.releaseType}:${filters.resolution}:${filters.codec}:${filters.hdr}:${filters.sort}:${currentPage}:${tvView}:${movieView}`;
+  const pageResetKey = `${activeTab}:${filters.search}:${filters.releaseType}:${filters.resolution}:${filters.hdr}:${filters.sort}:${currentPage}:${tvView}:${movieView}`;
   const paginatedItems = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     return filtered.slice(start, start + ITEMS_PER_PAGE);
@@ -556,7 +554,6 @@ export default function Library() {
     filters.search,
     filters.releaseType,
     filters.resolution,
-    filters.codec,
     filters.hdr,
     filters.sort,
   ]);
@@ -1406,6 +1403,7 @@ export default function Library() {
                   clearCompleted={clearCompleted}
                   retryDownload={retryDownload}
                   openDownloadFolder={openDownloadFolder}
+                  deleteDownload={deleteDownload}
                 />
               </div>
             ) : (
@@ -1561,6 +1559,7 @@ export default function Library() {
           downloadItem={
             selected ? downloadMap.get(selected.ftp_path) : undefined
           }
+          isDownloaded={selected ? !!badgeMap[selected.id]?.downloaded : false}
           onRetry={retryDownload}
         />
       )}
@@ -1573,6 +1572,7 @@ export default function Library() {
           onClose={() => setTvShow(null)}
           onDownload={startDownload}
           onDownloadSeason={handleDownloadSeason}
+          downloadMap={downloadMap}
           onFixMatch={(episodes) => {
             const [first] = episodes;
             setFixMatchRequest({

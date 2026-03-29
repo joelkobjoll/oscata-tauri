@@ -58,6 +58,7 @@ export default function DetailPanel({
   onOpenItem,
   onUpdated,
   downloadItem,
+  isDownloaded = false,
   onRetry,
 }: {
   item: MediaItem;
@@ -68,6 +69,7 @@ export default function DetailPanel({
   onOpenItem?: (item: MediaItem) => void;
   onUpdated?: (id: number, patch: Partial<MediaItem>) => void;
   downloadItem?: DownloadItem;
+  isDownloaded?: boolean;
   onRetry?: (id: number) => void;
 }) {
   const { startDownload } = useDownload();
@@ -511,6 +513,7 @@ export default function DetailPanel({
             renderDownloadButton(
               item,
               downloadItem,
+              isDownloaded,
               startDownload,
               onRetry,
               language,
@@ -574,6 +577,7 @@ function formatSpeed(bps: number): string {
 function renderDownloadButton(
   item: MediaItem,
   downloadItem: DownloadItem | undefined,
+  isDownloaded: boolean,
   startDownload: (item: MediaItem) => void,
   onRetry: ((id: number) => void) | undefined,
   language: AppLanguage,
@@ -661,6 +665,7 @@ function renderDownloadButton(
     return (
       <button
         disabled
+        title={t(language, "detail.alreadyDownloadedHint")}
         style={{
           ...baseStyle,
           background: "var(--color-success)",
@@ -671,6 +676,27 @@ function renderDownloadButton(
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           <AppIcon name="check" size={16} strokeWidth={2.3} />
           {t(language, "downloads.done")}
+        </span>
+      </button>
+    );
+  }
+
+  if (isDownloaded) {
+    return (
+      <button
+        disabled
+        title={t(language, "detail.alreadyDownloadedHint")}
+        style={{
+          ...baseStyle,
+          background: "color-mix(in srgb, var(--color-success) 18%, var(--color-surface) 82%)",
+          color: "var(--color-success)",
+          border: "1px solid color-mix(in srgb, var(--color-success) 36%, transparent)",
+          cursor: "default",
+        }}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <AppIcon name="check" size={16} strokeWidth={2.3} />
+          {t(language, "detail.alreadyDownloaded")}
         </span>
       </button>
     );

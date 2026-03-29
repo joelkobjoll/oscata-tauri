@@ -13,6 +13,16 @@ interface Config {
   ftp_root: string;
   tmdb_api_key: string;
   default_language: "es" | "en";
+  download_folder: string;
+  folder_types: string;
+  max_concurrent_downloads: number;
+  emby_url: string;
+  emby_api_key: string;
+  plex_url: string;
+  plex_token: string;
+  auto_check_updates: boolean;
+  updater_endpoint: string;
+  updater_pubkey: string;
 }
 
 export default function Wizard({ onComplete }: { onComplete: () => void }) {
@@ -26,6 +36,16 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
     ftp_root: "/",
     tmdb_api_key: "",
     default_language: "es",
+    download_folder: "",
+    folder_types: "{}",
+    max_concurrent_downloads: 2,
+    emby_url: "",
+    emby_api_key: "",
+    plex_url: "",
+    plex_token: "",
+    auto_check_updates: false,
+    updater_endpoint: "",
+    updater_pubkey: "",
   });
 
   const next = (partial: Partial<Config>) => {

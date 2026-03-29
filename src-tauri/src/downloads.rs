@@ -149,8 +149,9 @@ impl DownloadQueue {
             flag.store(true, std::sync::atomic::Ordering::SeqCst);
         }
         if let Some(item) = self.items.iter_mut().find(|i| i.id == id) {
-            if item.status == DownloadStatus::Queued {
+            if matches!(item.status, DownloadStatus::Queued | DownloadStatus::Downloading) {
                 item.status = DownloadStatus::Cancelled;
+                item.error = None;
                 item.completed_at_ms = Some(now_ms());
             }
         }
@@ -161,6 +162,11 @@ impl DownloadQueue {
             !matches!(i.status, DownloadStatus::Done | DownloadStatus::Error | DownloadStatus::Cancelled)
         });
         self.cancel_flags.retain(|id, _| self.items.iter().any(|item| item.id == *id));
+    }
+
+    pub fn delete(&mut self, id: u64) {
+        self.items.retain(|i| i.id != id);
+        self.cancel_flags.remove(&id);
     }
 
     pub fn update_concurrent(&mut self, max: usize) {

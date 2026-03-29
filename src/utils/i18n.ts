@@ -125,6 +125,11 @@ const messages = {
   "detail.fileInfo": { es: "Archivo", en: "File Info" },
   "detail.filename": { es: "Nombre de archivo", en: "Filename" },
   "detail.download": { es: "Descargar", en: "Download" },
+  "detail.alreadyDownloaded": { es: "Ya descargado", en: "Already downloaded" },
+  "detail.alreadyDownloadedHint": {
+    es: "Este archivo exacto ya existe en la carpeta de destino.",
+    en: "This exact file already exists in the destination folder.",
+  },
   "detail.fixMatch": { es: "Corregir match", en: "Fix Match" },
   "detail.resolution": { es: "Resolución", en: "Resolution" },
   "detail.videoCodec": { es: "Codec de video", en: "Video Codec" },
@@ -285,11 +290,45 @@ const messages = {
     es: "No se pudo enviar la descarga a la cola.",
     en: "The download could not be added to the queue.",
   },
+  "downloads.subtitle": {
+    es: "Sigue el estado de las descargas, reintenta fallos y abre el contenido completado desde un solo lugar.",
+    en: "Track download progress, retry failures, and open completed items from one place.",
+  },
   "downloads.cancel": { es: "Cancelar", en: "Cancel" },
   "downloads.retry": { es: "Reintentar", en: "Retry" },
   "downloads.openFolder": { es: "Abrir carpeta", en: "Open folder" },
+  "downloads.delete": { es: "Eliminar", en: "Delete" },
   "downloads.waiting": { es: "Esperando en cola…", en: "Waiting in queue…" },
   "downloads.none": { es: "Todavía no hay descargas", en: "No downloads yet" },
+  "downloads.emptyTitle": {
+    es: "Todavía no hay descargas",
+    en: "No downloads yet",
+  },
+  "downloads.emptyBody": {
+    es: "Cuando envíes contenido a descargar, lo verás aquí con progreso, acciones rápidas y estado de reanudación.",
+    en: "When you queue content for download, it will appear here with progress, quick actions, and resume status.",
+  },
+  "downloads.activeSection": { es: "En curso", en: "In progress" },
+  "downloads.activeSectionBody": {
+    es: "Descargas activas y elementos esperando su turno.",
+    en: "Active downloads and items waiting for their turn.",
+  },
+  "downloads.historySection": {
+    es: "Historial reciente",
+    en: "Recent history",
+  },
+  "downloads.historySectionBody": {
+    es: "Completadas, canceladas o con error, con acciones para continuar.",
+    en: "Completed, cancelled, or failed items with actions to continue.",
+  },
+  "downloads.noActive": {
+    es: "No hay descargas activas en este momento.",
+    en: "There are no active downloads right now.",
+  },
+  "downloads.noHistory": {
+    es: "Todavía no hay historial de descargas.",
+    en: "There is no download history yet.",
+  },
   "downloads.clearCompleted": {
     es: "Limpiar completadas",
     en: "Clear Completed",
@@ -424,6 +463,85 @@ const messages = {
   "settings.metaDescription": {
     es: "Acceso a TMDB y selección del idioma por defecto al abrir la app.",
     en: "TMDB access plus the default language used when the app opens.",
+  },
+  "settings.updatesTitle": { es: "Actualizaciones", en: "Updates" },
+  "settings.updatesDescription": {
+    es: "Controla cómo la app versiona sus builds y consulta nuevas versiones firmadas.",
+    en: "Control how the app versions its builds and checks for new signed releases.",
+  },
+  "settings.currentVersion": { es: "Versión actual", en: "Current version" },
+  "settings.versioningHelp": {
+    es: "La versión de la app ahora sale de `package.json`, así el frontend y Tauri comparten el mismo número de versión.",
+    en: "The app version now comes from `package.json`, so the frontend and Tauri share the same version number.",
+  },
+  "settings.updatesConfigured": { es: "Updater listo", en: "Updater ready" },
+  "settings.autoCheckUpdates": {
+    es: "Comprobar actualizaciones automáticamente",
+    en: "Automatically check for updates",
+  },
+  "settings.autoCheckUpdatesHelp": {
+    es: "Guarda tu preferencia para futuras comprobaciones automáticas de nuevas releases.",
+    en: "Stores your preference for future automatic checks for new releases.",
+  },
+  "settings.updaterEndpoint": {
+    es: "Endpoint de actualizaciones",
+    en: "Update endpoint",
+  },
+  "settings.updaterEndpointPlaceholder": {
+    es: "https://github.com/owner/repo/releases/latest/download/latest.json",
+    en: "https://github.com/owner/repo/releases/latest/download/latest.json",
+  },
+  "settings.updaterEndpointHelp": {
+    es: "Usa un `latest.json` estático o un endpoint dinámico del updater de Tauri.",
+    en: "Use either a static `latest.json` or a dynamic Tauri updater endpoint.",
+  },
+  "settings.updaterPubkey": {
+    es: "Clave pública del updater",
+    en: "Updater public key",
+  },
+  "settings.updaterPubkeyPlaceholder": {
+    es: "Pega aquí el contenido completo de tu clave pública PEM",
+    en: "Paste the full PEM public key contents here",
+  },
+  "settings.updaterPubkeyHelp": {
+    es: "Genera las claves con `npm run tauri signer generate` y pega aquí la clave pública.",
+    en: "Generate keys with `npm run tauri signer generate` and paste the public key here.",
+  },
+  "settings.checkForUpdates": {
+    es: "Buscar actualizaciones",
+    en: "Check for updates",
+  },
+  "settings.checkingUpdates": {
+    es: "Buscando actualizaciones…",
+    en: "Checking for updates…",
+  },
+  "settings.updatesNotConfigured": {
+    es: "Completa el endpoint y la clave pública para activar el updater seguro.",
+    en: "Fill in the endpoint and public key to enable secure updater checks.",
+  },
+  "settings.updatesAvailable": {
+    es: "Actualización disponible",
+    en: "Update available",
+  },
+  "settings.updatesAvailableMessage": {
+    es: "Hay una nueva versión disponible: v{version}.",
+    en: "A new version is available: v{version}.",
+  },
+  "settings.updatesUpToDate": {
+    es: "Ya estás en la última versión disponible.",
+    en: "You're already on the latest available version.",
+  },
+  "settings.updatesUpToDateTitle": {
+    es: "Todo al día",
+    en: "Up to date",
+  },
+  "settings.updatesError": {
+    es: "No se pudo comprobar la actualización",
+    en: "Could not check for updates",
+  },
+  "settings.releaseDate": {
+    es: "Fecha de publicación: {date}",
+    en: "Release date: {date}",
   },
   "settings.tmdbKey": { es: "TMDB API Key (v3)", en: "TMDB API Key (v3)" },
   "settings.tmdbPlaceholder": {

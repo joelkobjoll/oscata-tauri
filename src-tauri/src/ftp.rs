@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use suppaftp::AsyncFtpStream;
+use suppaftp::types::FileType;
 use futures::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
@@ -171,9 +172,12 @@ pub async fn download_file(
         .await
         .map_err(|e| e.to_string())?;
     ftp.login(user, pass).await.map_err(|e| e.to_string())?;
+    ftp.transfer_type(FileType::Binary)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let size = ftp.size(remote_path).await.unwrap_or(0) as u64;
-    let existing_size = tokio::fs::metadata(local_path)
+    let mut existing_size = tokio::fs::metadata(local_path)
         .await
         .map(|meta| meta.len())
         .unwrap_or(0);
@@ -184,9 +188,16 @@ pub async fn download_file(
     }
 
     if existing_size > 0 {
-        ftp.resume_transfer(existing_size as usize)
-            .await
-            .map_err(|e| e.to_string())?;
+        if let Err(err) = ftp.resume_transfer(existing_size as usize).await {
+            tokio::fs::remove_file(local_path).await.ok();
+            existing_size = 0;
+            ftp.transfer_type(FileType::Binary)
+                .await
+                .map_err(|e| e.to_string())?;
+            if err.to_string().is_empty() {
+                return Err("Resume failed and partial file was removed. Download will restart on retry.".to_string());
+            }
+        }
     }
 
     let mut reader = Box::pin(

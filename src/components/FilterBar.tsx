@@ -7,7 +7,6 @@ export interface Filters {
   search: string;
   releaseType: string;
   resolution: string;
-  codec: string;
   hdr: string;
   sort: string;
 }
@@ -42,38 +41,6 @@ export function normalizeResolution(raw?: string): string {
   if (value.includes("720")) return "720P";
   if (value.includes("480")) return "480P";
   return value;
-}
-
-export function normalizeCodec(raw?: string): string {
-  const value = raw?.trim().toUpperCase() ?? "";
-  if (!value) return "";
-  if (value.includes("AV1")) return "AV1";
-  if (value.includes("VP9")) return "VP9";
-  if (value.includes("VC1") || value.includes("VC-1")) return "VC1";
-  if (value.includes("MPEG2") || value.includes("MPEG-2")) return "MPEG2";
-  if (value.includes("MPEG4") || value.includes("MPEG-4")) return "MPEG4";
-  if (value.includes("XVID")) return "XVID";
-  if (value.includes("DIVX")) return "DIVX";
-  if (value.includes("265") || value.includes("HEVC")) return "X265";
-  if (value.includes("264") || value.includes("AVC")) return "X264";
-  return value;
-}
-
-function codecLabel(codec: string): string {
-  switch (codec) {
-    case "X265":
-      return "x265 / HEVC";
-    case "X264":
-      return "x264 / AVC";
-    case "VC1":
-      return "VC-1";
-    case "MPEG2":
-      return "MPEG-2";
-    case "MPEG4":
-      return "MPEG-4";
-    default:
-      return codec;
-  }
 }
 
 export function normalizeReleaseType(raw?: string): string {
@@ -224,7 +191,6 @@ export default function FilterBar({
   const releaseTypeCounts = countBy(items, (item) =>
     normalizeReleaseType(item.release_type),
   );
-  const codecCounts = countBy(items, (item) => normalizeCodec(item.codec));
   const hdrCounts = countBy(items, (item) => normalizeHdr(item.hdr));
   const releaseTypeOptions = Array.from(
     new Set([
@@ -252,36 +218,10 @@ export default function FilterBar({
     const bi = order.indexOf(b);
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.localeCompare(b);
   });
-  const codecOptions = Array.from(
-    new Set([
-      "X265",
-      "X264",
-      "AV1",
-      "VP9",
-      ...codecCounts.keys(),
-      ...(filters.codec ? [filters.codec] : []),
-    ]),
-  ).sort((a, b) => {
-    const order = [
-      "X265",
-      "X264",
-      "AV1",
-      "VP9",
-      "VC1",
-      "MPEG2",
-      "MPEG4",
-      "XVID",
-      "DIVX",
-    ];
-    const ai = order.indexOf(a);
-    const bi = order.indexOf(b);
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.localeCompare(b);
-  });
   const activeFilterCount = [
     filters.search,
     filters.releaseType,
     filters.resolution,
-    filters.codec,
     filters.hdr,
   ].filter(Boolean).length;
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
@@ -337,7 +277,6 @@ export default function FilterBar({
               search: "",
               releaseType: "",
               resolution: "",
-              codec: "",
               hdr: "",
             })
           }
@@ -466,32 +405,6 @@ export default function FilterBar({
               }
             />
           ))}
-        </div>
-      </Section>
-
-      <Section label={t(language, "filter.codec")}>
-        <div style={{ display: "grid", gap: 8 }}>
-          <Chip
-            label={t(language, "filter.allCodecs")}
-            count={items.length}
-            active={!filters.codec}
-            onClick={() => set({ codec: "" })}
-          />
-          {codecOptions
-            .filter(
-              (option) => codecCounts.has(option) || filters.codec === option,
-            )
-            .map((option) => (
-              <Chip
-                key={option}
-                label={codecLabel(option)}
-                count={codecCounts.get(option) ?? 0}
-                active={filters.codec === option}
-                onClick={() =>
-                  set({ codec: filters.codec === option ? "" : option })
-                }
-              />
-            ))}
         </div>
       </Section>
 

@@ -34,4 +34,3 @@ dirs-next = "2"
 urlencoding = "2"
 futures = "0.3"
 tokio-util = { version = "0.7", features = ["compat"] }
-

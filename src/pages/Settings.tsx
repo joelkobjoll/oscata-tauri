@@ -20,6 +20,9 @@ interface Config {
   emby_api_key: string;
   plex_url: string;
   plex_token: string;
+  auto_check_updates: boolean;
+  updater_endpoint: string;
+  updater_pubkey: string;
 }
 
 type ConnectionState = "idle" | "testing" | "ok" | "error";

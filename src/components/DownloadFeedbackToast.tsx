@@ -43,7 +43,7 @@ export default function DownloadFeedbackToast({ language }: { language: AppLangu
         display: "flex",
         flexDirection: "column",
         gap: 10,
-        zIndex: 47,
+        zIndex: 250,
         pointerEvents: "none",
       }}
     >

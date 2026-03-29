@@ -31,6 +31,7 @@ pub fn run() {
             commands::get_downloads,
             commands::cancel_download,
             commands::clear_completed,
+            commands::delete_download,
             commands::set_max_concurrent,
             commands::retry_download,
             commands::open_download_folder,
@@ -46,6 +47,13 @@ pub fn run() {
         .setup(|app| {
             let db = app.state::<db::Db>().inner().clone();
             let queue = app.state::<downloads::SharedQueue>().inner().clone();
+            let current_version = app.package_info().version.to_string();
+            if let Ok(Some(backup_path)) = db.prepare_for_app_version(&current_version) {
+                println!(
+                    "App updated to v{}; preserved existing library cache backup at {}",
+                    current_version, backup_path
+                );
+            }
             commands::restore_download_queue(db.clone(), queue.clone());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

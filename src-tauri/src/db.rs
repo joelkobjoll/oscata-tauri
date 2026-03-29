@@ -18,6 +18,9 @@ pub struct AppConfig {
     pub emby_api_key: String,
     pub plex_url: String,
     pub plex_token: String,
+    pub auto_check_updates: bool,
+    pub updater_endpoint: String,
+    pub updater_pubkey: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,12 +68,20 @@ pub struct UpsertMediaResult {
 }
 
 impl Db {
-    pub fn new() -> SqlResult<Self> {
-        let data_dir = dirs_next::data_dir()
+    fn app_data_dir() -> std::path::PathBuf {
+        dirs_next::data_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("oscata-tauri");
+            .join("oscata-tauri")
+    }
+
+    fn db_path() -> std::path::PathBuf {
+        Self::app_data_dir().join("library.db")
+    }
+
+    pub fn new() -> SqlResult<Self> {
+        let data_dir = Self::app_data_dir();
         std::fs::create_dir_all(&data_dir).ok();
-        let conn = Connection::open(data_dir.join("library.db"))?;
+        let conn = Connection::open(Self::db_path())?;
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS app_config (
@@ -127,6 +138,85 @@ impl Db {
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 
+    fn save_app_value(&self, key: &str, value: &str) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO app_config (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn load_app_value(&self, key: &str) -> Result<Option<String>, String> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT value FROM app_config WHERE key = ?1",
+            params![key],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())
+    }
+
+    fn sanitize_version_for_filename(version: &str) -> String {
+        let sanitized = version
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+            .collect::<String>();
+        if sanitized.is_empty() {
+            "unknown".to_string()
+        } else {
+            sanitized
+        }
+    }
+
+    pub fn prepare_for_app_version(&self, current_version: &str) -> Result<Option<String>, String> {
+        let previous_version = self.load_app_value("last_app_version")?;
+        match previous_version.as_deref() {
+            Some(previous) if previous != current_version => {
+                let backup_path = self.backup_database_for_update(previous, current_version)?;
+                self.save_app_value("last_app_version", current_version)?;
+                if let Some(path) = backup_path.as_deref() {
+                    self.save_app_value("last_update_backup_path", path)?;
+                }
+                Ok(backup_path)
+            }
+            Some(_) => Ok(None),
+            None => {
+                self.save_app_value("last_app_version", current_version)?;
+                Ok(None)
+            }
+        }
+    }
+
+    pub fn backup_database_for_update(
+        &self,
+        from_version: &str,
+        to_version: &str,
+    ) -> Result<Option<String>, String> {
+        if from_version.trim().is_empty() || from_version == to_version {
+            return Ok(None);
+        }
+
+        let backups_dir = Self::app_data_dir().join("backups");
+        std::fs::create_dir_all(&backups_dir).map_err(|e| e.to_string())?;
+        let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+        let backup_path = backups_dir.join(format!(
+            "library-{}-to-{}-{}.sqlite3",
+            Self::sanitize_version_for_filename(from_version),
+            Self::sanitize_version_for_filename(to_version),
+            timestamp
+        ));
+        let escaped_path = backup_path.to_string_lossy().replace('\'', "''");
+
+        let conn = self.0.lock().unwrap();
+        conn.execute_batch(&format!("VACUUM INTO '{}';", escaped_path))
+            .map_err(|e| e.to_string())?;
+
+        Ok(Some(backup_path.to_string_lossy().to_string()))
+    }
+
     pub fn save_config(&self, config: &AppConfig) -> Result<(), String> {
         let conn = self.0.lock().unwrap();
         let pairs = [
@@ -142,6 +232,12 @@ impl Db {
             ("emby_api_key", config.emby_api_key.as_str()),
             ("plex_url", config.plex_url.as_str()),
             ("plex_token", config.plex_token.as_str()),
+            (
+                "auto_check_updates",
+                if config.auto_check_updates { "1" } else { "0" },
+            ),
+            ("updater_endpoint", config.updater_endpoint.as_str()),
+            ("updater_pubkey", config.updater_pubkey.as_str()),
         ];
         let port_str = config.ftp_port.to_string();
         for (k, v) in &pairs {
@@ -165,24 +261,11 @@ impl Db {
     }
 
     pub fn save_last_indexed_at(&self, timestamp: &str) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
-        conn.execute(
-            "INSERT OR REPLACE INTO app_config (key, value) VALUES ('last_indexed_at', ?1)",
-            params![timestamp],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(())
+        self.save_app_value("last_indexed_at", timestamp)
     }
 
     pub fn load_last_indexed_at(&self) -> Result<Option<String>, String> {
-        let conn = self.0.lock().unwrap();
-        conn.query_row(
-            "SELECT value FROM app_config WHERE key = 'last_indexed_at'",
-            [],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()
-        .map_err(|e| e.to_string())
+        self.load_app_value("last_indexed_at")
     }
 
     pub fn save_download_state(&self, items: &[crate::downloads::DownloadItem]) -> Result<(), String> {
@@ -243,6 +326,12 @@ impl Db {
             emby_api_key: get("emby_api_key").unwrap_or_default(),
             plex_url: get("plex_url").unwrap_or_default(),
             plex_token: get("plex_token").unwrap_or_default(),
+            auto_check_updates: get("auto_check_updates")
+                .ok()
+                .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "True"))
+                .unwrap_or(false),
+            updater_endpoint: get("updater_endpoint").unwrap_or_default(),
+            updater_pubkey: get("updater_pubkey").unwrap_or_default(),
         })
     }
 
