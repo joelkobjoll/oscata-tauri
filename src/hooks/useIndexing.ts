@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
 import type { LogEntry } from "../components/ActivityLog";
+import { call, isTauri } from "../lib/transport";
 
 export interface MediaItem {
   id: number;
@@ -21,6 +21,7 @@ export interface MediaItem {
   release_type?: string;
   release_group?: string;
   tmdb_id?: number;
+  imdb_id?: string;
   tmdb_type?: string;
   media_type?: string;
   tmdb_release_date?: string;
@@ -59,7 +60,7 @@ export function useIndexing() {
 
   // Hydrate from SQLite on mount
   useEffect(() => {
-    invoke<MediaItem[]>("get_all_media")
+    call<MediaItem[]>("get_all_media")
       .then((loaded) => {
         rebuildIndex(loaded);
         setItems(loaded);
@@ -68,6 +69,8 @@ export function useIndexing() {
   }, []);
 
   useEffect(() => {
+    if (!isTauri()) return;
+
     const unProgress = listen<MediaItem & { current: number; total: number }>(
       "index:progress",
       ({ payload }) => {
@@ -131,7 +134,7 @@ export function useIndexing() {
     progress,
     indexError,
     clearIndexError: () => setIndexError(null),
-    retryIndexing: () => invoke("start_indexing").catch(console.error),
+    retryIndexing: () => call("start_indexing").catch(console.error),
     log,
     clearLog: () => setLog([]),
   };

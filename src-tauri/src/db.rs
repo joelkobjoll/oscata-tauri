@@ -15,6 +15,13 @@ const REMOVED_FOLDER_TYPE_KEYS: &[&str] = &[
     "Documentaries",
     "TV Shows",
 ];
+const DEFAULT_WEBGUI_HOST: &str = "0.0.0.0";
+const DEFAULT_WEBGUI_PORT: u16 = 47860;
+const DEFAULT_SMTP_PORT: u16 = 587;
+const SESSION_EXPIRY_DAYS: i64 = 7;
+const INVITE_EXPIRY_DAYS: i64 = 7;
+const OTP_EXPIRY_MINUTES: i64 = 5;
+const OTP_MAX_ATTEMPTS: i64 = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -38,6 +45,30 @@ pub struct AppConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebGuiConfig {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u16,
+    pub exposed_port: Option<u16>,
+    pub app_url: String,
+    pub otp_enabled: bool,
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_user: String,
+    pub smtp_pass: String,
+    pub smtp_from: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebUser {
+    pub id: i64,
+    pub email: String,
+    pub role: String,
+    pub is_active: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaItem {
     pub id: i64,
     pub ftp_path: String,
@@ -57,6 +88,7 @@ pub struct MediaItem {
     pub release_group: Option<String>,
     pub media_type: Option<String>,
     pub tmdb_id: Option<i64>,
+    pub imdb_id: Option<String>,
     pub tmdb_type: Option<String>,
     pub tmdb_title: Option<String>,
     pub tmdb_title_en: Option<String>,
@@ -153,6 +185,7 @@ impl Db {
                 release_group TEXT,
                 media_type    TEXT,
                 tmdb_id       INTEGER,
+                imdb_id       TEXT,
                 tmdb_type     TEXT,
                 tmdb_title    TEXT,
                 tmdb_title_en TEXT,
@@ -180,6 +213,41 @@ impl Db {
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN tmdb_title_en TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN tmdb_overview_en TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN tmdb_poster_en TEXT;").ok();
+        conn.execute_batch("ALTER TABLE media_items ADD COLUMN imdb_id TEXT;").ok();
+        // Web GUI auth tables
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS web_users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                email         TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role          TEXT NOT NULL DEFAULT 'viewer',
+                is_active     INTEGER NOT NULL DEFAULT 1,
+                created_at    TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS web_sessions (
+                id         TEXT PRIMARY KEY,
+                user_id    INTEGER NOT NULL,
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES web_users(id) ON DELETE CASCADE
+             );
+             CREATE TABLE IF NOT EXISTS web_otp_challenges (
+                id         TEXT PRIMARY KEY,
+                user_id    INTEGER NOT NULL,
+                code       TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                attempts   INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES web_users(id) ON DELETE CASCADE
+                 );
+                 CREATE TABLE IF NOT EXISTS web_invites (
+                     id         TEXT PRIMARY KEY,
+                     email      TEXT,
+                     role       TEXT NOT NULL,
+                     expires_at TEXT NOT NULL,
+                     used_at    TEXT,
+                     created_at TEXT NOT NULL
+             );",
+        ).ok();
         Ok(())
     }
 
@@ -359,6 +427,281 @@ impl Db {
         self.load_app_value("last_indexed_at")
     }
 
+    // ── WebGUI config ──────────────────────────────────────────────────────
+
+    pub fn save_webgui_config(&self, c: &WebGuiConfig) -> Result<(), String> {
+        let host = c.host.trim();
+        if host.is_empty() { return Err("WEBGUI host cannot be empty".into()); }
+        if c.port == 0 { return Err("WEBGUI port must be > 0".into()); }
+        self.save_app_value("webgui_enabled",  if c.enabled { "1" } else { "0" })?;
+        self.save_app_value("webgui_host",     host)?;
+        self.save_app_value("webgui_port",     &c.port.to_string())?;
+        self.save_app_value("webgui_exposed_port", &c.exposed_port.map(|p| p.to_string()).unwrap_or_default())?;
+        self.save_app_value("webgui_app_url",  &c.app_url)?;
+        self.save_app_value("webgui_otp_enabled", if c.otp_enabled { "1" } else { "0" })?;
+        self.save_app_value("webgui_smtp_host", &c.smtp_host)?;
+        self.save_app_value("webgui_smtp_port", &c.smtp_port.to_string())?;
+        self.save_app_value("webgui_smtp_user", &c.smtp_user)?;
+        self.save_app_value("webgui_smtp_pass", &c.smtp_pass)?;
+        self.save_app_value("webgui_smtp_from", &c.smtp_from)?;
+        Ok(())
+    }
+
+    pub fn load_webgui_config(&self) -> Result<WebGuiConfig, String> {
+        let bool_val = |key: &str| -> bool {
+            self.load_app_value(key).ok().flatten()
+                .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "True"))
+                .unwrap_or(false)
+        };
+        let str_val = |key: &str| -> String {
+            self.load_app_value(key).ok().flatten().unwrap_or_default()
+        };
+        let port_val = |key: &str, default: u16| -> u16 {
+            self.load_app_value(key).ok().flatten()
+                .and_then(|v| v.parse::<u16>().ok()).filter(|&p| p > 0)
+                .unwrap_or(default)
+        };
+        let host = str_val("webgui_host");
+        let exposed_port_str = str_val("webgui_exposed_port");
+        Ok(WebGuiConfig {
+            enabled:      bool_val("webgui_enabled"),
+            host:         if host.is_empty() { DEFAULT_WEBGUI_HOST.into() } else { host },
+            port:         port_val("webgui_port", DEFAULT_WEBGUI_PORT),
+            exposed_port: exposed_port_str.parse::<u16>().ok().filter(|&p| p > 0),
+            app_url:      str_val("webgui_app_url"),
+            otp_enabled:  bool_val("webgui_otp_enabled"),
+            smtp_host:    str_val("webgui_smtp_host"),
+            smtp_port:    port_val("webgui_smtp_port", DEFAULT_SMTP_PORT),
+            smtp_user:    str_val("webgui_smtp_user"),
+            smtp_pass:    str_val("webgui_smtp_pass"),
+            smtp_from:    str_val("webgui_smtp_from"),
+        })
+    }
+
+    // ── Web auth ───────────────────────────────────────────────────────────
+
+    pub fn web_user_count(&self) -> Result<i64, String> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row("SELECT COUNT(*) FROM web_users", [], |r| r.get(0))
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn create_web_user(&self, email: &str, hash: &str, role: &str) -> Result<WebUser, String> {
+        let conn = self.0.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO web_users (email, password_hash, role, is_active, created_at) VALUES (?1,?2,?3,1,?4)",
+            params![email.trim().to_lowercase(), hash, role, now],
+        ).map_err(|e| e.to_string())?;
+        let id = conn.last_insert_rowid();
+        Ok(WebUser { id, email: email.trim().to_lowercase(), role: role.into(), is_active: true, created_at: now })
+    }
+
+    pub fn get_web_user_by_email(&self, email: &str) -> Result<Option<(WebUser, String)>, String> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT id, email, role, is_active, created_at, password_hash FROM web_users WHERE email = ?1",
+            params![email.trim().to_lowercase()],
+            |r| Ok((
+                WebUser { id: r.get(0)?, email: r.get(1)?, role: r.get(2)?,
+                    is_active: r.get::<_, i64>(3)? != 0, created_at: r.get(4)? },
+                r.get::<_, String>(5)?,
+            )),
+        ).optional().map_err(|e| e.to_string())
+    }
+
+    pub fn list_web_users(&self) -> Result<Vec<WebUser>, String> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, email, role, is_active, created_at FROM web_users ORDER BY id"
+        ).map_err(|e| e.to_string())?;
+        let users = stmt.query_map([], |r| Ok(WebUser {
+            id: r.get(0)?, email: r.get(1)?, role: r.get(2)?,
+            is_active: r.get::<_, i64>(3)? != 0, created_at: r.get(4)?,
+        })).map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        Ok(users)
+    }
+
+    pub fn update_web_user(
+        &self, id: i64,
+        email: Option<&str>, hash: Option<&str>, role: Option<&str>, is_active: Option<bool>,
+    ) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        if let Some(e) = email {
+            conn.execute("UPDATE web_users SET email=?1 WHERE id=?2",
+                params![e.trim().to_lowercase(), id]).map_err(|e| e.to_string())?;
+        }
+        if let Some(h) = hash {
+            conn.execute("UPDATE web_users SET password_hash=?1 WHERE id=?2",
+                params![h, id]).map_err(|e| e.to_string())?;
+        }
+        if let Some(r) = role {
+            conn.execute("UPDATE web_users SET role=?1 WHERE id=?2",
+                params![r, id]).map_err(|e| e.to_string())?;
+        }
+        if let Some(a) = is_active {
+            conn.execute("UPDATE web_users SET is_active=?1 WHERE id=?2",
+                params![if a { 1i64 } else { 0 }, id]).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_web_user(&self, id: i64) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM web_users WHERE id=?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // Sessions
+
+    pub fn create_web_session(&self, user_id: i64, token: &str) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        let now = chrono::Utc::now();
+        let expires = (now + chrono::Duration::days(SESSION_EXPIRY_DAYS)).to_rfc3339();
+        conn.execute(
+            "INSERT INTO web_sessions (id, user_id, expires_at, created_at) VALUES (?1,?2,?3,?4)",
+            params![token, user_id, expires, now.to_rfc3339()],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn validate_web_session(&self, token: &str) -> Result<Option<WebUser>, String> {
+        let conn = self.0.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.query_row(
+            "SELECT u.id, u.email, u.role, u.is_active, u.created_at
+             FROM web_sessions s JOIN web_users u ON u.id = s.user_id
+             WHERE s.id = ?1 AND s.expires_at > ?2 AND u.is_active = 1",
+            params![token, now],
+            |r| Ok(WebUser {
+                id: r.get(0)?, email: r.get(1)?, role: r.get(2)?,
+                is_active: r.get::<_, i64>(3)? != 0, created_at: r.get(4)?,
+            }),
+        ).optional().map_err(|e| e.to_string())
+    }
+
+    pub fn revoke_web_session(&self, token: &str) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM web_sessions WHERE id=?1", params![token])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn cleanup_expired_sessions(&self) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute("DELETE FROM web_sessions WHERE expires_at <= ?1", params![now])
+            .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM web_otp_challenges WHERE expires_at <= ?1", params![now])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // OTP challenges
+
+    pub fn create_otp_challenge(&self, user_id: i64, code: &str) -> Result<String, String> {
+        let conn = self.0.lock().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let expires = (chrono::Utc::now() + chrono::Duration::minutes(OTP_EXPIRY_MINUTES)).to_rfc3339();
+        conn.execute(
+            "INSERT INTO web_otp_challenges (id, user_id, code, expires_at, attempts) VALUES (?1,?2,?3,?4,0)",
+            params![id, user_id, code, expires],
+        ).map_err(|e| e.to_string())?;
+        Ok(id)
+    }
+
+    pub fn verify_otp_challenge(&self, challenge_id: &str, code: &str) -> Result<Option<i64>, String> {
+        let conn = self.0.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        let row: Option<(i64, String, i64)> = conn.query_row(
+            "SELECT user_id, code, attempts FROM web_otp_challenges WHERE id=?1 AND expires_at > ?2",
+            params![challenge_id, now],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        ).optional().map_err(|e| e.to_string())?;
+
+        match row {
+            None => Ok(None),
+            Some((user_id, stored_code, attempts)) => {
+                if attempts >= OTP_MAX_ATTEMPTS {
+                    conn.execute("DELETE FROM web_otp_challenges WHERE id=?1", params![challenge_id]).ok();
+                    return Ok(None);
+                }
+                if stored_code == code {
+                    conn.execute("DELETE FROM web_otp_challenges WHERE id=?1", params![challenge_id]).ok();
+                    Ok(Some(user_id))
+                } else {
+                    conn.execute("UPDATE web_otp_challenges SET attempts=attempts+1 WHERE id=?1", params![challenge_id]).ok();
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Invite tokens
+
+    pub fn create_web_invite(&self, email: Option<&str>, role: &str) -> Result<(String, String), String> {
+        let conn = self.0.lock().unwrap();
+        let token = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now();
+        let expires_at = (now + chrono::Duration::days(INVITE_EXPIRY_DAYS)).to_rfc3339();
+        let normalized_email = email
+            .map(|e| e.trim().to_lowercase())
+            .filter(|e| !e.is_empty());
+        conn.execute(
+            "INSERT INTO web_invites (id, email, role, expires_at, used_at, created_at) VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
+            params![token, normalized_email, role, expires_at, now.to_rfc3339()],
+        ).map_err(|e| e.to_string())?;
+        Ok((token, expires_at))
+    }
+
+    pub fn consume_web_invite(
+        &self,
+        token: &str,
+        email: &str,
+        password_hash: &str,
+    ) -> Result<WebUser, String> {
+        let conn = self.0.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        let normalized_email = email.trim().to_lowercase();
+
+        let invite: Option<(Option<String>, String)> = conn.query_row(
+            "SELECT email, role FROM web_invites WHERE id=?1 AND used_at IS NULL AND expires_at > ?2",
+            params![token, now],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        ).optional().map_err(|e| e.to_string())?;
+
+        let (invited_email, role) = invite.ok_or_else(|| "Invalid or expired invite".to_string())?;
+
+        if let Some(invited_email) = invited_email {
+            if invited_email != normalized_email {
+                return Err("Invite email does not match".to_string());
+            }
+        }
+
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO web_users (email, password_hash, role, is_active, created_at) VALUES (?1, ?2, ?3, 1, ?4)",
+            params![normalized_email, password_hash, role, now],
+        ).map_err(|e| e.to_string())?;
+
+        let user_id = tx.last_insert_rowid();
+        tx.execute(
+            "UPDATE web_invites SET used_at=?1 WHERE id=?2",
+            params![now, token],
+        ).map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+
+        Ok(WebUser {
+            id: user_id,
+            email: normalized_email,
+            role,
+            is_active: true,
+            created_at: now,
+        })
+    }
+
     pub fn save_download_state(&self, items: &[crate::downloads::DownloadItem]) -> Result<(), String> {
         let conn = self.0.lock().unwrap();
         let json = serde_json::to_string(items).map_err(|e| e.to_string())?;
@@ -521,12 +864,13 @@ impl Db {
         let genres = serde_json::to_string(&movie.genre_ids).ok();
         conn.execute(
             "UPDATE media_items SET
-                tmdb_id=?1, tmdb_type=?2, tmdb_title=?3, tmdb_title_en=?4, tmdb_year=?5,
-                tmdb_release_date=?6, tmdb_overview=?7, tmdb_overview_en=?8, tmdb_poster=?9, tmdb_poster_en=?10,
-                tmdb_rating=?11, tmdb_genres=?12, metadata_at=?13, manual_match=?14
-             WHERE id=?15",
+                tmdb_id=?1, imdb_id=?2, tmdb_type=?3, tmdb_title=?4, tmdb_title_en=?5, tmdb_year=?6,
+                tmdb_release_date=?7, tmdb_overview=?8, tmdb_overview_en=?9, tmdb_poster=?10, tmdb_poster_en=?11,
+                tmdb_rating=?12, tmdb_genres=?13, metadata_at=?14, manual_match=?15
+             WHERE id=?16",
             params![
                 movie.id,
+                movie.imdb_id,
                 media_type,
                 movie.title,
                 movie.title_en,
@@ -580,7 +924,7 @@ impl Db {
         let mut stmt = conn
             .prepare("SELECT id, ftp_path, filename, size_bytes, title, year, season, episode, episode_end, \
                       resolution, codec, audio_codec, languages, hdr, release_type, release_group, \
-                      media_type, tmdb_id, tmdb_type, tmdb_title, tmdb_title_en, tmdb_year, tmdb_release_date, \
+                      media_type, tmdb_id, imdb_id, tmdb_type, tmdb_title, tmdb_title_en, tmdb_year, tmdb_release_date, \
                       tmdb_overview, tmdb_overview_en, tmdb_poster, tmdb_poster_en, tmdb_rating, tmdb_genres, indexed_at, metadata_at, manual_match \
                       FROM media_items ORDER BY COALESCE(tmdb_title, title, filename)")
             .map_err(|e| e.to_string())?;
@@ -606,20 +950,21 @@ impl Db {
                     release_group: row.get(15)?,
                     media_type: row.get(16)?,
                     tmdb_id: row.get(17)?,
-                    tmdb_type: row.get(18)?,
-                    tmdb_title: row.get(19)?,
-                    tmdb_title_en: row.get(20)?,
-                    tmdb_year: row.get(21)?,
-                    tmdb_release_date: row.get(22)?,
-                    tmdb_overview: row.get(23)?,
-                    tmdb_overview_en: row.get(24)?,
-                    tmdb_poster: row.get(25)?,
-                    tmdb_poster_en: row.get(26)?,
-                    tmdb_rating: row.get(27)?,
-                    tmdb_genres: row.get(28)?,
-                    indexed_at: row.get(29)?,
-                    metadata_at: row.get(30)?,
-                    manual_match: row.get(31)?,
+                    imdb_id: row.get(18)?,
+                    tmdb_type: row.get(19)?,
+                    tmdb_title: row.get(20)?,
+                    tmdb_title_en: row.get(21)?,
+                    tmdb_year: row.get(22)?,
+                    tmdb_release_date: row.get(23)?,
+                    tmdb_overview: row.get(24)?,
+                    tmdb_overview_en: row.get(25)?,
+                    tmdb_poster: row.get(26)?,
+                    tmdb_poster_en: row.get(27)?,
+                    tmdb_rating: row.get(28)?,
+                    tmdb_genres: row.get(29)?,
+                    indexed_at: row.get(30)?,
+                    metadata_at: row.get(31)?,
+                    manual_match: row.get(32)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -642,7 +987,7 @@ impl Db {
         let conn = self.0.lock().unwrap();
         conn.execute(
             "UPDATE media_items SET
-                tmdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
+                tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
                 tmdb_title_en=NULL, tmdb_release_date=NULL, tmdb_overview=NULL, tmdb_overview_en=NULL, tmdb_poster=NULL, tmdb_poster_en=NULL,
                 tmdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
              WHERE id=?1",
@@ -656,7 +1001,7 @@ impl Db {
         let conn = self.0.lock().unwrap();
         let count = conn.execute(
             "UPDATE media_items SET
-                tmdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
+                tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
                 tmdb_title_en=NULL, tmdb_release_date=NULL, tmdb_overview=NULL, tmdb_overview_en=NULL, tmdb_poster=NULL, tmdb_poster_en=NULL,
                 tmdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL
              WHERE COALESCE(manual_match, 0) = 0",
@@ -671,7 +1016,7 @@ impl Db {
         let conn = self.0.lock().unwrap();
         let count = conn.execute(
             "UPDATE media_items SET
-                tmdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
+                tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
                 tmdb_title_en=NULL, tmdb_release_date=NULL, tmdb_overview=NULL, tmdb_overview_en=NULL, tmdb_poster=NULL, tmdb_poster_en=NULL,
                 tmdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
              WHERE tmdb_id=?1",

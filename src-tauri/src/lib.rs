@@ -4,9 +4,19 @@ mod downloads;
 mod ftp;
 mod parser;
 mod tmdb;
+mod web;
 
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+
+struct TrayState(Mutex<Option<TrayIcon>>);
+
+/// Global flag that tracks whether an FTP index pass is currently running.
+/// Set/cleared by `start_indexing_internal`; read by the WEBGUI status endpoint.
+pub static INDEXING_RUNNING: std::sync::LazyLock<Arc<std::sync::atomic::AtomicBool>> =
+    std::sync::LazyLock::new(|| Arc::new(std::sync::atomic::AtomicBool::new(false)));
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -15,6 +25,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(db::Db::new().expect("Failed to init SQLite"))
         .manage(Arc::new(Mutex::new(downloads::DownloadQueue::new(2))) as downloads::SharedQueue)
+        .manage(TrayState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::ftp_list_raw,
@@ -23,6 +34,9 @@ pub fn run() {
             commands::test_emby_connection,
             commands::test_plex_connection,
             commands::save_config,
+            commands::get_webgui_config,
+            commands::save_webgui_config,
+            commands::init_webgui_now,
             commands::has_config,
             commands::seed_starter_library,
             commands::export_library_backup,
@@ -48,9 +62,70 @@ pub fn run() {
             commands::ftp_list_root_dirs,
             commands::ftp_list_root_dirs_preview,
         ])
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                window.hide().ok();
+            }
+        })
         .setup(|app| {
+            let show = MenuItem::with_id(app, "tray_show", "Open Oscata", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show, &quit])?;
+
+            let mut tray_builder = TrayIconBuilder::new()
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app_handle: &tauri::AppHandle, event| match event.id.as_ref() {
+                    "tray_show" => {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            window.show().ok();
+                            window.set_focus().ok();
+                        }
+                    }
+                    "tray_quit" => {
+                        app_handle.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray_icon: &TrayIcon, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        if let Some(window) = tray_icon.app_handle().get_webview_window("main") {
+                            let visible = window.is_visible().unwrap_or(false);
+                            if visible {
+                                window.hide().ok();
+                            } else {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
+                        }
+                    }
+                })
+                ;
+
+            // Explicitly set tray icon to avoid an invisible tray entry on Windows.
+            let tray_icon = app.default_window_icon().cloned().or_else(|| {
+                Some(tauri::include_image!("icons/32x32.png"))
+            });
+            if let Some(icon) = tray_icon {
+                tray_builder = tray_builder.icon(icon);
+            }
+
+            let tray = tray_builder.build(app)?;
+            *app.state::<TrayState>().0.lock().unwrap() = Some(tray);
+
             let db = app.state::<db::Db>().inner().clone();
             let queue = app.state::<downloads::SharedQueue>().inner().clone();
+            // Spawn WEBGUI HTTP server if enabled in config
+            web::spawn_if_enabled(db.clone(), queue.clone(), app.handle().clone());
             let current_version = app.package_info().version.to_string();
             if let Ok(Some(backup_path)) = db.prepare_for_app_version(&current_version) {
                 println!(
@@ -77,7 +152,7 @@ pub fn run() {
 
                 if should_run_now {
                     if let Some(window) = handle.get_webview_window("main") {
-                        commands::start_indexing_internal(db.clone(), window).await.ok();
+                        commands::start_indexing_internal(db.clone(), Some(window)).await.ok();
                     }
                 } else if let Some(value) = last_indexed_at
                     .as_deref()
@@ -91,7 +166,7 @@ pub fn run() {
                 loop {
                     interval.tick().await;
                     if let Some(window) = handle.get_webview_window("main") {
-                        commands::start_indexing_internal(db.clone(), window).await.ok();
+                        commands::start_indexing_internal(db.clone(), Some(window)).await.ok();
                     }
                 }
             });

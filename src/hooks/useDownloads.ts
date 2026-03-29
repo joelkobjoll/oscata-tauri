@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { call, isTauri } from "../lib/transport";
 
 export interface DownloadItem {
   id: number;
@@ -28,10 +28,63 @@ export function useDownloads() {
     >
   >({});
 
+  const applySnapshotSpeed = (items: DownloadItem[]): DownloadItem[] => {
+    const now = Date.now();
+
+    return items.map((item) => {
+      if (item.status !== "downloading") {
+        delete speedState.current[item.id];
+        return { ...item, speed_bps: undefined };
+      }
+
+      const prev = speedState.current[item.id];
+      if (!prev) {
+        speedState.current[item.id] = {
+          ts: now,
+          bytes: item.bytes_done,
+          smoothedBps: item.speed_bps,
+        };
+        return item;
+      }
+
+      const dtMs = now - prev.ts;
+      const dBytes = item.bytes_done - prev.bytes;
+      let nextSpeed = prev.smoothedBps;
+
+      if (dtMs > 0 && dBytes >= 0) {
+        const instantBps = (dBytes / dtMs) * 1000;
+        nextSpeed =
+          prev.smoothedBps == null
+            ? instantBps
+            : prev.smoothedBps * 0.65 + instantBps * 0.35;
+      }
+
+      speedState.current[item.id] = {
+        ts: now,
+        bytes: item.bytes_done,
+        smoothedBps: nextSpeed,
+      };
+
+      return { ...item, speed_bps: nextSpeed };
+    });
+  };
+
   useEffect(() => {
-    invoke<DownloadItem[]>("get_downloads")
-      .then(setDownloads)
+    call<DownloadItem[]>("get_downloads")
+      .then((items) => setDownloads(applySnapshotSpeed(items)))
       .catch(console.error);
+
+    // Keep desktop and web views converged even when actions are triggered
+    // from a different client (e.g., browser updates while desktop is open).
+    const syncTimer = window.setInterval(() => {
+      call<DownloadItem[]>("get_downloads")
+        .then((items) => setDownloads(applySnapshotSpeed(items)))
+        .catch(() => {});
+    }, 1200);
+
+    if (!isTauri()) {
+      return () => window.clearInterval(syncTimer);
+    }
 
     const unAdded = listen<DownloadItem>("download:added", ({ payload }) => {
       setDownloads((prev) => [payload, ...prev]);
@@ -95,22 +148,27 @@ export function useDownloads() {
     });
 
     return () => {
+      window.clearInterval(syncTimer);
       unAdded.then((f) => f());
       unUpdate.then((f) => f());
       unProgress.then((f) => f());
     };
   }, []);
 
-  const cancelDownload = (id: number) => invoke("cancel_download", { id });
-  const retryDownload = (id: number) => invoke("retry_download", { id });
-  const openDownloadFolder = (localPath: string) =>
-    invoke("open_download_folder", { localPath });
+  const cancelDownload = (id: number) => call("cancel_download", { id });
+  const retryDownload = (id: number) => call("retry_download", { id });
+  const openDownloadFolder = (localPath: string) => {
+    if (!isTauri()) {
+      return Promise.reject(new Error("Open folder is only available in desktop app"));
+    }
+    return call("open_download_folder", { localPath });
+  };
   const deleteDownload = (id: number) =>
-    invoke("delete_download", { id }).then(() =>
+    call("delete_download", { id }).then(() =>
       setDownloads((prev) => prev.filter((d) => d.id !== id)),
     );
   const clearCompleted = () =>
-    invoke("clear_completed").then(() =>
+    call("clear_completed").then(() =>
       setDownloads((prev) =>
         prev.filter((d) => !["done", "error", "cancelled"].includes(d.status)),
       ),

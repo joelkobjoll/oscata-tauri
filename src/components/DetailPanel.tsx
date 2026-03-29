@@ -107,7 +107,9 @@ export default function DetailPanel({
   const tmdbUrl = item.tmdb_id
     ? `https://www.themoviedb.org/${tmdbMediaType}/${item.tmdb_id}`
     : `https://www.themoviedb.org/search?query=${encodeURIComponent(searchQuery)}`;
-  const imdbUrl = `https://www.imdb.com/find/?q=${encodeURIComponent(searchQuery)}&s=tt`;
+  const imdbUrl = item.imdb_id
+    ? `https://www.imdb.com/title/${encodeURIComponent(item.imdb_id)}/`
+    : `https://www.imdb.com/find/?q=${encodeURIComponent(searchQuery)}&s=tt`;
   const externalLinkBtn: React.CSSProperties = {
     flex: 1,
     minWidth: 0,

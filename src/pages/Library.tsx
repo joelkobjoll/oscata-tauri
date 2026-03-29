@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "../lib/transport";
 import { useIndexing, MediaItem } from "../hooks/useIndexing";
 import { useDownload } from "../hooks/useDownload";
 import { useDownloads } from "../hooks/useDownloads";
@@ -242,7 +242,7 @@ export default function Library({
 
     hasStartedInitialIndexRef.current = true;
     const timer = window.setTimeout(() => {
-      invoke("start_indexing").catch(console.error);
+      call("start_indexing").catch(console.error);
     }, 0);
 
     return () => window.clearTimeout(timer);
@@ -265,7 +265,9 @@ export default function Library({
     setShowLog(true);
     setShowActionsMenu(false);
     try {
-      await invoke("rematch_all");
+      await call("rematch_all");
+    } catch (error) {
+      console.error("Failed to re-match metadata:", error);
     } finally {
       setRematching(false);
     }
@@ -275,7 +277,9 @@ export default function Library({
     setRefreshingLibrary(true);
     setShowActionsMenu(false);
     try {
-      await invoke("start_indexing");
+      await call("start_indexing");
+    } catch (error) {
+      console.error("Failed to refresh library:", error);
     } finally {
       setRefreshingLibrary(false);
     }
@@ -292,8 +296,10 @@ export default function Library({
     setShowLog(true);
     setShowActionsMenu(false);
     try {
-      await invoke("clear_all_metadata");
-      await invoke("rematch_all");
+      await call("clear_all_metadata");
+      await call("rematch_all");
+    } catch (error) {
+      console.error("Failed to clear/rematch metadata:", error);
     } finally {
       setClearingAll(false);
     }
@@ -304,7 +310,9 @@ export default function Library({
     setShowLog(true);
     setShowActionsMenu(false);
     try {
-      await invoke("refresh_all_metadata");
+      await call("refresh_all_metadata");
+    } catch (error) {
+      console.error("Failed to refresh missing metadata:", error);
     } finally {
       setRefreshingMetadata(false);
     }
@@ -605,7 +613,7 @@ export default function Library({
 
   useEffect(() => {
     let cancelled = false;
-    invoke<{ default_language?: AppLanguage }>("get_config")
+    call<{ default_language?: AppLanguage }>("get_config")
       .then((config) => {
         if (
           !cancelled &&
@@ -748,7 +756,7 @@ export default function Library({
   useEffect(() => {
     if (activeTab === "downloads" || paginatedItems.length === 0) return;
     let cancelled = false;
-    invoke<Array<{ id: number; downloaded: boolean; in_emby: boolean }>>(
+    call<Array<{ id: number; downloaded: boolean; in_emby: boolean }>>(
       "check_media_badges",
       {
         items: paginatedItems.map((item) => ({

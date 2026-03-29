@@ -4,6 +4,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TmdbMovie {
     pub id: i64,
+    pub imdb_id: Option<String>,
     pub title: String,
     pub title_en: Option<String>,
     pub release_date: Option<String>,
@@ -163,6 +164,7 @@ async fn search_endpoint_results(
             })
             .or_insert(TmdbMovie {
                 id: result.id,
+                imdb_id: None,
                 title: result.title,
                 title_en: None,
                 release_date: result.release_date,
@@ -201,6 +203,7 @@ async fn search_endpoint_results(
             })
             .or_insert(TmdbMovie {
                 id: result.id,
+                imdb_id: None,
                 title: result.title.clone(),
                 title_en: Some(result.title),
                 release_date: result.release_date,
@@ -314,13 +317,39 @@ async fn fetch_detail_lang(
     })
 }
 
+async fn fetch_imdb_id(
+    api_key: &str,
+    tmdb_id: i64,
+    endpoint: &str,
+) -> Result<Option<String>, String> {
+    let url = format!(
+        "https://api.themoviedb.org/3/{endpoint}/{tmdb_id}/external_ids?api_key={api_key}"
+    );
+
+    #[derive(Deserialize)]
+    struct ExternalIds {
+        imdb_id: Option<String>,
+    }
+
+    let ids: ExternalIds = reqwest::get(&url)
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ids.imdb_id.filter(|value| !value.trim().is_empty()))
+}
+
 pub async fn fetch_movie_by_id(api_key: &str, tmdb_id: i64, media_type: &str) -> Result<TmdbMovie, String> {
     let endpoint = if media_type == "tv" { "tv" } else { "movie" };
     let spanish = fetch_detail_lang(api_key, tmdb_id, endpoint, "es-ES").await?;
     let english = fetch_detail_lang(api_key, tmdb_id, endpoint, "en-US").await?;
+    let imdb_id = fetch_imdb_id(api_key, tmdb_id, endpoint).await.ok().flatten();
 
     Ok(TmdbMovie {
         id: spanish.id,
+        imdb_id,
         title: if spanish.title.is_empty() {
             english.title.clone()
         } else {

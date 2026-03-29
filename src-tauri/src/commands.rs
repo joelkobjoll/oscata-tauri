@@ -14,10 +14,10 @@ fn persist_download_state(
     db.save_download_state(&snapshot).ok();
 }
 
-fn spawn_download_job(
+pub(crate) fn spawn_download_job_pub(
     db: crate::db::Db,
     queue_state: crate::downloads::SharedQueue,
-    window: WebviewWindow,
+    window: Option<tauri::WebviewWindow>,
     config: crate::db::AppConfig,
     id: u64,
     ftp_path: String,
@@ -39,10 +39,12 @@ fn spawn_download_job(
                 queue.mark_cancelled(id);
             }
             persist_download_state(&db, &queue_state);
-            window.emit("download:update", serde_json::json!({
-                "id": id,
-                "status": "cancelled",
-            })).ok();
+            if let Some(ref w) = window {
+                w.emit("download:update", serde_json::json!({
+                    "id": id,
+                    "status": "cancelled",
+                })).ok();
+            }
             return;
         }
 
@@ -53,11 +55,13 @@ fn spawn_download_job(
         persist_download_state(&db, &queue_state);
         let started_at_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
-        window.emit("download:update", serde_json::json!({
-            "id": id,
-            "status": "downloading",
-            "started_at_ms": started_at_ms,
-        })).ok();
+        if let Some(ref w) = window {
+            w.emit("download:update", serde_json::json!({
+                "id": id,
+                "status": "downloading",
+                "started_at_ms": started_at_ms,
+            })).ok();
+        }
 
         let cancel_flag_clone = cancel_flag.clone();
         let queue_for_progress = queue_state.clone();
@@ -80,12 +84,14 @@ fn spawn_download_job(
                 }
                 let now_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
-                window_for_progress.emit("download:progress", serde_json::json!({
-                    "id": id,
-                    "bytes_done": done,
-                    "bytes_total": total,
-                    "timestamp_ms": now_ms,
-                })).ok();
+                if let Some(ref w) = window_for_progress {
+                    w.emit("download:progress", serde_json::json!({
+                        "id": id,
+                        "bytes_done": done,
+                        "bytes_total": total,
+                        "timestamp_ms": now_ms,
+                    })).ok();
+                }
                 !cancel_flag_clone.load(Ordering::SeqCst)
             },
         ).await;
@@ -96,31 +102,37 @@ fn spawn_download_job(
             Ok(()) => {
                 { queue_state.lock().unwrap().mark_done(id); }
                 persist_download_state(&db, &queue_state);
-                window.emit("download:update", serde_json::json!({
-                    "id": id,
-                    "status": "done",
-                    "local_path": local_path,
-                    "completed_at_ms": completed_ms,
-                })).ok();
+                if let Some(ref w) = window {
+                    w.emit("download:update", serde_json::json!({
+                        "id": id,
+                        "status": "done",
+                        "local_path": local_path,
+                        "completed_at_ms": completed_ms,
+                    })).ok();
+                }
             }
             Err(ref e) if e == "Cancelled" => {
                 { queue_state.lock().unwrap().mark_cancelled(id); }
                 persist_download_state(&db, &queue_state);
-                window.emit("download:update", serde_json::json!({
-                    "id": id,
-                    "status": "cancelled",
-                    "completed_at_ms": completed_ms,
-                })).ok();
+                if let Some(ref w) = window {
+                    w.emit("download:update", serde_json::json!({
+                        "id": id,
+                        "status": "cancelled",
+                        "completed_at_ms": completed_ms,
+                    })).ok();
+                }
             }
             Err(e) => {
                 { queue_state.lock().unwrap().mark_error(id, e.clone()); }
                 persist_download_state(&db, &queue_state);
-                window.emit("download:update", serde_json::json!({
-                    "id": id,
-                    "status": "error",
-                    "error": e,
-                    "completed_at_ms": completed_ms,
-                })).ok();
+                if let Some(ref w) = window {
+                    w.emit("download:update", serde_json::json!({
+                        "id": id,
+                        "status": "error",
+                        "error": e,
+                        "completed_at_ms": completed_ms,
+                    })).ok();
+                }
             }
         }
     });
@@ -170,10 +182,10 @@ pub async fn resume_pending_downloads(
             "error": serde_json::Value::Null,
         })).ok();
         persist_download_state(&db, &queue_state);
-        spawn_download_job(
+        spawn_download_job_pub(
             db.clone(),
             queue_state.clone(),
-            window.clone(),
+            Some(window.clone()),
             config.clone(),
             item.id,
             item.ftp_path,
@@ -484,7 +496,7 @@ pub async fn start_indexing(
     state: tauri::State<'_, crate::db::Db>,
     window: WebviewWindow,
 ) -> Result<(), String> {
-    start_indexing_internal(state.inner().clone(), window).await
+    start_indexing_internal(state.inner().clone(), Some(window)).await
 }
 
 #[tauri::command]
@@ -492,7 +504,13 @@ pub async fn rematch_all(
     state: tauri::State<'_, crate::db::Db>,
     window: WebviewWindow,
 ) -> Result<(), String> {
-    let db = state.inner().clone();
+    rematch_all_internal(state.inner().clone(), Some(window)).await
+}
+
+pub async fn rematch_all_internal(
+    db: crate::db::Db,
+    window: Option<tauri::WebviewWindow>,
+) -> Result<(), String> {
     let config = db.load_config()?;
     let items = db.get_all_media()?;
     let items: Vec<_> = items
@@ -501,7 +519,9 @@ pub async fn rematch_all(
         .collect();
     let total = items.len();
 
-    window.emit("index:log", serde_json::json!({ "msg": format!("🔄 Re-matching {} items with TMDB…", total) })).ok();
+    if let Some(ref w) = window {
+        w.emit("index:log", serde_json::json!({ "msg": format!("🔄 Re-matching {} items with TMDB…", total) })).ok();
+    }
 
     for (i, item) in items.into_iter().enumerate() {
         let title = item.tmdb_title.clone()
@@ -525,9 +545,11 @@ pub async fn rematch_all(
         };
         let year = item.year.map(|y| y as u16);
 
-        window.emit("index:log", serde_json::json!({
-            "msg": format!("🌐 [{}/{}] Matching: {} ({})", i + 1, total, title, mtype)
-        })).ok();
+        if let Some(ref w) = window {
+            w.emit("index:log", serde_json::json!({
+                "msg": format!("🌐 [{}/{}] Matching: {} ({})", i + 1, total, title, mtype)
+            })).ok();
+        }
 
         // Rate limit: 40 req/10s
         tokio::time::sleep(std::time::Duration::from_millis(260)).await;
@@ -546,47 +568,62 @@ pub async fn rematch_all(
         };
 
         if let Some(movie) = result {
-            window.emit("index:log", serde_json::json!({
-                "msg": format!("✓ Matched: {} → {} ({})", title, movie.title,
-                    movie.release_date.as_deref().unwrap_or("?"))
-            })).ok();
+            let movie = match crate::tmdb::fetch_movie_by_id(api_key, movie.id, tmdb_search_type).await {
+                Ok(full) => full,
+                Err(_) => movie,
+            };
+            if let Some(ref w) = window {
+                w.emit("index:log", serde_json::json!({
+                    "msg": format!("✓ Matched: {} → {} ({})", title, movie.title,
+                        movie.release_date.as_deref().unwrap_or("?"))
+                })).ok();
+            }
             db.update_tmdb_auto(item.id, &movie, &mtype).ok();
-            window.emit("index:update", serde_json::json!({
-                "id": item.id,
-                "tmdb_id": movie.id,
-                "tmdb_title": movie.title,
-                "tmdb_title_en": movie.title_en,
-                "tmdb_poster": movie.poster_path,
-                "tmdb_poster_en": movie.poster_path_en,
-                "tmdb_rating": movie.vote_average,
-                "tmdb_overview": movie.overview,
-                "tmdb_overview_en": movie.overview_en,
-                "tmdb_genres": movie.genre_ids,
-                "tmdb_release_date": movie.release_date,
-                "tmdb_type": mtype,
-            })).ok();
+            if let Some(ref w) = window {
+                w.emit("index:update", serde_json::json!({
+                    "id": item.id,
+                    "tmdb_id": movie.id,
+                    "imdb_id": movie.imdb_id,
+                    "tmdb_title": movie.title,
+                    "tmdb_title_en": movie.title_en,
+                    "tmdb_poster": movie.poster_path,
+                    "tmdb_poster_en": movie.poster_path_en,
+                    "tmdb_rating": movie.vote_average,
+                    "tmdb_overview": movie.overview,
+                    "tmdb_overview_en": movie.overview_en,
+                    "tmdb_genres": movie.genre_ids,
+                    "tmdb_release_date": movie.release_date,
+                    "tmdb_type": mtype,
+                })).ok();
+            }
         } else {
-            window.emit("index:log", serde_json::json!({
-                "msg": format!("⚠ No match found for: {}", title)
-            })).ok();
+            if let Some(ref w) = window {
+                w.emit("index:log", serde_json::json!({
+                    "msg": format!("⚠ No match found for: {}", title)
+                })).ok();
+            }
         }
     }
 
-    window.emit("index:log", serde_json::json!({ "msg": format!("✓ Re-match complete — {} items processed", total) })).ok();
+    if let Some(ref w) = window {
+        w.emit("index:log", serde_json::json!({ "msg": format!("✓ Re-match complete — {} items processed", total) })).ok();
+    }
     Ok(())
 }
 
 pub async fn start_indexing_internal(
     db: crate::db::Db,
-    window: WebviewWindow,
+    window: Option<tauri::WebviewWindow>,
 ) -> Result<(), String> {
     let config = db.load_config()?;
 
-    window.emit("index:start", serde_json::json!({})).ok();
+    if let Some(ref w) = window { w.emit("index:start", serde_json::json!({})).ok(); }
 
     let window_log = window.clone();
     let on_log = Arc::new(move |msg: String| {
-        window_log.emit("index:log", serde_json::json!({ "msg": msg })).ok();
+        if let Some(ref w) = window_log {
+            w.emit("index:log", serde_json::json!({ "msg": msg })).ok();
+        }
     });
 
     let folder_types: std::collections::HashMap<String, String> =
@@ -613,7 +650,7 @@ pub async fn start_indexing_internal(
                 Err(e) => {
                     attempt += 1;
                     if attempt >= MAX_RETRIES {
-                        window.emit("index:error", serde_json::json!({ "message": e })).ok();
+                        if let Some(ref w) = window { w.emit("index:error", serde_json::json!({ "message": e })).ok(); }
                         return Err(e);
                     }
                     on_log(format!("⚠ {e} — retrying in {RETRY_DELAY_SECS}s ({attempt}/{MAX_RETRIES})…"));
@@ -626,7 +663,7 @@ pub async fn start_indexing_internal(
     let total = files.len();
 
     if total == 0 {
-        window.emit("index:error", serde_json::json!({ "message": "FTP crawl returned 0 media files. Check your Root Path setting." })).ok();
+        if let Some(ref w) = window { w.emit("index:error", serde_json::json!({ "message": "FTP crawl returned 0 media files. Check your Root Path setting." })).ok(); }
         return Ok(());
     }
 
@@ -654,8 +691,8 @@ pub async fn start_indexing_internal(
 
         on_log(format!("⚙ Indexing [{}/{}]: {}", i + 1, total, parsed.title));
 
-        window
-            .emit(
+        if let Some(ref w) = window {
+            w.emit(
                 "index:progress",
                 serde_json::json!({
                     "id": id,
@@ -678,8 +715,8 @@ pub async fn start_indexing_internal(
                     "media_type": media_type_str,
                     "tmdb_type": media_type_str,
                 }),
-            )
-            .ok();
+            ).ok();
+        }
 
         if upsert.needs_metadata {
             let api_key = config.tmdb_api_key.clone();
@@ -698,18 +735,22 @@ pub async fn start_indexing_internal(
                         .await.ok()
                         .and_then(|mut r| if r.is_empty() { None } else { Some(r.remove(0)) })
                 } else {
-                    // Use smart_search for movies/documentaries: tries movie, falls back to tv if poor match
                     crate::tmdb::smart_search(&api_key, &title, year, &tmdb_stype).await.ok().flatten()
                 };
                 if let Some(movie) = result {
+                    let movie = match crate::tmdb::fetch_movie_by_id(&api_key, movie.id, &tmdb_stype).await {
+                        Ok(full) => full,
+                        Err(_) => movie,
+                    };
                     on_log_clone(format!("🌐 TMDB: {} → {}", title, movie.title));
                     db_clone.update_tmdb_auto(id, &movie, &mtype).ok();
-                    window_clone
-                        .emit(
+                    if let Some(ref w) = window_clone {
+                        w.emit(
                             "index:update",
                             serde_json::json!({
                                 "id": id,
                                 "tmdb_id": movie.id,
+                                "imdb_id": movie.imdb_id,
                                 "tmdb_title": movie.title,
                                 "tmdb_title_en": movie.title_en,
                                 "tmdb_poster": movie.poster_path,
@@ -721,8 +762,8 @@ pub async fn start_indexing_internal(
                                 "tmdb_release_date": movie.release_date,
                                 "tmdb_type": mtype,
                             }),
-                        )
-                        .ok();
+                        ).ok();
+                    }
                 } else {
                     on_log_clone(format!("⚠ TMDB: no match for \"{}\"", title));
                 }
@@ -815,10 +856,10 @@ pub async fn queue_download(
         window.emit("download:added", &item).ok();
     }
 
-    spawn_download_job(
+    spawn_download_job_pub(
         db,
         queue_state.inner().clone(),
-        window.clone(),
+        Some(window.clone()),
         config,
         id,
         ftp_path,
@@ -924,10 +965,10 @@ pub async fn retry_download(
         "completed_at_ms": serde_json::Value::Null,
     })).ok();
 
-    spawn_download_job(
+    spawn_download_job_pub(
         db,
         queue_state.inner().clone(),
-        window.clone(),
+        Some(window.clone()),
         config,
         item.id,
         item.ftp_path.clone(),
@@ -984,7 +1025,13 @@ pub async fn refresh_all_metadata(
     state: tauri::State<'_, crate::db::Db>,
     window: WebviewWindow,
 ) -> Result<(), String> {
-    let db = state.inner().clone();
+    refresh_all_metadata_internal(state.inner().clone(), Some(window)).await
+}
+
+pub async fn refresh_all_metadata_internal(
+    db: crate::db::Db,
+    window: Option<tauri::WebviewWindow>,
+) -> Result<(), String> {
     let config = db.load_config()?;
     let items = db.get_all_media()?;
     let items: Vec<_> = items
@@ -999,6 +1046,7 @@ pub async fn refresh_all_metadata(
                         || item.tmdb_poster.as_deref().unwrap_or("").is_empty()
                         || item.tmdb_poster_en.as_deref().unwrap_or("").is_empty()
                         || item.tmdb_release_date.as_deref().unwrap_or("").is_empty()
+                        || item.imdb_id.as_deref().unwrap_or("").is_empty()
                         || item.tmdb_rating.is_none()
                         || item.tmdb_genres.as_deref().unwrap_or("").is_empty()
                 )
@@ -1006,14 +1054,18 @@ pub async fn refresh_all_metadata(
         .collect();
 
     let total = items.len();
-    window.emit("index:log", serde_json::json!({
-        "msg": format!("🔄 Refreshing metadata for {} matched items…", total)
-    })).ok();
+    if let Some(ref w) = window {
+        w.emit("index:log", serde_json::json!({
+            "msg": format!("🔄 Refreshing metadata for {} matched items…", total)
+        })).ok();
+    }
 
     if total == 0 {
-        window.emit("index:log", serde_json::json!({
-            "msg": "✓ Metadata refresh complete — nothing missing"
-        })).ok();
+        if let Some(ref w) = window {
+            w.emit("index:log", serde_json::json!({
+                "msg": "✓ Metadata refresh complete — nothing missing"
+            })).ok();
+        }
         return Ok(());
     }
 
@@ -1031,9 +1083,11 @@ pub async fn refresh_all_metadata(
             .or_else(|| item.title.clone())
             .unwrap_or_else(|| item.filename.clone());
 
-        window.emit("index:log", serde_json::json!({
-            "msg": format!("🌐 [{}/{}] Refreshing metadata: {}", i + 1, total, title)
-        })).ok();
+        if let Some(ref w) = window {
+            w.emit("index:log", serde_json::json!({
+                "msg": format!("🌐 [{}/{}] Refreshing metadata: {}", i + 1, total, title)
+            })).ok();
+        }
 
         tokio::time::sleep(std::time::Duration::from_millis(260)).await;
 
@@ -1045,32 +1099,39 @@ pub async fn refresh_all_metadata(
                     &media_type,
                     item.manual_match.unwrap_or(0) != 0,
                 )?;
-                window.emit("index:update", serde_json::json!({
-                    "id": item.id,
-                    "tmdb_id": movie.id,
-                    "tmdb_title": movie.title,
-                    "tmdb_title_en": movie.title_en,
-                    "tmdb_poster": movie.poster_path,
-                    "tmdb_poster_en": movie.poster_path_en,
-                    "tmdb_rating": movie.vote_average,
-                    "tmdb_overview": movie.overview,
-                    "tmdb_overview_en": movie.overview_en,
-                    "tmdb_genres": movie.genre_ids,
-                    "tmdb_release_date": movie.release_date,
-                    "tmdb_type": media_type,
-                })).ok();
+                if let Some(ref w) = window {
+                    w.emit("index:update", serde_json::json!({
+                        "id": item.id,
+                        "tmdb_id": movie.id,
+                        "imdb_id": movie.imdb_id,
+                        "tmdb_title": movie.title,
+                        "tmdb_title_en": movie.title_en,
+                        "tmdb_poster": movie.poster_path,
+                        "tmdb_poster_en": movie.poster_path_en,
+                        "tmdb_rating": movie.vote_average,
+                        "tmdb_overview": movie.overview,
+                        "tmdb_overview_en": movie.overview_en,
+                        "tmdb_genres": movie.genre_ids,
+                        "tmdb_release_date": movie.release_date,
+                        "tmdb_type": media_type,
+                    })).ok();
+                }
             }
             Err(err) => {
-                window.emit("index:log", serde_json::json!({
-                    "msg": format!("⚠ Metadata refresh failed for {}: {}", title, err)
-                })).ok();
+                if let Some(ref w) = window {
+                    w.emit("index:log", serde_json::json!({
+                        "msg": format!("⚠ Metadata refresh failed for {}: {}", title, err)
+                    })).ok();
+                }
             }
         }
     }
 
-    window.emit("index:log", serde_json::json!({
-        "msg": format!("✓ Metadata refresh complete — {} items processed", total)
-    })).ok();
+    if let Some(ref w) = window {
+        w.emit("index:log", serde_json::json!({
+            "msg": format!("✓ Metadata refresh complete — {} items processed", total)
+        })).ok();
+    }
     Ok(())
 }
 
@@ -1086,7 +1147,9 @@ pub async fn check_media_badges(
         let downloaded = compute_local_path(&config, &item.ftp_path, &item.filename, item.media_type.as_deref())
             .map(|path| path.exists())
             .unwrap_or(false);
-        let in_emby = exists_in_emby(&config, &item).await.unwrap_or(false);
+        // Keep badge checks fast and deterministic for both desktop and web.
+        // Emby network probing can block rendering and delay downloaded badges.
+        let in_emby = false;
         results.push(MediaBadgeResult {
             id: item.id,
             downloaded,
@@ -1123,6 +1186,7 @@ pub async fn apply_tmdb_match(
         serde_json::json!({
             "id": item_id,
             "tmdb_id": movie.id,
+            "imdb_id": movie.imdb_id,
             "tmdb_title": movie.title,
             "tmdb_title_en": movie.title_en,
             "tmdb_poster": movie.poster_path,
@@ -1195,4 +1259,29 @@ pub async fn ftp_list_root_dirs_preview(
         })
         .collect();
     Ok(dirs)
+}
+
+#[tauri::command]
+pub async fn get_webgui_config(
+    state: tauri::State<'_, crate::db::Db>,
+) -> Result<crate::db::WebGuiConfig, String> {
+    state.load_webgui_config()
+}
+
+#[tauri::command]
+pub async fn save_webgui_config(
+    state: tauri::State<'_, crate::db::Db>,
+    config: crate::db::WebGuiConfig,
+) -> Result<(), String> {
+    state.save_webgui_config(&config)
+}
+
+#[tauri::command]
+pub async fn init_webgui_now(
+    db: tauri::State<'_, crate::db::Db>,
+    queue: tauri::State<'_, crate::downloads::SharedQueue>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    crate::web::spawn_if_enabled(db.inner().clone(), queue.inner().clone(), app);
+    Ok(())
 }
