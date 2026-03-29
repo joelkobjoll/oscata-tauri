@@ -17,6 +17,18 @@ This folder adds an isolated Docker path for running the existing Linux Tauri de
 docker build -f docker/Dockerfile -t oscata-vnc .
 ```
 
+Or use the helper script from the repo root:
+
+```bash
+npm run docker:vnc:build
+```
+
+Or use the generic wrapper:
+
+```bash
+npm run docker:vnc -- build
+```
+
 ## Run
 
 ```bash
@@ -25,11 +37,45 @@ docker run --rm \
   -p 5900:5900 \
   -p 6080:6080 \
   -p 47860:47860 \
-  -e VNC_PASSWORD=change-me \
   -v /path/to/oscata-config:/config \
   -v /path/to/oscata-downloads:/downloads \
   oscata-vnc
 ```
+
+Optional: add `-e VNC_PASSWORD=your-password` if you want password-protected VNC.
+
+For a local persistent runtime with automatic restart:
+
+```bash
+npm run docker:vnc:up
+```
+
+This helper script:
+
+- builds the image if needed
+- runs the container as `oscata-vnc`
+- uses `--restart unless-stopped`
+- stores config in `.docker-data/config`
+- stores downloads in `.docker-data/downloads`
+
+Other helper commands:
+
+```bash
+npm run docker:vnc -- up
+npm run docker:vnc -- stop
+npm run docker:vnc -- logs
+npm run docker:vnc:run
+npm run docker:vnc:stop
+npm run docker:vnc:logs
+```
+
+You can override runtime settings when invoking it:
+
+```bash
+VNC_PASSWORD=mysecret WEBGUI_PORT=48000 npm run docker:vnc:up
+```
+
+If `VNC_PASSWORD` is omitted, VNC starts without a password.
 
 ## Unraid Notes
 
@@ -54,7 +100,7 @@ The container does not auto-fill your FTP/TMDB settings. You still complete thos
 
 ## Environment Variables
 
-- `VNC_PASSWORD`: optional; if omitted, VNC starts without a password
+- `VNC_PASSWORD`: optional; if omitted or empty, VNC starts without a password
 - `VNC_PORT`: defaults to `5900`
 - `NOVNC_PORT`: defaults to `6080`
 - `VNC_RESOLUTION`: defaults to `1440x960`

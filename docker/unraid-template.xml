@@ -29,7 +29,7 @@
   <Config Name="noVNC" Target="6080" Default="6080" Mode="tcp" Description="Browser VNC client port" Type="Port" Display="always" Required="true" Mask="false">6080</Config>
   <Config Name="WebGUI" Target="47860" Default="47860" Mode="tcp" Description="Built-in Oscata WebGUI port" Type="Port" Display="always" Required="true" Mask="false">47860</Config>
 
-  <Config Name="VNC_PASSWORD" Target="VNC_PASSWORD" Default="change-me" Mode="" Description="Optional VNC password; leave blank for open VNC" Type="Variable" Display="always" Required="false" Mask="true">change-me</Config>
+  <Config Name="VNC_PASSWORD" Target="VNC_PASSWORD" Default="" Mode="" Description="Optional VNC password; leave blank for open VNC" Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="VNC_RESOLUTION" Target="VNC_RESOLUTION" Default="1440x960" Mode="" Description="Virtual desktop resolution" Type="Variable" Display="always" Required="false" Mask="false">1440x960</Config>
   <Config Name="OSCATA_BOOTSTRAP_WEBGUI" Target="OSCATA_BOOTSTRAP_WEBGUI" Default="1" Mode="" Description="Enable one-time WebGUI bootstrap on first start" Type="Variable" Display="always" Required="false" Mask="false">1</Config>
   <Config Name="OSCATA_WEBGUI_HOST" Target="OSCATA_WEBGUI_HOST" Default="0.0.0.0" Mode="" Description="WebGUI bind host" Type="Variable" Display="advanced" Required="false" Mask="false">0.0.0.0</Config>
