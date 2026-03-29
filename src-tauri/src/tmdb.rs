@@ -348,6 +348,55 @@ pub async fn search_tmdb_multi(api_key: &str, query: &str, media_type: &str) -> 
     Ok(results)
 }
 
+pub async fn find_by_imdb_id(
+    api_key: &str,
+    imdb_id: &str,
+    preferred_type: &str,
+) -> Result<Option<TmdbMovie>, String> {
+    let imdb = imdb_id.trim();
+    if imdb.is_empty() {
+        return Ok(None);
+    }
+
+    let url = format!(
+        "https://api.themoviedb.org/3/find/{}?api_key={api_key}&external_source=imdb_id&language=es-ES",
+        urlencoding::encode(imdb),
+    );
+
+    #[derive(Deserialize)]
+    struct FindItem {
+        id: i64,
+    }
+
+    #[derive(Deserialize)]
+    struct FindResponse {
+        #[serde(default)]
+        movie_results: Vec<FindItem>,
+        #[serde(default)]
+        tv_results: Vec<FindItem>,
+    }
+
+    let parsed: FindResponse = fetch_json_with_retry(&url, "find by imdb request").await?;
+
+    let pick = match preferred_type {
+        "tv" => parsed
+            .tv_results
+            .first()
+            .map(|v| (v.id, "tv"))
+            .or_else(|| parsed.movie_results.first().map(|v| (v.id, "movie"))),
+        _ => parsed
+            .movie_results
+            .first()
+            .map(|v| (v.id, "movie"))
+            .or_else(|| parsed.tv_results.first().map(|v| (v.id, "tv"))),
+    };
+
+    match pick {
+        Some((id, media_type)) => fetch_movie_by_id(api_key, id, media_type).await.map(Some),
+        None => Ok(None),
+    }
+}
+
 async fn fetch_detail_lang(
     api_key: &str,
     tmdb_id: i64,

@@ -15,6 +15,8 @@ interface Props {
   badges?: {
     downloaded?: boolean;
     inEmby?: boolean;
+    plexInLibrary?: boolean;
+    embyInLibrary?: boolean;
   };
   downloadItem?: DownloadItem;
   onDownload: (item: MediaItem) => void;
@@ -153,6 +155,10 @@ function MediaCard({
   const title = getLocalizedTitle(item, language);
   const year = item.year;
   const hasMetadata = !!item.tmdb_id;
+  const inPlex = badges?.plexInLibrary === true;
+  const inEmby = badges?.embyInLibrary === true;
+  const hasCombinedLibraryFlag = badges?.inEmby === true;
+  const showLibraryFallback = hasCombinedLibraryFlag && !inPlex && !inEmby;
 
   const langs =
     item.languages
@@ -260,7 +266,7 @@ function MediaCard({
           </div>
         )}
 
-        {(badges?.downloaded || badges?.inEmby) && (
+        {(badges?.downloaded || inPlex || inEmby || showLibraryFallback) && (
           <div
             style={{
               position: "absolute",
@@ -279,9 +285,19 @@ function MediaCard({
                 <AppIcon name="check" size={12} strokeWidth={2.8} />
               </OverlayBadge>
             )}
-            {badges.inEmby && (
+            {inPlex && (
               <OverlayBadge tone="info" title="Plex">
                 Plex
+              </OverlayBadge>
+            )}
+            {inEmby && (
+              <OverlayBadge tone="neutral" title="Emby">
+                Emby
+              </OverlayBadge>
+            )}
+            {showLibraryFallback && (
+              <OverlayBadge tone="info" title="Library">
+                Library
               </OverlayBadge>
             )}
           </div>

@@ -64,6 +64,7 @@ export default function DetailPanel({
   onDownload,
   isDownloadPending,
   onRetry,
+  onDevCheckInLibrary,
 }: {
   item: MediaItem;
   language: AppLanguage;
@@ -74,14 +75,26 @@ export default function DetailPanel({
   onUpdated?: (id: number, patch: Partial<MediaItem>) => void;
   downloadItem?: DownloadItem;
   downloadMap: Map<string, DownloadItem>;
-  downloadedBadgeMap: Record<number, { downloaded?: boolean; inEmby?: boolean }>;
+  downloadedBadgeMap: Record<
+    number,
+    {
+      downloaded?: boolean;
+      inEmby?: boolean;
+      plexInLibrary?: boolean;
+      embyInLibrary?: boolean;
+      cache?: string;
+      debug?: string;
+    }
+  >;
   isDownloaded?: boolean;
   onDownload: (item: MediaItem) => Promise<number>;
   isDownloadPending: (ftpPath: string) => boolean;
   onRetry?: (id: number) => void;
+  onDevCheckInLibrary?: (item: MediaItem) => Promise<void>;
 }) {
   const [showFix, setShowFix] = useState(false);
   const [openingUrl, setOpeningUrl] = useState<string | null>(null);
+  const [devChecking, setDevChecking] = useState(false);
 
   const handleOpenUrl = (url: string) => {
     setOpeningUrl(url);
@@ -106,8 +119,12 @@ export default function DetailPanel({
       .filter(Boolean)
       .map((key) => t(language, key as never));
   })();
-  const searchTitle = item.tmdb_title_en ?? item.tmdb_title ?? item.title ?? title;
-  const searchQuery = [searchTitle, item.year ?? item.tmdb_release_date?.slice(0, 4)]
+  const searchTitle =
+    item.tmdb_title_en ?? item.tmdb_title ?? item.title ?? title;
+  const searchQuery = [
+    searchTitle,
+    item.year ?? item.tmdb_release_date?.slice(0, 4),
+  ]
     .filter(Boolean)
     .join(" ");
   const tmdbMediaType =
@@ -123,13 +140,16 @@ export default function DetailPanel({
     minWidth: 0,
     padding: "10px 12px",
     borderRadius: "var(--radius-full)",
-    border: "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+    border:
+      "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
     background: "color-mix(in srgb, var(--color-surface-2) 76%, transparent)",
     color: "var(--color-text)",
     cursor: "pointer",
     fontSize: 12,
     fontWeight: 700,
   };
+  const showDevMeta = import.meta.env.DEV;
+  const devBadge = downloadedBadgeMap[item.id];
 
   return (
     <>
@@ -484,8 +504,12 @@ export default function DetailPanel({
                       </button>
                     )}
                     {(() => {
-                      const versionDownloadItem = downloadMap.get(version.ftp_path);
-                      const versionIsPending = isDownloadPending(version.ftp_path);
+                      const versionDownloadItem = downloadMap.get(
+                        version.ftp_path,
+                      );
+                      const versionIsPending = isDownloadPending(
+                        version.ftp_path,
+                      );
                       const versionIsActive =
                         versionIsPending ||
                         versionDownloadItem?.status === "queued" ||
@@ -525,10 +549,13 @@ export default function DetailPanel({
                                 ? "var(--color-warning)"
                                 : "var(--color-primary)",
                             cursor:
-                              versionIsActive || versionIsDownloaded ? "default" : "pointer",
+                              versionIsActive || versionIsDownloaded
+                                ? "default"
+                                : "pointer",
                             fontSize: 12,
                             fontWeight: 700,
-                            opacity: versionIsActive || versionIsDownloaded ? 0.8 : 1,
+                            opacity:
+                              versionIsActive || versionIsDownloaded ? 0.8 : 1,
                           }}
                         >
                           {downloadLabel}
@@ -615,6 +642,79 @@ export default function DetailPanel({
             </button>
           </div>
         </div>
+
+        {showDevMeta && (
+          <div
+            style={{
+              padding: "0.85rem 1.5rem",
+              borderBottom:
+                "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+            }}
+          >
+            <div
+              style={{
+                color: "var(--color-text-muted)",
+                fontSize: "0.7rem",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                marginBottom: 8,
+              }}
+            >
+              Debug (dev)
+            </div>
+            <div
+              style={{
+                fontFamily: "monospace",
+                fontSize: 12,
+                color: "var(--color-text-muted)",
+                display: "grid",
+                gap: 3,
+                wordBreak: "break-all",
+              }}
+            >
+              <div>item_id: {item.id}</div>
+              <div>imdb_id: {item.imdb_id ?? "-"}</div>
+              <div>tmdb_id: {item.tmdb_id ?? "-"}</div>
+              <div>badge.local: {devBadge?.downloaded ? "true" : "false"}</div>
+              <div>badge.in_library: {devBadge?.inEmby ? "true" : "false"}</div>
+              <div>
+                badge.plex: {devBadge?.plexInLibrary ? "true" : "false"}
+              </div>
+              <div>
+                badge.emby: {devBadge?.embyInLibrary ? "true" : "false"}
+              </div>
+              <div>badge.cache: {devBadge?.cache ?? "-"}</div>
+              <div>badge.debug: {devBadge?.debug ?? "-"}</div>
+            </div>
+            {onDevCheckInLibrary && (
+              <button
+                onClick={() => {
+                  setDevChecking(true);
+                  onDevCheckInLibrary(item)
+                    .catch(() => {})
+                    .finally(() => setDevChecking(false));
+                }}
+                disabled={devChecking}
+                style={{
+                  marginTop: 10,
+                  padding: "8px 10px",
+                  borderRadius: "var(--radius)",
+                  border:
+                    "1px solid color-mix(in srgb, var(--color-primary) 50%, transparent)",
+                  background:
+                    "color-mix(in srgb, var(--color-primary) 14%, transparent)",
+                  color: "var(--color-primary)",
+                  cursor: devChecking ? "default" : "pointer",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  opacity: devChecking ? 0.7 : 1,
+                }}
+              >
+                {devChecking ? "Checking…" : "Check In Library (dev)"}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div
@@ -807,9 +907,11 @@ function renderDownloadButton(
         title={t(language, "detail.alreadyDownloadedHint")}
         style={{
           ...baseStyle,
-          background: "color-mix(in srgb, var(--color-success) 18%, var(--color-surface) 82%)",
+          background:
+            "color-mix(in srgb, var(--color-success) 18%, var(--color-surface) 82%)",
           color: "var(--color-success)",
-          border: "1px solid color-mix(in srgb, var(--color-success) 36%, transparent)",
+          border:
+            "1px solid color-mix(in srgb, var(--color-success) 36%, transparent)",
           cursor: "default",
         }}
       >

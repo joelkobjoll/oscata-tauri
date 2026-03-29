@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { LogEntry } from "../components/ActivityLog";
 import { call, isTauri } from "../lib/transport";
@@ -60,8 +60,11 @@ export function useIndexing() {
     );
   };
 
-  const addLog = (msg: string) =>
-    setLog((prev) => [...prev.slice(-MAX_LOG + 1), { ts: Date.now(), msg }]);
+  const addLog = useCallback(
+    (msg: string) =>
+      setLog((prev) => [...prev.slice(-MAX_LOG + 1), { ts: Date.now(), msg }]),
+    [],
+  );
 
   // Hydrate from SQLite on mount
   useEffect(() => {
@@ -168,6 +171,7 @@ export function useIndexing() {
     clearIndexError: () => setIndexError(null),
     retryIndexing: () => call("start_indexing").catch(console.error),
     log,
+    appendLog: addLog,
     clearLog: () => setLog([]),
   };
 }

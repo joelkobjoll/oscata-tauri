@@ -54,6 +54,10 @@ const messages = {
     en: "Refreshing metadata…",
   },
   "library.matching": { es: "Re-haciendo match…", en: "Re-matching…" },
+  "library.rematchAllPlex": {
+    es: "Re-hacer match (flujo Plex)",
+    en: "Re-Match All (Plex Flow)",
+  },
   "library.page": { es: "Página", en: "Page" },
   "library.of": { es: "de", en: "of" },
   "library.prev": { es: "Anterior", en: "Prev" },

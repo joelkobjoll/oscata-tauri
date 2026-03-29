@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::LazyLock;
+use std::sync::Mutex;
 use tauri::Emitter;
 use tauri::Manager;
 use tauri::WebviewWindow;
@@ -14,6 +15,37 @@ static TV_CONTENT_HINT_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     )
     .expect("valid tv content hint regex")
 });
+
+static PLEX_IMDB_GUID_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"imdb://(tt\d+)"#).expect("valid plex imdb guid regex")
+});
+
+static PLEX_MEDIA_CONTAINER_SIZE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"MediaContainer[^>]*\bsize=\"(\d+)\""#)
+        .expect("valid plex size regex")
+});
+
+static PLEX_RATING_KEY_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"\bratingKey=\"(\d+)\""#).expect("valid plex rating key regex")
+});
+
+static PLEX_VIDEO_SEASON_EP_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"<Video[^>]*\bparentIndex=\"(\d+)\"[^>]*\bindex=\"(\d+)\"[^>]*>|<Video[^>]*\bindex=\"(\d+)\"[^>]*\bparentIndex=\"(\d+)\"[^>]*>"#,
+    )
+    .expect("valid plex season/episode regex")
+});
+
+const BADGE_CACHE_TTL_SECS: u64 = 300;
+
+#[derive(Debug, Clone)]
+struct BadgeCacheEntry {
+    checked_at: std::time::Instant,
+    check: MediaServerCheck,
+}
+
+static BADGE_RESULT_CACHE: LazyLock<Mutex<std::collections::HashMap<String, BadgeCacheEntry>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 fn persist_download_state(
     db: &crate::db::Db,
@@ -219,6 +251,7 @@ pub struct MediaBadgeQuery {
     pub title_en: Option<String>,
     pub year: Option<i64>,
     pub imdb_id: Option<String>,
+    pub tmdb_id: Option<i64>,
     pub media_type: Option<String>,
 }
 
@@ -227,6 +260,23 @@ pub struct MediaBadgeResult {
     pub id: i64,
     pub downloaded: bool,
     pub in_emby: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plex_in_library: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emby_in_library: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub debug: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct MediaServerCheck {
+    hit: bool,
+    plex_hit: bool,
+    emby_hit: bool,
+    cache_state: String,
+    debug: String,
 }
 
 fn detect_media_type(
@@ -260,6 +310,99 @@ fn normalize_title(value: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn desired_episode_target(query: &MediaBadgeQuery) -> Option<(u32, u32, u32)> {
+    let media_type = query.media_type.as_deref().unwrap_or_default();
+    if media_type != "tv" && media_type != "documentary" {
+        return None;
+    }
+
+    let parsed = crate::parser::parse_media_path(&query.ftp_path, &query.filename);
+    let season = parsed.season? as u32;
+    let episode = parsed.episode? as u32;
+    let episode_end = parsed
+        .episode_end
+        .map(|value| value as u32)
+        .unwrap_or(episode)
+        .max(episode);
+
+    Some((season, episode, episode_end))
+}
+
+fn extract_plex_rating_keys(body: &str) -> Vec<String> {
+    PLEX_RATING_KEY_RE
+        .captures_iter(body)
+        .filter_map(|caps| caps.get(1).map(|v| v.as_str().to_string()))
+        .collect()
+}
+
+fn extract_plex_episode_set(body: &str) -> std::collections::HashSet<(u32, u32)> {
+    let mut set = std::collections::HashSet::new();
+    for caps in PLEX_VIDEO_SEASON_EP_RE.captures_iter(body) {
+        let a = caps.get(1).and_then(|v| v.as_str().parse::<u32>().ok());
+        let b = caps.get(2).and_then(|v| v.as_str().parse::<u32>().ok());
+        let c = caps.get(3).and_then(|v| v.as_str().parse::<u32>().ok());
+        let d = caps.get(4).and_then(|v| v.as_str().parse::<u32>().ok());
+        if let Some((season, episode)) = a.zip(b).or_else(|| d.zip(c)) {
+            set.insert((season, episode));
+        }
+    }
+    set
+}
+
+async fn plex_rating_key_has_episode(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    rating_key: &str,
+    target: (u32, u32, u32),
+) -> Result<bool, String> {
+    let endpoint = format!(
+        "{base}/library/metadata/{rating_key}/allLeaves?X-Plex-Token={}",
+        urlencoding::encode(token),
+    );
+
+    let resp = client
+        .get(&endpoint)
+        .send()
+        .await
+        .map_err(|e| format!("Could not query Plex episodes: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Plex returned HTTP {}", resp.status().as_u16()));
+    }
+
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("Could not parse Plex episodes response: {e}"))?;
+
+    let episodes = extract_plex_episode_set(&body);
+    let (season, ep_start, ep_end) = target;
+    if episodes.is_empty() {
+        return Ok(false);
+    }
+
+    Ok((ep_start..=ep_end).all(|episode| episodes.contains(&(season, episode))))
+}
+
+pub(crate) fn plex_badge_cache_key(query: &MediaBadgeQuery) -> Option<String> {
+    if let Some(imdb_id) = query.imdb_id.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        return Some(format!("imdb:{imdb_id}"));
+    }
+    if let Some(tmdb_id) = query.tmdb_id {
+        return Some(format!("tmdb:{tmdb_id}"));
+    }
+
+    let title = query
+        .title
+        .as_deref()
+        .or(query.title_en.as_deref())
+        .map(normalize_title)
+        .filter(|t| !t.is_empty())?;
+
+    Some(format!("title:{title}:{}", query.year.unwrap_or_default()))
 }
 
 async fn exists_in_emby(
@@ -336,26 +479,280 @@ async fn exists_in_emby(
     Ok(false)
 }
 
-async fn exists_in_plex(
+pub(crate) async fn exists_in_media_server(
+    config: &crate::db::AppConfig,
+    query: &MediaBadgeQuery,
+) -> Result<bool, String> {
+    Ok(check_media_server_presence(config, query).await?.hit)
+}
+
+async fn check_media_server_presence(
+    config: &crate::db::AppConfig,
+    query: &MediaBadgeQuery,
+) -> Result<MediaServerCheck, String> {
+    {
+        let ttl = std::time::Duration::from_secs(BADGE_CACHE_TTL_SECS);
+        let mut cache = BADGE_RESULT_CACHE.lock().unwrap();
+        cache.retain(|_, entry| entry.checked_at.elapsed() < ttl);
+    }
+
+    if let Some(cache_key) = plex_badge_cache_key(query) {
+        if let Some(entry) = BADGE_RESULT_CACHE.lock().unwrap().get(&cache_key).cloned() {
+            let age = entry.checked_at.elapsed();
+            if age < std::time::Duration::from_secs(BADGE_CACHE_TTL_SECS) {
+                let mut cached = entry.check;
+                cached.cache_state = format!("global-hit:{}ms", age.as_millis());
+                return Ok(cached);
+            }
+        }
+    }
+
+    let mut traces: Vec<String> = Vec::new();
+    let mut plex_hit = false;
+    let mut emby_hit = false;
+
+    let plex_configured = !config.plex_url.trim().is_empty() && !config.plex_token.trim().is_empty();
+    if plex_configured {
+        match exists_in_plex(config, query).await {
+            Ok(true) => {
+                plex_hit = true;
+                traces.push("plex:match".to_string());
+            }
+            Ok(false) => traces.push("plex:no-match".to_string()),
+            Err(err) => {
+                traces.push(format!("plex:error:{err}"));
+                eprintln!("[badges] Plex lookup failed: {err}");
+            }
+        }
+    } else {
+        traces.push("plex:not-configured".to_string());
+    }
+
+    let emby_configured = !config.emby_url.trim().is_empty() && !config.emby_api_key.trim().is_empty();
+    if emby_configured {
+        match exists_in_emby(config, query).await {
+            Ok(true) => {
+                emby_hit = true;
+                traces.push("emby:match".to_string());
+            }
+            Ok(false) => traces.push("emby:no-match".to_string()),
+            Err(err) => {
+                traces.push(format!("emby:error:{err}"));
+                eprintln!("[badges] Emby lookup failed: {err}");
+            }
+        }
+    } else {
+        traces.push("emby:not-configured".to_string());
+    }
+
+    let check = MediaServerCheck {
+        hit: plex_hit || emby_hit,
+        plex_hit,
+        emby_hit,
+        cache_state: "global-miss".to_string(),
+        debug: traces.join(" | "),
+    };
+
+    if let Some(cache_key) = plex_badge_cache_key(query) {
+        BADGE_RESULT_CACHE.lock().unwrap().insert(
+            cache_key,
+            BadgeCacheEntry {
+                checked_at: std::time::Instant::now(),
+                check: check.clone(),
+            },
+        );
+    }
+
+    Ok(check)
+}
+
+pub(crate) async fn exists_in_plex(
     config: &crate::db::AppConfig,
     query: &MediaBadgeQuery,
 ) -> Result<bool, String> {
     if config.plex_url.trim().is_empty() || config.plex_token.trim().is_empty() {
         return Ok(false);
     }
-
-    let imdb_id = match query.imdb_id.as_deref() {
-        Some(value) if !value.trim().is_empty() => value.trim(),
-        _ => return Ok(false),
-    };
-
-    let guid = format!("imdb://{imdb_id}");
     let base = config.plex_url.trim_end_matches('/');
-    let endpoint = format!(
-        "{base}/library/all?guid={}&X-Plex-Token={}",
-        urlencoding::encode(&guid),
+    let token = config.plex_token.trim();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let episode_target = desired_episode_target(query);
+
+    let mut guids = Vec::new();
+
+    if let Some(imdb_id) = query.imdb_id.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        guids.push(format!("imdb://{imdb_id}"));
+        guids.push(format!("com.plexapp.agents.imdb://{imdb_id}"));
+    }
+    if let Some(tmdb_id) = query.tmdb_id {
+        guids.push(format!("tmdb://{tmdb_id}"));
+        guids.push(format!("com.plexapp.agents.themoviedb://{tmdb_id}"));
+    }
+
+    for guid in guids {
+        let endpoint = format!(
+            "{base}/library/all?guid={}&X-Plex-Token={}",
+            urlencoding::encode(&guid),
+            urlencoding::encode(token),
+        );
+
+        let resp = client
+            .get(&endpoint)
+            .send()
+            .await
+            .map_err(|e| format!("Could not query Plex library: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("Plex returned HTTP {}", resp.status().as_u16()));
+        }
+
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| format!("Could not parse Plex response: {e}"))?;
+
+        if PLEX_MEDIA_CONTAINER_SIZE_RE
+            .captures(&body)
+            .and_then(|caps| caps.get(1))
+            .and_then(|m| m.as_str().parse::<usize>().ok())
+            .unwrap_or(0)
+            > 0
+        {
+            if let Some(target) = episode_target {
+                for rating_key in extract_plex_rating_keys(&body) {
+                    if plex_rating_key_has_episode(&client, base, token, &rating_key, target).await? {
+                        return Ok(true);
+                    }
+                }
+                continue;
+            }
+            return Ok(true);
+        }
+    }
+
+    // Last fallback for libraries without stable external IDs in GUIDs.
+    let title = query
+        .title
+        .as_deref()
+        .or(query.title_en.as_deref())
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+
+    if let Some(title) = title {
+        let mut endpoints = Vec::new();
+        let mut with_year = format!(
+            "{base}/library/all?title={}&X-Plex-Token={}&includeGuids=1",
+            urlencoding::encode(title),
+            urlencoding::encode(token),
+        );
+        if let Some(year) = query.year {
+            with_year.push_str(&format!("&year={year}"));
+        }
+        endpoints.push(with_year);
+
+        endpoints.push(format!(
+            "{base}/library/all?title={}&X-Plex-Token={}&includeGuids=1",
+            urlencoding::encode(title),
+            urlencoding::encode(token),
+        ));
+
+        let imdb_hint = query.imdb_id.as_deref().map(str::trim).filter(|v| !v.is_empty());
+        let tmdb_hint = query.tmdb_id;
+
+        for endpoint in endpoints {
+            let resp = client
+                .get(&endpoint)
+                .send()
+                .await
+                .map_err(|e| format!("Could not query Plex library by title: {e}"))?;
+
+            if !resp.status().is_success() {
+                return Err(format!("Plex returned HTTP {}", resp.status().as_u16()));
+            }
+
+            let body = resp
+                .text()
+                .await
+                .map_err(|e| format!("Could not parse Plex response: {e}"))?;
+
+            let size = PLEX_MEDIA_CONTAINER_SIZE_RE
+                .captures(&body)
+                .and_then(|caps| caps.get(1))
+                .and_then(|m| m.as_str().parse::<usize>().ok())
+                .unwrap_or(0);
+
+            if size == 0 {
+                continue;
+            }
+
+            let mut id_match = false;
+            if let Some(imdb_id) = imdb_hint {
+                if body.contains(&format!("imdb://{imdb_id}")) {
+                    id_match = true;
+                }
+            }
+            if let Some(tmdb_id) = tmdb_hint {
+                if body.contains(&format!("tmdb://{tmdb_id}")) {
+                    id_match = true;
+                }
+            }
+
+            let has_external_hints = imdb_hint.is_some() || tmdb_hint.is_some();
+            if has_external_hints && !id_match {
+                continue;
+            }
+
+            if let Some(target) = episode_target {
+                let mut matched_episode = false;
+                for rating_key in extract_plex_rating_keys(&body) {
+                    if plex_rating_key_has_episode(&client, base, token, &rating_key, target).await? {
+                        matched_episode = true;
+                        break;
+                    }
+                }
+                if matched_episode {
+                    return Ok(true);
+                }
+                continue;
+            }
+
+            if has_external_hints {
+                return Ok(true);
+            }
+
+            // If no external IDs are available, non-empty title result is still a useful fallback.
+            if !has_external_hints {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
+async fn resolve_plex_imdb_id(
+    config: &crate::db::AppConfig,
+    title: &str,
+    year: Option<u16>,
+    media_type: &str,
+) -> Result<Option<String>, String> {
+    if config.plex_url.trim().is_empty() || config.plex_token.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let type_param = if media_type == "tv" { "2" } else { "1" };
+    let base = config.plex_url.trim_end_matches('/');
+    let mut endpoint = format!(
+        "{base}/library/all?type={type_param}&title={}&X-Plex-Token={}",
+        urlencoding::encode(title),
         urlencoding::encode(&config.plex_token),
     );
+    if let Some(y) = year {
+        endpoint.push_str(&format!("&year={y}"));
+    }
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
@@ -366,7 +763,7 @@ async fn exists_in_plex(
         .get(&endpoint)
         .send()
         .await
-        .map_err(|e| format!("Could not query Plex library: {e}"))?;
+        .map_err(|e| format!("Could not query Plex for match: {e}"))?;
 
     if !resp.status().is_success() {
         return Err(format!("Plex returned HTTP {}", resp.status().as_u16()));
@@ -377,7 +774,45 @@ async fn exists_in_plex(
         .await
         .map_err(|e| format!("Could not parse Plex response: {e}"))?;
 
-    Ok(body.contains(imdb_id))
+    Ok(PLEX_IMDB_GUID_RE
+        .captures(&body)
+        .and_then(|caps| caps.get(1).map(|value| value.as_str().to_string())))
+}
+
+async fn resolve_tmdb_match_with_plex(
+    config: &crate::db::AppConfig,
+    api_key: &str,
+    title: &str,
+    year: Option<u16>,
+    tmdb_search_type: &str,
+) -> Result<Option<crate::tmdb::TmdbMovie>, String> {
+    if let Some(imdb_id) = resolve_plex_imdb_id(config, title, year, tmdb_search_type).await? {
+        if let Some(movie) = crate::tmdb::find_by_imdb_id(api_key, &imdb_id, tmdb_search_type).await? {
+            return Ok(Some(movie));
+        }
+    }
+
+    let result = if tmdb_search_type == "tv" {
+        crate::tmdb::search_tmdb_multi(api_key, title, "tv")
+            .await
+            .ok()
+            .and_then(|mut r| if r.is_empty() { None } else { Some(r.remove(0)) })
+    } else {
+        crate::tmdb::smart_search(api_key, title, year, tmdb_search_type)
+            .await
+            .ok()
+            .flatten()
+    };
+
+    if let Some(movie) = result {
+        let movie = match crate::tmdb::fetch_movie_by_id(api_key, movie.id, tmdb_search_type).await {
+            Ok(full) => full,
+            Err(_) => movie,
+        };
+        return Ok(Some(movie));
+    }
+
+    Ok(None)
 }
 
 #[tauri::command]
@@ -623,23 +1058,9 @@ pub async fn rematch_all_internal(
         tokio::time::sleep(std::time::Duration::from_millis(260)).await;
 
         let api_key = &config.tmdb_api_key;
-        let result = if tmdb_search_type == "tv" {
-            crate::tmdb::search_tmdb_multi(api_key, &title, "tv")
-                .await
-                .ok()
-                .and_then(|mut r| if r.is_empty() { None } else { Some(r.remove(0)) })
-        } else {
-            crate::tmdb::smart_search(api_key, &title, year, tmdb_search_type)
-                .await
-                .ok()
-                .flatten()
-        };
+        let result = resolve_tmdb_match_with_plex(&config, api_key, &title, year, tmdb_search_type).await;
 
-        if let Some(movie) = result {
-            let movie = match crate::tmdb::fetch_movie_by_id(api_key, movie.id, tmdb_search_type).await {
-                Ok(full) => full,
-                Err(_) => movie,
-            };
+        if let Ok(Some(movie)) = result {
             if let Some(ref w) = window {
                 w.emit("index:log", serde_json::json!({
                     "msg": format!("✓ Matched: {} → {} ({})", title, movie.title,
@@ -793,31 +1214,25 @@ pub async fn start_indexing_internal(
         if upsert.needs_metadata {
             metadata_queued += 1;
             let api_key = config.tmdb_api_key.clone();
-            let window_clone = window.clone();
-            let db_clone = db.clone();
             let title = parsed.title.clone();
             let year = parsed.year;
-            let on_log_clone = on_log.clone();
             let mtype = media_type.clone().unwrap_or_else(|| "movie".to_string());
             let tmdb_stype = tmdb_search_type.clone();
 
-            metadata_tasks.push(tokio::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                let result = if tmdb_stype == "tv" {
-                    crate::tmdb::search_tmdb_multi(&api_key, &title, "tv")
-                        .await.ok()
-                        .and_then(|mut r| if r.is_empty() { None } else { Some(r.remove(0)) })
-                } else {
-                    crate::tmdb::smart_search(&api_key, &title, year, &tmdb_stype).await.ok().flatten()
-                };
-                if let Some(movie) = result {
-                    let movie = match crate::tmdb::fetch_movie_by_id(&api_key, movie.id, &tmdb_stype).await {
-                        Ok(full) => full,
-                        Err(_) => movie,
-                    };
-                    on_log_clone(format!("🌐 TMDB: {} → {}", title, movie.title));
-                    db_clone.update_tmdb_auto(id, &movie, &mtype).ok();
-                    if let Some(ref w) = window_clone {
+            if upsert.is_new {
+                on_log(format!("🚀 Priority metadata for new file: {}", title));
+                let result = resolve_tmdb_match_with_plex(
+                    &config,
+                    &api_key,
+                    &title,
+                    year,
+                    &tmdb_stype,
+                )
+                .await;
+                if let Ok(Some(movie)) = result {
+                    on_log(format!("🌐 TMDB: {} → {}", title, movie.title));
+                    db.update_tmdb_auto(id, &movie, &mtype).ok();
+                    if let Some(ref w) = window {
                         w.emit(
                             "index:update",
                             serde_json::json!({
@@ -838,9 +1253,52 @@ pub async fn start_indexing_internal(
                         ).ok();
                     }
                 } else {
-                    on_log_clone(format!("⚠ TMDB: no match for \"{}\"", title));
+                    on_log(format!("⚠ TMDB: no match for \"{}\"", title));
                 }
-            }));
+            } else {
+                let window_clone = window.clone();
+                let db_clone = db.clone();
+                let config_clone = config.clone();
+                let on_log_clone = on_log.clone();
+
+                metadata_tasks.push(tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    let result = resolve_tmdb_match_with_plex(
+                        &config_clone,
+                        &api_key,
+                        &title,
+                        year,
+                        &tmdb_stype,
+                    )
+                    .await;
+                    if let Ok(Some(movie)) = result {
+                        on_log_clone(format!("🌐 TMDB: {} → {}", title, movie.title));
+                        db_clone.update_tmdb_auto(id, &movie, &mtype).ok();
+                        if let Some(ref w) = window_clone {
+                            w.emit(
+                                "index:update",
+                                serde_json::json!({
+                                    "id": id,
+                                    "tmdb_id": movie.id,
+                                    "imdb_id": movie.imdb_id,
+                                    "tmdb_title": movie.title,
+                                    "tmdb_title_en": movie.title_en,
+                                    "tmdb_poster": movie.poster_path,
+                                    "tmdb_poster_en": movie.poster_path_en,
+                                    "tmdb_rating": movie.vote_average,
+                                    "tmdb_overview": movie.overview,
+                                    "tmdb_overview_en": movie.overview_en,
+                                    "tmdb_genres": movie.genre_ids,
+                                    "tmdb_release_date": movie.release_date,
+                                    "tmdb_type": mtype,
+                                }),
+                            ).ok();
+                        }
+                    } else {
+                        on_log_clone(format!("⚠ TMDB: no match for \"{}\"", title));
+                    }
+                }));
+            }
         }
     }
 
@@ -851,7 +1309,7 @@ pub async fn start_indexing_internal(
     }
 
     on_log(format!(
-        "✓ Indexing complete — {} files scanned, {} new items sent to TMDB",
+        "✓ Indexing complete — {} files scanned, {} items sent to TMDB",
         total, metadata_queued
     ));
 
@@ -1246,7 +1704,7 @@ pub async fn check_media_badges(
 ) -> Result<Vec<MediaBadgeResult>, String> {
     let config = state.load_config()?;
     let mut results = Vec::with_capacity(items.len());
-    let mut plex_imdb_cache: std::collections::HashMap<String, bool> =
+    let mut plex_badge_cache: std::collections::HashMap<String, MediaServerCheck> =
         std::collections::HashMap::new();
 
     for item in items {
@@ -1254,22 +1712,41 @@ pub async fn check_media_badges(
             .map(|path| path.exists())
             .unwrap_or(false);
 
-        let in_emby = if let Some(imdb_id) = item.imdb_id.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
-            if let Some(hit) = plex_imdb_cache.get(imdb_id).copied() {
-                hit
+        let check = if let Some(cache_key) = plex_badge_cache_key(&item) {
+            if let Some(hit) = plex_badge_cache.get(&cache_key).cloned() {
+                MediaServerCheck {
+                    cache_state: format!("request-hit:{cache_key}"),
+                    ..hit
+                }
             } else {
-                let hit = exists_in_plex(&config, &item).await.unwrap_or(false);
-                plex_imdb_cache.insert(imdb_id.to_string(), hit);
-                hit
+                let check = check_media_server_presence(&config, &item).await.unwrap_or(MediaServerCheck {
+                    hit: false,
+                    plex_hit: false,
+                    emby_hit: false,
+                    cache_state: "error".to_string(),
+                    debug: "media-server-check:error".to_string(),
+                });
+                plex_badge_cache.insert(cache_key, check.clone());
+                check
             }
         } else {
-            false
+            MediaServerCheck {
+                hit: false,
+                plex_hit: false,
+                emby_hit: false,
+                cache_state: "no-cache-key".to_string(),
+                debug: "no-cache-key".to_string(),
+            }
         };
 
         results.push(MediaBadgeResult {
             id: item.id,
             downloaded,
-            in_emby,
+            in_emby: check.hit,
+            plex_in_library: Some(check.plex_hit),
+            emby_in_library: Some(check.emby_hit),
+            cache: Some(check.cache_state),
+            debug: Some(check.debug),
         });
     }
 

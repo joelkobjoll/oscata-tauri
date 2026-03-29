@@ -190,6 +190,7 @@ export default function Library({
     clearIndexError,
     retryIndexing,
     log,
+    appendLog,
     clearLog,
   } = useIndexing();
   const { startDownload, isDownloadPending } = useDownload();
@@ -230,12 +231,24 @@ export default function Library({
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [language, setLanguage] = useState<AppLanguage>("es");
   const [badgeMap, setBadgeMap] = useState<
-    Record<number, { downloaded?: boolean; inEmby?: boolean }>
+    Record<
+      number,
+      {
+        downloaded?: boolean;
+        inEmby?: boolean;
+        plexInLibrary?: boolean;
+        embyInLibrary?: boolean;
+        cache?: string;
+        debug?: string;
+      }
+    >
   >({});
+  const [badgeRefreshTick, setBadgeRefreshTick] = useState(0);
   const actionsMenuRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const paginationInitRef = useRef(false);
   const hasStartedInitialIndexRef = useRef(false);
+  const badgeRequestIdRef = useRef(0);
 
   useEffect(() => {
     if (!startIndexingOnMount || hasStartedInitialIndexRef.current) {
@@ -270,6 +283,20 @@ export default function Library({
       await call("rematch_all");
     } catch (error) {
       console.error("Failed to re-match metadata:", error);
+    } finally {
+      setRematching(false);
+    }
+  };
+
+  const runRematchAllPlex = async () => {
+    setRematching(true);
+    setShowLog(true);
+    setShowActionsMenu(false);
+    try {
+      // Uses the backend rematch flow, which now tries Plex->IMDb->TMDB fallback.
+      await call("rematch_all");
+    } catch (error) {
+      console.error("Failed to run Plex-assisted rematch:", error);
     } finally {
       setRematching(false);
     }
@@ -375,6 +402,62 @@ export default function Library({
   const exitSelect = () => {
     setSelecting(false);
     setCheckedIds(new Set());
+  };
+
+  const recheckBadgeForItem = async (item: MediaItem) => {
+    const startedAt = Date.now();
+    try {
+      const results = await call<
+        Array<{
+          id: number;
+          downloaded: boolean;
+          in_emby: boolean;
+          plex_in_library?: boolean;
+          emby_in_library?: boolean;
+          cache?: string;
+          debug?: string;
+        }>
+      >("check_media_badges", {
+        items: [
+          {
+            id: item.id,
+            ftpPath: item.ftp_path,
+            filename: item.filename,
+            title: item.tmdb_title ?? item.title ?? null,
+            titleEn: item.tmdb_title_en ?? null,
+            year: item.year ?? null,
+            imdbId: item.imdb_id ?? null,
+            tmdbId: item.tmdb_id ?? null,
+            mediaType: item.media_type ?? item.tmdb_type ?? null,
+          },
+        ],
+      });
+
+      const [result] = results;
+      if (!result) return;
+
+      setBadgeMap((prev) => ({
+        ...prev,
+        [result.id]: {
+          downloaded: result.downloaded,
+          inEmby: result.in_emby,
+          plexInLibrary: result.plex_in_library,
+          embyInLibrary: result.emby_in_library,
+          cache: result.cache,
+          debug: result.debug,
+        },
+      }));
+
+      appendLog(
+        `🧪 Dev badge recheck: ${item.id} | in_library ${result.in_emby ? "true" : "false"} | plex ${result.plex_in_library ? "true" : "false"} | emby ${result.emby_in_library ? "true" : "false"} | cache ${result.cache ?? "-"} | ${Date.now() - startedAt}ms`,
+      );
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : String(error ?? "unknown error");
+      appendLog(`⚠ Dev badge recheck failed for ${item.id}: ${message}`);
+    }
   };
 
   const isSeriesTab = activeTab === "tv" || activeTab === "documentary";
@@ -541,6 +624,25 @@ export default function Library({
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     return filtered.slice(start, start + ITEMS_PER_PAGE);
   }, [currentPage, filtered]);
+  const badgePayload = useMemo(
+    () =>
+      paginatedItems.map((item) => ({
+        id: item.id,
+        ftpPath: item.ftp_path,
+        filename: item.filename,
+        title: item.tmdb_title ?? item.title ?? null,
+        titleEn: item.tmdb_title_en ?? null,
+        year: item.year ?? null,
+        imdbId: item.imdb_id ?? null,
+        tmdbId: item.tmdb_id ?? null,
+        mediaType: item.media_type ?? item.tmdb_type ?? null,
+      })),
+    [paginatedItems],
+  );
+  const badgePageIdsKey = useMemo(
+    () => paginatedItems.map((item) => item.id).join(","),
+    [paginatedItems],
+  );
 
   const ghostBtn: React.CSSProperties = {
     padding: "7px 14px",
@@ -776,41 +878,132 @@ export default function Library({
   ]);
 
   useEffect(() => {
-    if (activeTab === "downloads" || paginatedItems.length === 0) return;
-    let cancelled = false;
-    call<Array<{ id: number; downloaded: boolean; in_emby: boolean }>>(
-      "check_media_badges",
-      {
-        items: paginatedItems.map((item) => ({
-          id: item.id,
-          ftpPath: item.ftp_path,
-          filename: item.filename,
-          title: item.tmdb_title ?? item.title ?? null,
-          titleEn: item.tmdb_title_en ?? null,
-          year: item.year ?? null,
-          imdbId: item.imdb_id ?? null,
-          mediaType: item.media_type ?? item.tmdb_type ?? null,
-        })),
-      },
-    )
-      .then((results) => {
-        if (cancelled) return;
-        setBadgeMap((prev) => {
-          const next = { ...prev };
-          for (const result of results) {
-            next[result.id] = {
-              downloaded: result.downloaded,
-              inEmby: result.in_emby,
-            };
-          }
-          return next;
-        });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
+    if (activeTab === "downloads") return;
+
+    const triggerRefresh = () => setBadgeRefreshTick((prev) => prev + 1);
+    const intervalId = window.setInterval(triggerRefresh, 30000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        triggerRefresh();
+      }
     };
-  }, [activeTab, paginatedItems]);
+
+    const onFocus = () => {
+      triggerRefresh();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "downloads" || badgePayload.length === 0) return;
+    const startedAt = Date.now();
+    const requestId = ++badgeRequestIdRef.current;
+    const run = async () => {
+      const mergedResults: Array<{
+        id: number;
+        downloaded: boolean;
+        in_emby: boolean;
+        plex_in_library?: boolean;
+        emby_in_library?: boolean;
+        cache?: string;
+        debug?: string;
+      }> = [];
+
+      let cursor = 0;
+      const workers = Math.min(6, badgePayload.length);
+
+      const worker = async () => {
+        while (true) {
+          if (requestId !== badgeRequestIdRef.current) return;
+          const index = cursor;
+          cursor += 1;
+          if (index >= badgePayload.length) return;
+
+          try {
+            const single = await call<
+              Array<{
+                id: number;
+                downloaded: boolean;
+                in_emby: boolean;
+                plex_in_library?: boolean;
+                emby_in_library?: boolean;
+                cache?: string;
+                debug?: string;
+              }>
+            >("check_media_badges", {
+              items: [badgePayload[index]],
+            });
+            if (single[0]) {
+              const result = single[0];
+              mergedResults.push(result);
+
+              if (requestId !== badgeRequestIdRef.current) return;
+              // Progressive UI update: paint badge as soon as each item resolves.
+              setBadgeMap((prev) => ({
+                ...prev,
+                [result.id]: {
+                  downloaded: result.downloaded,
+                  inEmby: result.in_emby,
+                  plexInLibrary: result.plex_in_library,
+                  embyInLibrary: result.emby_in_library,
+                  cache: result.cache,
+                  debug: result.debug,
+                },
+              }));
+            }
+          } catch {
+            // Keep worker alive; failures are reported in aggregate below.
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: workers }, () => worker()));
+      if (requestId !== badgeRequestIdRef.current) return;
+
+      const downloadedCount = mergedResults.filter(
+        (result) => result.downloaded,
+      ).length;
+      const inServerCount = mergedResults.filter(
+        (result) => result.in_emby,
+      ).length;
+      const inPlexCount = mergedResults.filter(
+        (result) => result.plex_in_library,
+      ).length;
+      const inEmbyCount = mergedResults.filter(
+        (result) => result.emby_in_library,
+      ).length;
+      const withImdb = paginatedItems.filter(
+        (item) => (item.imdb_id ?? "").trim().length > 0,
+      ).length;
+      const withTmdb = paginatedItems.filter(
+        (item) => item.tmdb_id != null,
+      ).length;
+      const elapsedMs = Date.now() - startedAt;
+      appendLog(
+        `🏷 Badge auto-check (${activeTab}) — page ${currentPage}: ${mergedResults.length} items | local ${downloadedCount} | in_library ${inServerCount} | plex ${inPlexCount} | emby ${inEmbyCount} | imdb ${withImdb} | tmdb ${withTmdb} | ${elapsedMs}ms`,
+      );
+    };
+
+    run().catch((error: unknown) => {
+      if (requestId !== badgeRequestIdRef.current) return;
+      const message =
+        error instanceof Error
+          ? error.message
+          : String(error ?? "unknown error");
+      appendLog(
+        `⚠ Badge check failed (${activeTab}) — page ${currentPage}: ${message}`,
+      );
+    });
+  }, [activeTab, appendLog, badgePageIdsKey, badgeRefreshTick, currentPage]);
 
   const mediaContent = useEpisodeList ? (
     <EpisodeListView
@@ -1384,6 +1577,44 @@ export default function Library({
                           : t(language, "library.rematchAll")}
                       </button>
                       <button
+                        onClick={runRematchAllPlex}
+                        disabled={
+                          rematching ||
+                          clearingAll ||
+                          refreshingLibrary ||
+                          refreshingMetadata
+                        }
+                        style={{
+                          width: "100%",
+                          padding: "10px 12px",
+                          borderRadius: "var(--radius)",
+                          border: "none",
+                          background: "transparent",
+                          color: "var(--color-text)",
+                          textAlign: "left",
+                          cursor:
+                            rematching ||
+                            clearingAll ||
+                            refreshingLibrary ||
+                            refreshingMetadata
+                              ? "default"
+                              : "pointer",
+                          opacity:
+                            rematching ||
+                            clearingAll ||
+                            refreshingLibrary ||
+                            refreshingMetadata
+                              ? 0.5
+                              : 1,
+                          fontSize: 13,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {rematching
+                          ? t(language, "library.matching")
+                          : t(language, "library.rematchAllPlex")}
+                      </button>
+                      <button
                         onClick={clearAllMetadata}
                         disabled={
                           clearingAll ||
@@ -1631,6 +1862,7 @@ export default function Library({
           onDownload={startDownload}
           isDownloadPending={isDownloadPending}
           onRetry={retryDownload}
+          onDevCheckInLibrary={recheckBadgeForItem}
         />
       )}
 
@@ -1645,6 +1877,7 @@ export default function Library({
           downloadMap={downloadMap}
           isDownloadPending={isDownloadPending}
           downloadedBadgeMap={badgeMap}
+          onDevCheckInLibrary={recheckBadgeForItem}
           onFixMatch={(episodes) => {
             const [first] = episodes;
             setFixMatchRequest({

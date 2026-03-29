@@ -286,7 +286,14 @@ function EpisodeRow({
   isDownloadPending: (ftpPath: string) => boolean;
   downloadedBadgeMap: Record<
     number,
-    { downloaded?: boolean; inEmby?: boolean }
+    {
+      downloaded?: boolean;
+      inEmby?: boolean;
+      plexInLibrary?: boolean;
+      embyInLibrary?: boolean;
+      cache?: string;
+      debug?: string;
+    }
   >;
 }) {
   const episodeData = resolvedEpisodeData(episode);
@@ -535,7 +542,14 @@ function SeasonGroup({
   isDownloadPending: (ftpPath: string) => boolean;
   downloadedBadgeMap: Record<
     number,
-    { downloaded?: boolean; inEmby?: boolean }
+    {
+      downloaded?: boolean;
+      inEmby?: boolean;
+      plexInLibrary?: boolean;
+      embyInLibrary?: boolean;
+      cache?: string;
+      debug?: string;
+    }
   >;
 }) {
   const [open, setOpen] = useState(true);
@@ -729,6 +743,7 @@ export default function TVShowPanel({
   onDownload,
   onDownloadSeason,
   onFixMatch,
+  onDevCheckInLibrary,
   downloadMap,
   isDownloadPending,
   downloadedBadgeMap,
@@ -740,17 +755,26 @@ export default function TVShowPanel({
   onDownload: (item: MediaItem) => void;
   onDownloadSeason: (episodes: MediaItem[]) => void;
   onFixMatch: (items: MediaItem[]) => void;
+  onDevCheckInLibrary?: (item: MediaItem) => Promise<void>;
   downloadMap: Map<string, DownloadItem>;
   isDownloadPending: (ftpPath: string) => boolean;
   downloadedBadgeMap: Record<
     number,
-    { downloaded?: boolean; inEmby?: boolean }
+    {
+      downloaded?: boolean;
+      inEmby?: boolean;
+      plexInLibrary?: boolean;
+      embyInLibrary?: boolean;
+      cache?: string;
+      debug?: string;
+    }
   >;
 }) {
   const [filterRelease, setFilterRelease] = useState("all");
   const [filterResolution, setFilterResolution] = useState("all");
   const [filterSeason, setFilterSeason] = useState("all");
   const [openingUrl, setOpeningUrl] = useState<string | null>(null);
+  const [devChecking, setDevChecking] = useState(false);
 
   const handleOpenUrl = (url: string) => {
     setOpeningUrl(url);
@@ -792,6 +816,8 @@ export default function TVShowPanel({
     fontSize: 12,
     fontWeight: 700,
   };
+  const showDevMeta = import.meta.env.DEV;
+  const showBadge = downloadedBadgeMap[show.id];
 
   const releaseTypes = [
     ...new Set(allEpisodes.map((ep) => ep.release_type).filter(Boolean)),
@@ -1123,7 +1149,9 @@ export default function TVShowPanel({
                   }}
                   title={tmdbUrl}
                 >
-                  {openingUrl === tmdbUrl ? "↗ …" : t(language, "detail.openTmdb")}
+                  {openingUrl === tmdbUrl
+                    ? "↗ …"
+                    : t(language, "detail.openTmdb")}
                 </button>
                 <button
                   onClick={() => handleOpenUrl(imdbUrl)}
@@ -1133,9 +1161,77 @@ export default function TVShowPanel({
                   }}
                   title={imdbUrl}
                 >
-                  {openingUrl === imdbUrl ? "↗ …" : t(language, "detail.openImdb")}
+                  {openingUrl === imdbUrl
+                    ? "↗ …"
+                    : t(language, "detail.openImdb")}
                 </button>
               </div>
+
+              {showDevMeta && (
+                <div
+                  style={{
+                    marginTop: 2,
+                    padding: "0.65rem 0.8rem",
+                    borderRadius: "var(--radius)",
+                    border:
+                      "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+                    background:
+                      "color-mix(in srgb, var(--color-surface-2) 72%, transparent)",
+                    fontFamily: "monospace",
+                    fontSize: 11,
+                    color: "var(--color-text-muted)",
+                    display: "grid",
+                    gap: 2,
+                    maxWidth: "100%",
+                  }}
+                >
+                  <div>debug.item_id: {show.id}</div>
+                  <div>debug.imdb_id: {show.imdb_id ?? "-"}</div>
+                  <div>debug.tmdb_id: {show.tmdb_id ?? "-"}</div>
+                  <div>
+                    debug.badge.in_library:{" "}
+                    {showBadge?.inEmby ? "true" : "false"}
+                  </div>
+                  <div>
+                    debug.badge.plex:{" "}
+                    {showBadge?.plexInLibrary ? "true" : "false"}
+                  </div>
+                  <div>
+                    debug.badge.emby:{" "}
+                    {showBadge?.embyInLibrary ? "true" : "false"}
+                  </div>
+                  <div>debug.badge.cache: {showBadge?.cache ?? "-"}</div>
+                  <div>debug.badge.reason: {showBadge?.debug ?? "-"}</div>
+                  {onDevCheckInLibrary && (
+                    <button
+                      onClick={() => {
+                        setDevChecking(true);
+                        onDevCheckInLibrary(show)
+                          .catch(() => {})
+                          .finally(() => setDevChecking(false));
+                      }}
+                      disabled={devChecking}
+                      style={{
+                        marginTop: 6,
+                        padding: "6px 9px",
+                        borderRadius: "var(--radius)",
+                        border:
+                          "1px solid color-mix(in srgb, var(--color-primary) 50%, transparent)",
+                        background:
+                          "color-mix(in srgb, var(--color-primary) 14%, transparent)",
+                        color: "var(--color-primary)",
+                        cursor: devChecking ? "default" : "pointer",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        width: "fit-content",
+                        opacity: devChecking ? 0.7 : 1,
+                      }}
+                    >
+                      {devChecking ? "Checking…" : "Check In Library (dev)"}
+                    </button>
+                  )}
+                </div>
+              )}
 
               {showOverview && (
                 <p

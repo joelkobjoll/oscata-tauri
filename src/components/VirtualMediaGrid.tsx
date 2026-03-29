@@ -24,7 +24,17 @@ export default function VirtualMediaGrid({
   onDownload: (item: MediaItem) => void;
   resetKey: string;
   language: AppLanguage;
-  badgeMap: Record<number, { downloaded?: boolean; inEmby?: boolean }>;
+  badgeMap: Record<
+    number,
+    {
+      downloaded?: boolean;
+      inEmby?: boolean;
+      plexInLibrary?: boolean;
+      embyInLibrary?: boolean;
+      cache?: string;
+      debug?: string;
+    }
+  >;
   downloadMap: Map<string, DownloadItem>;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);

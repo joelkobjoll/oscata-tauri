@@ -111,6 +111,7 @@ pub struct Db(Arc<Mutex<Connection>>);
 pub struct UpsertMediaResult {
     pub id: i64,
     pub needs_metadata: bool,
+    pub is_new: bool,
 }
 
 impl Db {
@@ -913,15 +914,44 @@ impl Db {
     ) -> Result<UpsertMediaResult, String> {
         let conn = self.0.lock().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
-        let existed_before = conn
+
+        #[derive(Debug)]
+        struct ExistingRow {
+            title: Option<String>,
+            year: Option<i64>,
+            season: Option<i64>,
+            episode: Option<i64>,
+            episode_end: Option<i64>,
+            media_type: Option<String>,
+            metadata_at: Option<String>,
+            tmdb_id: Option<i64>,
+            imdb_id: Option<String>,
+            manual_match: i64,
+        }
+
+        let existing = conn
             .query_row(
-                "SELECT 1 FROM media_items WHERE ftp_path = ?1 LIMIT 1",
+                "SELECT title, year, season, episode, episode_end, media_type, metadata_at, tmdb_id, imdb_id, COALESCE(manual_match, 0)
+                 FROM media_items WHERE ftp_path = ?1 LIMIT 1",
                 params![path],
-                |_| Ok(()),
+                |r| {
+                    Ok(ExistingRow {
+                        title: r.get(0)?,
+                        year: r.get(1)?,
+                        season: r.get(2)?,
+                        episode: r.get(3)?,
+                        episode_end: r.get(4)?,
+                        media_type: r.get(5)?,
+                        metadata_at: r.get(6)?,
+                        tmdb_id: r.get(7)?,
+                        imdb_id: r.get(8)?,
+                        manual_match: r.get(9)?,
+                    })
+                },
             )
             .optional()
-            .map_err(|e| e.to_string())?
-            .is_some();
+            .map_err(|e| e.to_string())?;
+
         conn.execute(
             "INSERT INTO media_items
                 (ftp_path, filename, size_bytes, title, year, season, episode, episode_end,
@@ -967,11 +997,66 @@ impl Db {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(|e| e.to_string())?;
+
+        let parsed_title = Some(parsed.title.clone());
+        let parsed_year = parsed.year.map(|value| value as i64);
+        let parsed_season = parsed.season.map(|value| value as i64);
+        let parsed_episode = parsed.episode.map(|value| value as i64);
+        let parsed_episode_end = parsed.episode_end.map(|value| value as i64);
+
+        let existing_missing_metadata = existing
+            .as_ref()
+            .map(|row| {
+                row.metadata_at.is_none()
+                    || row.tmdb_id.is_none()
+                    || row.imdb_id.as_deref().unwrap_or("").trim().is_empty()
+            })
+            .unwrap_or(false);
+
+        let parsed_changed = existing
+            .as_ref()
+            .map(|row| {
+                let effective_media_type = media_type
+                    .map(|value| value.to_string())
+                    .or_else(|| row.media_type.clone());
+                row.title != parsed_title
+                    || row.year != parsed_year
+                    || row.season != parsed_season
+                    || row.episode != parsed_episode
+                    || row.episode_end != parsed_episode_end
+                    || row.media_type != effective_media_type
+            })
+            .unwrap_or(false);
+
+        let is_manual_match = existing
+            .as_ref()
+            .map(|row| row.manual_match != 0)
+            .unwrap_or(false);
+
+        if parsed_changed && !is_manual_match {
+            conn.execute(
+                "UPDATE media_items SET
+                    tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
+                    tmdb_title_en=NULL, tmdb_release_date=NULL, tmdb_overview=NULL, tmdb_overview_en=NULL, tmdb_poster=NULL, tmdb_poster_en=NULL,
+                    tmdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
+                 WHERE id=?1",
+                params![id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+
+        let needs_metadata = if existing.is_none() {
+            metadata_at.is_none()
+        } else {
+            existing_missing_metadata || (parsed_changed && !is_manual_match)
+        };
+
         Ok(UpsertMediaResult {
             id,
-            // During library updates, only request TMDB metadata for newly inserted rows.
-            // Existing rows can be refreshed explicitly via the dedicated metadata actions.
-            needs_metadata: !existed_before && metadata_at.is_none(),
+            // Request metadata for new rows, incomplete rows, and rows whose parsed signature changed
+            // (unless they were manually matched and should remain pinned).
+            needs_metadata,
+            is_new: existing.is_none(),
         })
     }
 

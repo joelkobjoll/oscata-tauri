@@ -286,6 +286,8 @@ pub async fn check_media_badges_handler(
 ) -> ApiResult<Json<Vec<crate::commands::MediaBadgeResult>>> {
     let config = state.db.load_config().map_err(ApiError::from)?;
     let mut results = Vec::with_capacity(body.items.len());
+    let mut media_presence_cache: std::collections::HashMap<String, bool> =
+        std::collections::HashMap::new();
 
     for item in body.items {
         let downloaded = crate::commands::compute_local_path(
@@ -297,11 +299,28 @@ pub async fn check_media_badges_handler(
         .map(|path| path.exists())
         .unwrap_or(false);
 
+        let (in_emby, debug) = if let Some(cache_key) = crate::commands::plex_badge_cache_key(&item) {
+            if let Some(hit) = media_presence_cache.get(&cache_key).copied() {
+                (hit, Some(format!("cache-hit:{cache_key}")))
+            } else {
+                let hit = crate::commands::exists_in_media_server(&config, &item)
+                    .await
+                    .unwrap_or(false);
+                media_presence_cache.insert(cache_key, hit);
+                (hit, None)
+            }
+        } else {
+            (false, Some("no-cache-key".to_string()))
+        };
+
         results.push(crate::commands::MediaBadgeResult {
             id: item.id,
             downloaded,
-            // Keep this false in web mode for now; disk badge parity is the primary requirement.
-            in_emby: false,
+            in_emby,
+            plex_in_library: None,
+            emby_in_library: None,
+            cache: None,
+            debug,
         });
     }
 
