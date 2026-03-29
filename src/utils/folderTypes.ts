@@ -1,5 +1,28 @@
 export type FolderTypeValue = "movie" | "tv" | "documentary" | "mixed";
 
+export const DEFAULT_FOLDER_TYPES: Record<string, FolderTypeValue> = {
+  Peliculas: "movie",
+  Series: "tv",
+  Documentales: "documentary",
+  Movies: "movie",
+  "TV Shows": "tv",
+  Documentaries: "documentary",
+  "Documentales 4K 2160p - HD 1080p": "documentary",
+  "P-Peticiones": "mixed",
+  "Peliculas BDRemux 1080p": "movie",
+  "Peliculas BDrip 1080p X264": "movie",
+  "Peliculas BDrip 1080p X265": "movie",
+  "Peliculas UHDRemux 2160p": "movie",
+  "Peliculas WEB DL Micro 1080p": "movie",
+  "Peliculas WEB DL-UHDRip 2160p": "movie",
+  "Peliculas y Series mas antiguas": "movie",
+  "Series 4K 2160p": "tv",
+  "Series HD 1080p": "tv",
+  "Series HD 1080p X265": "tv",
+};
+
+export const DEFAULT_FOLDER_TYPES_STRING = JSON.stringify(DEFAULT_FOLDER_TYPES);
+
 const LEGACY_DEFAULT_FOLDER_TYPES = JSON.stringify({
   Peliculas: "movie",
   Series: "tv",
@@ -19,13 +42,13 @@ function normalizeFolderName(value: string): string {
 export function parseFolderTypes(raw: string | null | undefined): Record<string, FolderTypeValue> {
   const trimmed = raw?.trim() ?? "";
   if (!trimmed || trimmed === "{}" || trimmed === LEGACY_DEFAULT_FOLDER_TYPES) {
-    return {};
+    return { ...DEFAULT_FOLDER_TYPES };
   }
 
   try {
     return JSON.parse(trimmed) as Record<string, FolderTypeValue>;
   } catch {
-    return {};
+    return { ...DEFAULT_FOLDER_TYPES };
   }
 }
 
