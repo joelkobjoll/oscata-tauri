@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -78,6 +79,69 @@ fn score_result(result: &TmdbMovie, query: &str, year: Option<u16>) -> f64 {
     score + result.vote_average.unwrap_or(0.0) * 0.5
 }
 
+fn truncate_for_error(value: &str, max_chars: usize) -> String {
+    let mut out = String::new();
+    for (idx, ch) in value.chars().enumerate() {
+        if idx >= max_chars {
+            out.push_str("...");
+            break;
+        }
+        out.push(ch);
+    }
+    if out.is_empty() {
+        "<empty body>".to_string()
+    } else {
+        out
+    }
+}
+
+async fn fetch_json_with_retry<T: DeserializeOwned>(url: &str, context: &str) -> Result<T, String> {
+    const MAX_ATTEMPTS: u8 = 3;
+    let client = reqwest::Client::new();
+    let mut last_error = String::new();
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        match client.get(url).send().await {
+            Ok(response) => {
+                let status = response.status();
+                match response.text().await {
+                    Ok(body) => {
+                        if !status.is_success() {
+                            last_error = format!(
+                                "TMDB {context} failed (HTTP {}): {}",
+                                status.as_u16(),
+                                truncate_for_error(&body, 220)
+                            );
+                        } else {
+                            match serde_json::from_str::<T>(&body) {
+                                Ok(parsed) => return Ok(parsed),
+                                Err(err) => {
+                                    last_error = format!(
+                                        "TMDB {context} decode error: {err}. Body: {}",
+                                        truncate_for_error(&body, 220)
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        last_error = format!("TMDB {context} body read error: {err}");
+                    }
+                }
+            }
+            Err(err) => {
+                last_error = format!("TMDB {context} request error: {err}");
+            }
+        }
+
+        if attempt < MAX_ATTEMPTS {
+            tokio::time::sleep(std::time::Duration::from_millis(250 * attempt as u64)).await;
+        }
+    }
+
+    Err(last_error)
+}
+
 async fn fetch_search_results_lang(
     api_key: &str,
     query: &str,
@@ -109,12 +173,7 @@ async fn fetch_search_results_lang(
         results: Vec<AnyResult>,
     }
 
-    let resp: AnyResponse = reqwest::get(&url)
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
+    let resp: AnyResponse = fetch_json_with_retry(&url, "search request").await?;
 
     Ok(resp
         .results
@@ -299,12 +358,7 @@ async fn fetch_detail_lang(
         id: i64,
     }
 
-    let detail: Detail = reqwest::get(&url)
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
+    let detail: Detail = fetch_json_with_retry(&url, "detail request").await?;
 
     Ok(LocalizedTmdbResult {
         id: detail.id,
@@ -331,12 +385,7 @@ async fn fetch_imdb_id(
         imdb_id: Option<String>,
     }
 
-    let ids: ExternalIds = reqwest::get(&url)
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
+    let ids: ExternalIds = fetch_json_with_retry(&url, "external ids request").await?;
 
     Ok(ids.imdb_id.filter(|value| !value.trim().is_empty()))
 }
