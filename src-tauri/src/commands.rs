@@ -47,6 +47,21 @@ struct BadgeCacheEntry {
 static BADGE_RESULT_CACHE: LazyLock<Mutex<std::collections::HashMap<String, BadgeCacheEntry>>> =
     LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
+fn emit_index_log(window: &Option<tauri::WebviewWindow>, msg: String) {
+    #[cfg(debug_assertions)]
+    {
+        if let Some(w) = window {
+            w.emit("index:log", serde_json::json!({ "msg": msg })).ok();
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = window;
+        let _ = msg;
+    }
+}
+
 fn persist_download_state(
     db: &crate::db::Db,
     queue: &crate::downloads::SharedQueue,
@@ -1037,9 +1052,7 @@ pub async fn rematch_all_internal(
         .collect();
     let total = items.len();
 
-    if let Some(ref w) = window {
-        w.emit("index:log", serde_json::json!({ "msg": format!("🔄 Re-matching {} items with TMDB…", total) })).ok();
-    }
+    emit_index_log(&window, format!("🔄 Re-matching {} items with TMDB…", total));
 
     for (i, item) in items.into_iter().enumerate() {
         let title = item.tmdb_title.clone()
@@ -1063,11 +1076,10 @@ pub async fn rematch_all_internal(
         };
         let year = item.year.map(|y| y as u16);
 
-        if let Some(ref w) = window {
-            w.emit("index:log", serde_json::json!({
-                "msg": format!("🌐 [{}/{}] Matching: {} ({})", i + 1, total, title, mtype)
-            })).ok();
-        }
+        emit_index_log(
+            &window,
+            format!("🌐 [{}/{}] Matching: {} ({})", i + 1, total, title, mtype),
+        );
 
         // Rate limit: 40 req/10s
         tokio::time::sleep(std::time::Duration::from_millis(260)).await;
@@ -1076,12 +1088,15 @@ pub async fn rematch_all_internal(
         let result = resolve_tmdb_match_with_plex(&config, api_key, &title, year, tmdb_search_type).await;
 
         if let Ok(Some(movie)) = result {
-            if let Some(ref w) = window {
-                w.emit("index:log", serde_json::json!({
-                    "msg": format!("✓ Matched: {} → {} ({})", title, movie.title,
-                        movie.release_date.as_deref().unwrap_or("?"))
-                })).ok();
-            }
+            emit_index_log(
+                &window,
+                format!(
+                    "✓ Matched: {} → {} ({})",
+                    title,
+                    movie.title,
+                    movie.release_date.as_deref().unwrap_or("?")
+                ),
+            );
             db.update_tmdb_auto(item.id, &movie, &mtype).ok();
             if let Some(ref w) = window {
                 w.emit("index:update", serde_json::json!({
@@ -1101,17 +1116,11 @@ pub async fn rematch_all_internal(
                 })).ok();
             }
         } else {
-            if let Some(ref w) = window {
-                w.emit("index:log", serde_json::json!({
-                    "msg": format!("⚠ No match found for: {}", title)
-                })).ok();
-            }
+            emit_index_log(&window, format!("⚠ No match found for: {}", title));
         }
     }
 
-    if let Some(ref w) = window {
-        w.emit("index:log", serde_json::json!({ "msg": format!("✓ Re-match complete — {} items processed", total) })).ok();
-    }
+    emit_index_log(&window, format!("✓ Re-match complete — {} items processed", total));
     Ok(())
 }
 
@@ -1125,9 +1134,7 @@ pub async fn start_indexing_internal(
 
     let window_log = window.clone();
     let on_log = Arc::new(move |msg: String| {
-        if let Some(ref w) = window_log {
-            w.emit("index:log", serde_json::json!({ "msg": msg })).ok();
-        }
+        emit_index_log(&window_log, msg);
     });
 
     let folder_types: std::collections::HashMap<String, String> =
@@ -1643,18 +1650,10 @@ pub async fn refresh_all_metadata_internal(
     });
 
     let total = items.len();
-    if let Some(ref w) = window {
-        w.emit("index:log", serde_json::json!({
-            "msg": format!("🔄 Refreshing metadata for {} matched items…", total)
-        })).ok();
-    }
+    emit_index_log(&window, format!("🔄 Refreshing metadata for {} matched items…", total));
 
     if total == 0 {
-        if let Some(ref w) = window {
-            w.emit("index:log", serde_json::json!({
-                "msg": "✓ Metadata refresh complete — nothing missing"
-            })).ok();
-        }
+        emit_index_log(&window, "✓ Metadata refresh complete — nothing missing".to_string());
         return Ok(());
     }
 
@@ -1672,11 +1671,10 @@ pub async fn refresh_all_metadata_internal(
             .or_else(|| item.title.clone())
             .unwrap_or_else(|| item.filename.clone());
 
-        if let Some(ref w) = window {
-            w.emit("index:log", serde_json::json!({
-                "msg": format!("🌐 [{}/{}] Refreshing metadata: {}", i + 1, total, title)
-            })).ok();
-        }
+        emit_index_log(
+            &window,
+            format!("🌐 [{}/{}] Refreshing metadata: {}", i + 1, total, title),
+        );
 
         tokio::time::sleep(std::time::Duration::from_millis(260)).await;
 
@@ -1707,20 +1705,18 @@ pub async fn refresh_all_metadata_internal(
                 }
             }
             Err(err) => {
-                if let Some(ref w) = window {
-                    w.emit("index:log", serde_json::json!({
-                        "msg": format!("⚠ Metadata refresh failed for {}: {}", title, err)
-                    })).ok();
-                }
+                emit_index_log(
+                    &window,
+                    format!("⚠ Metadata refresh failed for {}: {}", title, err),
+                );
             }
         }
     }
 
-    if let Some(ref w) = window {
-        w.emit("index:log", serde_json::json!({
-            "msg": format!("✓ Metadata refresh complete — {} items processed", total)
-        })).ok();
-    }
+    emit_index_log(
+        &window,
+        format!("✓ Metadata refresh complete — {} items processed", total),
+    );
     Ok(())
 }
 
@@ -1778,6 +1774,21 @@ pub async fn check_media_badges(
     }
 
     Ok(results)
+}
+
+#[tauri::command]
+pub async fn watchdog_pong(
+    window: WebviewWindow,
+    state: tauri::State<'_, crate::WatchdogState>,
+    nonce: u64,
+) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    let entry = guard.entry(window.label().to_string()).or_default();
+    if entry.awaiting_nonce == Some(nonce) {
+        entry.awaiting_nonce = None;
+    }
+    entry.recovered_once = false;
+    Ok(())
 }
 
 #[tauri::command]

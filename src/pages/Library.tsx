@@ -181,6 +181,7 @@ export default function Library({
 }: {
   startIndexingOnMount?: boolean;
 }) {
+  const showDevLog = import.meta.env.DEV;
   const {
     items,
     isIndexing,
@@ -277,7 +278,7 @@ export default function Library({
 
   const runRematchAll = async () => {
     setRematching(true);
-    setShowLog(true);
+    if (showDevLog) setShowLog(true);
     setShowActionsMenu(false);
     try {
       await call("rematch_all");
@@ -290,7 +291,7 @@ export default function Library({
 
   const runRematchAllPlex = async () => {
     setRematching(true);
-    setShowLog(true);
+    if (showDevLog) setShowLog(true);
     setShowActionsMenu(false);
     try {
       // Uses the backend rematch flow, which now tries Plex->IMDb->TMDB fallback.
@@ -322,7 +323,7 @@ export default function Library({
     )
       return;
     setClearingAll(true);
-    setShowLog(true);
+    if (showDevLog) setShowLog(true);
     setShowActionsMenu(false);
     try {
       await call("clear_all_metadata");
@@ -336,7 +337,7 @@ export default function Library({
 
   const refreshAllMetadata = async () => {
     setRefreshingMetadata(true);
-    setShowLog(true);
+    if (showDevLog) setShowLog(true);
     setShowActionsMenu(false);
     try {
       await call("refresh_all_metadata");
@@ -1286,26 +1287,29 @@ export default function Library({
             })}
           </div>
 
-          {/* Log button */}
-          <button
-            onClick={() => setShowLog((v) => !v)}
-            title="Activity Log"
-            style={{
-              ...iconButton,
-              background: showLog
-                ? "color-mix(in srgb, var(--color-surface-2) 96%, transparent)"
-                : iconButton.background,
-              color: showLog ? "var(--color-text)" : "var(--color-text-muted)",
-            }}
-          >
-            {log.length > 0 && !showLog ? (
-              <span style={{ fontSize: 12, fontWeight: 700 }}>
-                {log.length}
-              </span>
-            ) : (
-              <AppIcon name="activity" size={15} strokeWidth={2.3} />
-            )}
-          </button>
+          {showDevLog && (
+            <button
+              onClick={() => setShowLog((v) => !v)}
+              title="Activity Log"
+              style={{
+                ...iconButton,
+                background: showLog
+                  ? "color-mix(in srgb, var(--color-surface-2) 96%, transparent)"
+                  : iconButton.background,
+                color: showLog
+                  ? "var(--color-text)"
+                  : "var(--color-text-muted)",
+              }}
+            >
+              {log.length > 0 && !showLog ? (
+                <span style={{ fontSize: 12, fontWeight: 700 }}>
+                  {log.length}
+                </span>
+              ) : (
+                <AppIcon name="activity" size={15} strokeWidth={2.3} />
+              )}
+            </button>
+          )}
           {/* Settings button */}
           <button
             onClick={() => setShowSettings(true)}
@@ -1999,7 +2003,7 @@ export default function Library({
         />
       )}
 
-      {showLog && (
+      {showDevLog && showLog && (
         <ActivityLog language={language} entries={log} onClear={clearLog} />
       )}
     </div>

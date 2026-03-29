@@ -38,6 +38,7 @@ export interface MediaItem {
 }
 
 const MAX_LOG = 500;
+const ENABLE_ACTIVITY_LOG = import.meta.env.DEV;
 
 export function useIndexing() {
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -60,11 +61,10 @@ export function useIndexing() {
     );
   };
 
-  const addLog = useCallback(
-    (msg: string) =>
-      setLog((prev) => [...prev.slice(-MAX_LOG + 1), { ts: Date.now(), msg }]),
-    [],
-  );
+  const addLog = useCallback((msg: string) => {
+    if (!ENABLE_ACTIVITY_LOG) return;
+    setLog((prev) => [...prev.slice(-MAX_LOG + 1), { ts: Date.now(), msg }]);
+  }, []);
 
   // Hydrate from SQLite on mount
   useEffect(() => {
@@ -137,20 +137,22 @@ export function useIndexing() {
       addLog("▶ Indexing started");
     });
 
-    const unLog = listen<{ msg: string }>("index:log", ({ payload }) => {
-      if (payload.msg.startsWith("📂 Scanning ")) {
-        setCrawlStats((prev) => ({
-          ...prev,
-          scannedFolders: prev.scannedFolders + 1,
-        }));
-      } else if (payload.msg.startsWith("🎬 Found: ")) {
-        setCrawlStats((prev) => ({
-          ...prev,
-          foundFiles: prev.foundFiles + 1,
-        }));
-      }
-      addLog(payload.msg);
-    });
+    const unLog = ENABLE_ACTIVITY_LOG
+      ? listen<{ msg: string }>("index:log", ({ payload }) => {
+          if (payload.msg.startsWith("📂 Scanning ")) {
+            setCrawlStats((prev) => ({
+              ...prev,
+              scannedFolders: prev.scannedFolders + 1,
+            }));
+          } else if (payload.msg.startsWith("🎬 Found: ")) {
+            setCrawlStats((prev) => ({
+              ...prev,
+              foundFiles: prev.foundFiles + 1,
+            }));
+          }
+          addLog(payload.msg);
+        })
+      : Promise.resolve(() => {});
 
     return () => {
       unProgress.then((f) => f());

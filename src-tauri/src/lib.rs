@@ -6,23 +6,88 @@ mod parser;
 mod tmdb;
 mod web;
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
+use tauri::Emitter;
 use tauri::Manager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 struct TrayState(Mutex<Option<TrayIcon>>);
 
+#[derive(Default)]
+pub(crate) struct WatchdogWindowState {
+    awaiting_nonce: Option<u64>,
+    recovered_once: bool,
+}
+
+pub(crate) struct WatchdogState(pub(crate) Mutex<HashMap<String, WatchdogWindowState>>);
+
 /// Global flag that tracks whether an FTP index pass is currently running.
 /// Set/cleared by `start_indexing_internal`; read by the WEBGUI status endpoint.
 pub static INDEXING_RUNNING: std::sync::LazyLock<Arc<std::sync::atomic::AtomicBool>> =
     std::sync::LazyLock::new(|| Arc::new(std::sync::atomic::AtomicBool::new(false)));
+static WATCHDOG_NONCE: AtomicU64 = AtomicU64::new(1);
+
+fn schedule_window_watchdog(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
+    let nonce = WATCHDOG_NONCE.fetch_add(1, Ordering::SeqCst);
+    let label = window.label().to_string();
+
+    {
+        let watchdog = app.state::<WatchdogState>();
+        let mut guard = watchdog.0.lock().unwrap();
+        let state = guard.entry(label.clone()).or_default();
+        state.awaiting_nonce = Some(nonce);
+    }
+
+    window
+        .emit("watchdog:ping", serde_json::json!({ "nonce": nonce }))
+        .ok();
+
+    let app_handle = app.clone();
+    let window_clone = window.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(1800)).await;
+
+        let should_recover = {
+            let watchdog = app_handle.state::<WatchdogState>();
+            let mut guard = watchdog.0.lock().unwrap();
+            let state = guard.entry(label.clone()).or_default();
+            if state.awaiting_nonce == Some(nonce) {
+                state.awaiting_nonce = None;
+                if state.recovered_once {
+                    false
+                } else {
+                    state.recovered_once = true;
+                    true
+                }
+            } else {
+                false
+            }
+        };
+
+        if should_recover {
+            window_clone.eval("window.location.reload();").ok();
+        }
+    });
+}
 
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         window.unminimize().ok();
         window.show().ok();
         window.set_focus().ok();
+        schedule_window_watchdog(app, &window);
+    }
+}
+
+fn visible_main_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
+    let window = app.get_webview_window("main")?;
+    if window.is_visible().ok()? {
+        Some(window)
+    } else {
+        None
     }
 }
 
@@ -37,6 +102,7 @@ pub fn run() {
         .manage(db::Db::new().expect("Failed to init SQLite"))
         .manage(Arc::new(Mutex::new(downloads::DownloadQueue::new(2))) as downloads::SharedQueue)
         .manage(TrayState(Mutex::new(None)))
+        .manage(WatchdogState(Mutex::new(HashMap::new())))
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::ftp_list_raw,
@@ -72,10 +138,16 @@ pub fn run() {
             commands::check_media_badges,
             commands::ftp_list_root_dirs,
             commands::ftp_list_root_dirs_preview,
+            commands::watchdog_pong,
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {
                 return;
+            }
+            if let tauri::WindowEvent::Focused(true) = event {
+                if let Some(main_window) = window.app_handle().get_webview_window("main") {
+                    schedule_window_watchdog(&window.app_handle(), &main_window);
+                }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -173,10 +245,10 @@ pub fn run() {
                 let interval_secs = std::time::Duration::from_secs(15 * 60);
                 let db = handle.state::<db::Db>().inner().clone();
                 let queue = handle.state::<downloads::SharedQueue>().inner().clone();
-                if let Some(window) = handle.get_webview_window("main") {
+                if let Some(window) = visible_main_window(&handle) {
                     commands::resume_pending_downloads(db.clone(), queue.clone(), window).await.ok();
                 }
-                if let Some(window) = handle.get_webview_window("main") {
+                if let Some(window) = visible_main_window(&handle) {
                     commands::refresh_all_metadata_internal(db.clone(), Some(window)).await.ok();
                 }
                 let last_indexed_at = db.load_last_indexed_at().ok().flatten();
@@ -188,12 +260,9 @@ pub fn run() {
                     .unwrap_or(true);
 
                 if should_run_now {
-                    if let Some(window) = handle.get_webview_window("main") {
-                        commands::start_indexing_internal(db.clone(), Some(window)).await.ok();
-                    }
-                    if let Some(window) = handle.get_webview_window("main") {
-                        commands::refresh_all_metadata_internal(db.clone(), Some(window)).await.ok();
-                    }
+                    let window = visible_main_window(&handle);
+                    commands::start_indexing_internal(db.clone(), window.clone()).await.ok();
+                    commands::refresh_all_metadata_internal(db.clone(), window).await.ok();
                 } else if let Some(value) = last_indexed_at
                     .as_deref()
                     .and_then(|raw| chrono::DateTime::parse_from_rfc3339(raw).ok())
@@ -205,12 +274,9 @@ pub fn run() {
                 let mut interval = tokio::time::interval(interval_secs);
                 loop {
                     interval.tick().await;
-                    if let Some(window) = handle.get_webview_window("main") {
-                        commands::start_indexing_internal(db.clone(), Some(window)).await.ok();
-                    }
-                    if let Some(window) = handle.get_webview_window("main") {
-                        commands::refresh_all_metadata_internal(db.clone(), Some(window)).await.ok();
-                    }
+                    let window = visible_main_window(&handle);
+                    commands::start_indexing_internal(db.clone(), window.clone()).await.ok();
+                    commands::refresh_all_metadata_internal(db.clone(), window).await.ok();
                 }
             });
             Ok(())
