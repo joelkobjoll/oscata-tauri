@@ -142,57 +142,22 @@ export default function DetailPanel({
           top: 0,
           right: 0,
           bottom: 0,
-                  {(() => {
-                    const versionDownloadItem = downloadMap.get(version.ftp_path);
-                    const versionIsPending = isDownloadPending(version.ftp_path);
-                    const versionIsActive =
-                      versionIsPending ||
-                      versionDownloadItem?.status === "queued" ||
-                      versionDownloadItem?.status === "downloading";
-                    const versionIsDownloaded =
-                      versionDownloadItem?.status === "done" ||
-                      downloadedBadgeMap[version.id]?.downloaded === true;
-                    const downloadLabel = versionIsDownloaded
-                      ? t(language, "detail.alreadyDownloaded")
-                      : versionDownloadItem?.status === "downloading"
-                        ? t(language, "downloads.downloading")
-                        : versionIsActive
-                          ? t(language, "downloads.queued")
-                          : t(language, "detail.download");
-
-                    return (
-                      <button
-                        onClick={() => void onDownload(version)}
-                        disabled={versionIsActive || versionIsDownloaded}
-                        title={
-                          versionIsDownloaded
-                            ? t(language, "detail.alreadyDownloadedHint")
-                            : downloadLabel
-                        }
-                        style={{
-                          padding: "9px 12px",
-                          borderRadius: "var(--radius-full)",
-                          border: "none",
-                          background: versionIsDownloaded
-                            ? "color-mix(in srgb, var(--color-success) 18%, var(--color-surface) 82%)"
-                            : versionIsActive
-                              ? "color-mix(in srgb, var(--color-warning) 26%, var(--color-surface) 74%)"
-                              : "color-mix(in srgb, var(--color-primary) 16%, transparent)",
-                          color: versionIsDownloaded
-                            ? "var(--color-success)"
-                            : versionIsActive
-                              ? "var(--color-warning)"
-                              : "var(--color-primary)",
-                          cursor: versionIsActive || versionIsDownloaded ? "default" : "pointer",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          opacity: versionIsActive || versionIsDownloaded ? 0.8 : 1,
-                        }}
-                      >
-                        {downloadLabel}
-                      </button>
-                    );
-                  })()}
+          width: 500,
+          background: "var(--color-bg)",
+          zIndex: "var(--z-detail-panel)",
+          overflowY: "auto",
+          borderLeft:
+            "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+          boxShadow: "-4px 0 32px color-mix(in srgb, black 50%, transparent)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: "1.25rem 1.5rem 1rem",
+            display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             borderBottom:
@@ -508,22 +473,58 @@ export default function DetailPanel({
                         {t(language, "detail.viewFileDetails")}
                       </button>
                     )}
-                    <button
-                      onClick={() => startDownload(version)}
-                      style={{
-                        padding: "9px 12px",
-                        borderRadius: "var(--radius-full)",
-                        border: "none",
-                        background:
-                          "color-mix(in srgb, var(--color-primary) 16%, transparent)",
-                        color: "var(--color-primary)",
-                        cursor: "pointer",
-                        fontSize: 12,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {t(language, "detail.download")}
-                    </button>
+                    {(() => {
+                      const versionDownloadItem = downloadMap.get(version.ftp_path);
+                      const versionIsPending = isDownloadPending(version.ftp_path);
+                      const versionIsActive =
+                        versionIsPending ||
+                        versionDownloadItem?.status === "queued" ||
+                        versionDownloadItem?.status === "downloading";
+                      const versionIsDownloaded =
+                        versionDownloadItem?.status === "done" ||
+                        downloadedBadgeMap[version.id]?.downloaded === true;
+                      const downloadLabel = versionIsDownloaded
+                        ? t(language, "detail.alreadyDownloaded")
+                        : versionDownloadItem?.status === "downloading"
+                          ? t(language, "downloads.downloading")
+                          : versionIsActive
+                            ? t(language, "downloads.queued")
+                            : t(language, "detail.download");
+
+                      return (
+                        <button
+                          onClick={() => void onDownload(version)}
+                          disabled={versionIsActive || versionIsDownloaded}
+                          title={
+                            versionIsDownloaded
+                              ? t(language, "detail.alreadyDownloadedHint")
+                              : downloadLabel
+                          }
+                          style={{
+                            padding: "9px 12px",
+                            borderRadius: "var(--radius-full)",
+                            border: "none",
+                            background: versionIsDownloaded
+                              ? "color-mix(in srgb, var(--color-success) 18%, var(--color-surface) 82%)"
+                              : versionIsActive
+                                ? "color-mix(in srgb, var(--color-warning) 26%, var(--color-surface) 74%)"
+                                : "color-mix(in srgb, var(--color-primary) 16%, transparent)",
+                            color: versionIsDownloaded
+                              ? "var(--color-success)"
+                              : versionIsActive
+                                ? "var(--color-warning)"
+                                : "var(--color-primary)",
+                            cursor:
+                              versionIsActive || versionIsDownloaded ? "default" : "pointer",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            opacity: versionIsActive || versionIsDownloaded ? 0.8 : 1,
+                          }}
+                        >
+                          {downloadLabel}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}
