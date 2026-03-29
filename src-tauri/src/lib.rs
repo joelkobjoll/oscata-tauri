@@ -8,6 +8,32 @@ mod tmdb;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
+fn resolve_seed_db_path(app: &tauri::App) -> Option<std::path::PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Ok(path) = app
+        .path()
+        .resolve("library.seed.db", tauri::path::BaseDirectory::Resource)
+    {
+        candidates.push(path);
+    }
+
+    if let Ok(path) = app
+        .path()
+        .resolve("resources/library.seed.db", tauri::path::BaseDirectory::Resource)
+    {
+        candidates.push(path);
+    }
+
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            candidates.push(exe_dir.join("resources").join("library.seed.db"));
+        }
+    }
+
+    candidates.into_iter().find(|candidate| candidate.exists())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -50,12 +76,8 @@ pub fn run() {
             let db = app.state::<db::Db>().inner().clone();
             let queue = app.state::<downloads::SharedQueue>().inner().clone();
             if !db.has_config().unwrap_or(false) {
-                if let Ok(seed_path) =
-                    app.path().resolve("resources/library.seed.db", tauri::path::BaseDirectory::Resource)
-                {
-                    if seed_path.exists() {
-                        db.import_database_from(&seed_path.to_string_lossy()).ok();
-                    }
+                if let Some(seed_path) = resolve_seed_db_path(app) {
+                    db.import_database_from(&seed_path.to_string_lossy()).ok();
                 }
             }
             let current_version = app.package_info().version.to_string();
