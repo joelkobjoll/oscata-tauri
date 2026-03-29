@@ -4,9 +4,17 @@ use std::sync::{Arc, Mutex};
 
 const DEFAULT_FTP_ROOT: &str = "/Compartida";
 const DEFAULT_FOLDER_TYPES: &str =
-    r#"{"Peliculas":"movie","Series":"tv","Documentales":"documentary","Movies":"movie","TV Shows":"tv","Documentaries":"documentary","Documentales 4K 2160p - HD 1080p":"documentary","P-Peticiones":"mixed","Peliculas BDRemux 1080p":"movie","Peliculas BDrip 1080p X264":"movie","Peliculas BDrip 1080p X265":"movie","Peliculas UHDRemux 2160p":"movie","Peliculas WEB DL Micro 1080p":"movie","Peliculas WEB DL-UHDRip 2160p":"movie","Peliculas y Series mas antiguas":"movie","Series 4K 2160p":"tv","Series HD 1080p":"tv","Series HD 1080p X265":"tv"}"#;
+    r#"{"Documentales 4K 2160p - HD 1080p":"documentary","P-Peticiones":"mixed","Peliculas BDRemux 1080p":"movie","Peliculas BDrip 1080p X264":"movie","Peliculas BDrip 1080p X265":"movie","Peliculas UHDRemux 2160p":"movie","Peliculas WEB DL Micro 1080p":"movie","Peliculas WEB DL-UHDRip 2160p":"movie","Peliculas y Series mas antiguas":"movie","Series 4K 2160p":"tv","Series HD 1080p":"tv","Series HD 1080p X265":"tv"}"#;
 const LEGACY_FOLDER_TYPES: &str =
     r#"{"Peliculas":"movie","Series":"tv","Documentales":"documentary","Movies":"movie","TV Shows":"tv","Documentaries":"documentary"}"#;
+const REMOVED_FOLDER_TYPE_KEYS: &[&str] = &[
+    "Peliculas",
+    "Series",
+    "Documentales",
+    "Movies",
+    "Documentaries",
+    "TV Shows",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -78,6 +86,23 @@ impl Db {
         DEFAULT_FOLDER_TYPES.to_string()
     }
 
+    fn merged_folder_types(raw: &str) -> String {
+        let defaults = serde_json::from_str::<std::collections::HashMap<String, String>>(
+            DEFAULT_FOLDER_TYPES,
+        )
+        .unwrap_or_default();
+        let parsed = serde_json::from_str::<std::collections::HashMap<String, String>>(raw)
+            .unwrap_or_default();
+        let parsed = parsed
+            .into_iter()
+            .filter(|(key, _)| !REMOVED_FOLDER_TYPE_KEYS.contains(&key.as_str()));
+        let merged = defaults
+            .into_iter()
+            .chain(parsed)
+            .collect::<std::collections::HashMap<_, _>>();
+        serde_json::to_string(&merged).unwrap_or_else(|_| Self::default_folder_types())
+    }
+
     fn normalized_folder_types(value: Option<String>) -> String {
         match value {
             Some(raw) => {
@@ -85,7 +110,7 @@ impl Db {
                 if trimmed.is_empty() || trimmed == "{}" || trimmed == LEGACY_FOLDER_TYPES {
                     Self::default_folder_types()
                 } else {
-                    raw
+                    Self::merged_folder_types(&raw)
                 }
             }
             None => Self::default_folder_types(),

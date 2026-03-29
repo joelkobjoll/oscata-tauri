@@ -1,12 +1,6 @@
 export type FolderTypeValue = "movie" | "tv" | "documentary" | "mixed";
 
 export const DEFAULT_FOLDER_TYPES: Record<string, FolderTypeValue> = {
-  Peliculas: "movie",
-  Series: "tv",
-  Documentales: "documentary",
-  Movies: "movie",
-  "TV Shows": "tv",
-  Documentaries: "documentary",
   "Documentales 4K 2160p - HD 1080p": "documentary",
   "P-Peticiones": "mixed",
   "Peliculas BDRemux 1080p": "movie",
@@ -23,14 +17,30 @@ export const DEFAULT_FOLDER_TYPES: Record<string, FolderTypeValue> = {
 
 export const DEFAULT_FOLDER_TYPES_STRING = JSON.stringify(DEFAULT_FOLDER_TYPES);
 
+const REMOVED_FOLDER_TYPE_KEYS = new Set([
+  "Peliculas",
+  "Series",
+  "Documentales",
+  "Movies",
+  "Documentaries",
+  "TV Shows",
+]);
+
 const LEGACY_DEFAULT_FOLDER_TYPES = JSON.stringify({
   Peliculas: "movie",
   Series: "tv",
   Documentales: "documentary",
   Movies: "movie",
-  "TV Shows": "tv",
   Documentaries: "documentary",
 });
+
+function sanitizeFolderTypes(
+  value: Record<string, FolderTypeValue>,
+): Record<string, FolderTypeValue> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => !REMOVED_FOLDER_TYPE_KEYS.has(key)),
+  ) as Record<string, FolderTypeValue>;
+}
 
 function normalizeFolderName(value: string): string {
   return value
@@ -46,7 +56,8 @@ export function parseFolderTypes(raw: string | null | undefined): Record<string,
   }
 
   try {
-    return JSON.parse(trimmed) as Record<string, FolderTypeValue>;
+    const parsed = JSON.parse(trimmed) as Record<string, FolderTypeValue>;
+    return { ...DEFAULT_FOLDER_TYPES, ...sanitizeFolderTypes(parsed) };
   } catch {
     return { ...DEFAULT_FOLDER_TYPES };
   }
