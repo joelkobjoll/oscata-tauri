@@ -1,0 +1,9 @@
+.git
+.github
+.vscode
+node_modules
+dist
+src-tauri/target
+docker/*.local
+*.log
+.DS_Store

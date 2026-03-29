@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>oscata-vnc</Name>
+  <Repository>oscata-vnc</Repository>
+  <Registry>https://hub.docker.com/</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project/>
+  <Overview>Linux Tauri desktop runtime for Oscata with VNC, optional noVNC, and built-in WebGUI exposure.</Overview>
+  <Category>MediaApp:Tools</Category>
+  <WebUI>http://[IP]:[PORT:6080]/vnc.html</WebUI>
+  <TemplateURL/>
+  <Icon/>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Description>Runs the Oscata Linux desktop app under Xvfb/Fluxbox with VNC access and exposes the existing WebGUI port for power-user access.</Description>
+
+  <Config Name="AppData" Target="/config" Default="/mnt/user/appdata/oscata-vnc" Mode="rw" Description="Persistent app data, SQLite DB, config, and VNC state" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/oscata-vnc</Config>
+  <Config Name="Downloads" Target="/downloads" Default="/mnt/user/data/downloads/oscata" Mode="rw" Description="Downloads target exposed to the app" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/data/downloads/oscata</Config>
+
+  <Config Name="VNC" Target="5900" Default="5900" Mode="tcp" Description="Raw VNC desktop port" Type="Port" Display="always" Required="true" Mask="false">5900</Config>
+  <Config Name="noVNC" Target="6080" Default="6080" Mode="tcp" Description="Browser VNC client port" Type="Port" Display="always" Required="true" Mask="false">6080</Config>
+  <Config Name="WebGUI" Target="47860" Default="47860" Mode="tcp" Description="Built-in Oscata WebGUI port" Type="Port" Display="always" Required="true" Mask="false">47860</Config>
+
+  <Config Name="VNC_PASSWORD" Target="VNC_PASSWORD" Default="change-me" Mode="" Description="Optional VNC password; leave blank for open VNC" Type="Variable" Display="always" Required="false" Mask="true">change-me</Config>
+  <Config Name="VNC_RESOLUTION" Target="VNC_RESOLUTION" Default="1440x960" Mode="" Description="Virtual desktop resolution" Type="Variable" Display="always" Required="false" Mask="false">1440x960</Config>
+  <Config Name="OSCATA_BOOTSTRAP_WEBGUI" Target="OSCATA_BOOTSTRAP_WEBGUI" Default="1" Mode="" Description="Enable one-time WebGUI bootstrap on first start" Type="Variable" Display="always" Required="false" Mask="false">1</Config>
+  <Config Name="OSCATA_WEBGUI_HOST" Target="OSCATA_WEBGUI_HOST" Default="0.0.0.0" Mode="" Description="WebGUI bind host" Type="Variable" Display="advanced" Required="false" Mask="false">0.0.0.0</Config>
+  <Config Name="OSCATA_WEBGUI_PORT" Target="OSCATA_WEBGUI_PORT" Default="47860" Mode="" Description="WebGUI internal port" Type="Variable" Display="advanced" Required="false" Mask="false">47860</Config>
+  <Config Name="OSCATA_WEBGUI_EXPOSED_PORT" Target="OSCATA_WEBGUI_EXPOSED_PORT" Default="47860" Mode="" Description="Externally visible WebGUI port" Type="Variable" Display="advanced" Required="false" Mask="false">47860</Config>
+  <Config Name="OSCATA_WEBGUI_APP_URL" Target="OSCATA_WEBGUI_APP_URL" Default="" Mode="" Description="Optional external URL for email links" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="OSCATA_WEBGUI_OTP_ENABLED" Target="OSCATA_WEBGUI_OTP_ENABLED" Default="0" Mode="" Description="Require email OTP in WebGUI login" Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+</Container>
