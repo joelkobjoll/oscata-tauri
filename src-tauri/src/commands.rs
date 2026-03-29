@@ -1,7 +1,19 @@
 use std::sync::Arc;
+use std::sync::LazyLock;
 use tauri::Emitter;
 use tauri::Manager;
 use tauri::WebviewWindow;
+
+static TV_CONTENT_HINT_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?ix)
+        (?:\bS\d{1,3}[\s._-]*E\d{1,3}\b)
+        |(?:\b\d{1,2}x\d{1,3}\b)
+        |(?:\b(?:season|temporada|episode|episodio|capitulo)\b)
+        ",
+    )
+    .expect("valid tv content hint regex")
+});
 
 fn persist_download_state(
     db: &crate::db::Db,
@@ -225,6 +237,17 @@ fn detect_media_type(
     let rel = path.strip_prefix(root.trim_end_matches('/')).unwrap_or(path);
     let first_seg = rel.trim_start_matches('/').split('/').next()?;
     folder_types.get(first_seg).cloned()
+}
+
+fn looks_like_tv_content(path: &str, filename: &str, parsed: &crate::parser::ParsedMedia) -> bool {
+    if parsed.season.is_some() || parsed.episode.is_some() || parsed.episode_end.is_some() {
+        return true;
+    }
+
+    let normalized = format!("{} {}", path, filename)
+        .replace(['.', '_'], " ")
+        .to_lowercase();
+    TV_CONTENT_HINT_RE.is_match(&normalized)
 }
 
 fn normalize_title(value: &str) -> String {
@@ -672,7 +695,7 @@ pub async fn start_indexing_internal(
 
         // Detect media_type from folder_types mapping (first path segment after root)
         let media_type = detect_media_type(&file.path, &root, &folder_types);
-        let looks_episode = parsed.season.is_some() || parsed.episode.is_some() || parsed.episode_end.is_some();
+        let looks_episode = looks_like_tv_content(&file.path, &file.filename, &parsed);
         let media_type = match media_type.as_deref() {
             Some("mixed") => if looks_episode { Some("tv".to_string()) } else { Some("movie".to_string()) },
             Some("movie") if looks_episode => Some("tv".to_string()),
