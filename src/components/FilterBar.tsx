@@ -224,6 +224,25 @@ export default function FilterBar({
     filters.resolution,
     filters.hdr,
   ].filter(Boolean).length;
+
+  const releaseTypeFilterOptions = releaseTypeOptions.filter(
+    (option) =>
+      releaseTypeCounts.has(option) || filters.releaseType === option,
+  );
+  const resolutionFilterOptions = RESOLUTION_OPTIONS.filter(
+    (option) =>
+      resolutionCounts.has(option.value) || filters.resolution === option.value,
+  );
+  const hdrFilterOptions = HDR_OPTIONS.filter(
+    (option) => hdrCounts.has(option.value) || filters.hdr === option.value,
+  );
+
+  const showReleaseTypeSection =
+    releaseTypeFilterOptions.length > 1 || !!filters.releaseType;
+  const showResolutionSection =
+    resolutionFilterOptions.length > 1 || !!filters.resolution;
+  const showHdrSection = hdrFilterOptions.length > 1 || !!filters.hdr;
+
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
 
   return (
@@ -350,20 +369,16 @@ export default function FilterBar({
         </div>
       </Section>
 
-      <Section label={t(language, "filter.type")}>
-        <div style={{ display: "grid", gap: 8 }}>
-          <Chip
-            label={t(language, "filter.allTypes")}
-            count={items.length}
-            active={!filters.releaseType}
-            onClick={() => set({ releaseType: "" })}
-          />
-          {releaseTypeOptions
-            .filter(
-              (option) =>
-                releaseTypeCounts.has(option) || filters.releaseType === option,
-            )
-            .map((option) => (
+      {showReleaseTypeSection && (
+        <Section label={t(language, "filter.type")}>
+          <div style={{ display: "grid", gap: 8 }}>
+            <Chip
+              label={t(language, "filter.allTypes")}
+              count={items.length}
+              active={!filters.releaseType}
+              onClick={() => set({ releaseType: "" })}
+            />
+            {releaseTypeFilterOptions.map((option) => (
               <Chip
                 key={option}
                 label={option}
@@ -376,66 +391,64 @@ export default function FilterBar({
                 }
               />
             ))}
-        </div>
-      </Section>
+          </div>
+        </Section>
+      )}
 
-      <Section label={t(language, "filter.resolution")}>
-        <div style={{ display: "grid", gap: 8 }}>
-          <Chip
-            label={t(language, "filter.allResolutions")}
-            count={items.length}
-            active={!filters.resolution}
-            onClick={() => set({ resolution: "" })}
-          />
-          {RESOLUTION_OPTIONS.filter(
-            (option) =>
-              resolutionCounts.has(option.value) ||
-              filters.resolution === option.value,
-          ).map((option) => (
+      {showResolutionSection && (
+        <Section label={t(language, "filter.resolution")}>
+          <div style={{ display: "grid", gap: 8 }}>
             <Chip
-              key={option.value}
-              label={option.label}
-              count={resolutionCounts.get(option.value) ?? 0}
-              active={filters.resolution === option.value}
-              onClick={() =>
-                set({
-                  resolution:
-                    filters.resolution === option.value ? "" : option.value,
-                })
-              }
+              label={t(language, "filter.allResolutions")}
+              count={items.length}
+              active={!filters.resolution}
+              onClick={() => set({ resolution: "" })}
             />
-          ))}
-        </div>
-      </Section>
+            {resolutionFilterOptions.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                count={resolutionCounts.get(option.value) ?? 0}
+                active={filters.resolution === option.value}
+                onClick={() =>
+                  set({
+                    resolution:
+                      filters.resolution === option.value ? "" : option.value,
+                  })
+                }
+              />
+            ))}
+          </div>
+        </Section>
+      )}
 
-      <Section label={t(language, "filter.hdr")}>
-        <div style={{ display: "grid", gap: 8 }}>
-          <Chip
-            label={t(language, "filter.allHdr")}
-            count={items.length}
-            active={!filters.hdr}
-            onClick={() => set({ hdr: "" })}
-          />
-          {HDR_OPTIONS.filter(
-            (option) =>
-              hdrCounts.has(option.value) || filters.hdr === option.value,
-          ).map((option) => (
+      {showHdrSection && (
+        <Section label={t(language, "filter.hdr")}>
+          <div style={{ display: "grid", gap: 8 }}>
             <Chip
-              key={option.value}
-              label={
-                "labelKey" in option
-                  ? t(language, option.labelKey)
-                  : option.label
-              }
-              count={hdrCounts.get(option.value) ?? 0}
-              active={filters.hdr === option.value}
-              onClick={() =>
-                set({ hdr: filters.hdr === option.value ? "" : option.value })
-              }
+              label={t(language, "filter.allHdr")}
+              count={items.length}
+              active={!filters.hdr}
+              onClick={() => set({ hdr: "" })}
             />
-          ))}
-        </div>
-      </Section>
+            {hdrFilterOptions.map((option) => (
+              <Chip
+                key={option.value}
+                label={
+                  "labelKey" in option
+                    ? t(language, option.labelKey)
+                    : option.label
+                }
+                count={hdrCounts.get(option.value) ?? 0}
+                active={filters.hdr === option.value}
+                onClick={() =>
+                  set({ hdr: filters.hdr === option.value ? "" : option.value })
+                }
+              />
+            ))}
+          </div>
+        </Section>
+      )}
     </aside>
   );
 }
