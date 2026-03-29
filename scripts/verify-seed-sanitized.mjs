@@ -3,7 +3,12 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const rootDir = path.resolve(import.meta.dirname, "..");
-const seedDbPath = path.join(rootDir, "src-tauri", "resources", "library.seed.db");
+const seedDbPath = path.join(
+  rootDir,
+  "src-tauri",
+  "resources",
+  "library.seed.db",
+);
 
 const SENSITIVE_CONFIG_KEYS = [
   "tmdb_api_key",
@@ -19,6 +24,7 @@ const TABLES_SHOULD_BE_EMPTY = [
   "web_users",
   "web_sessions",
   "web_invites",
+  "web_otp_challenges",
   "web_otps",
   "download_state",
 ];
@@ -29,9 +35,16 @@ function fail(message) {
 }
 
 function runPython(script, args = []) {
-  const attempts = process.platform === "win32"
-    ? [["py", ["-3", "-c", script, ...args]], ["python", ["-c", script, ...args]]]
-    : [["python3", ["-c", script, ...args]], ["python", ["-c", script, ...args]]];
+  const attempts =
+    process.platform === "win32"
+      ? [
+          ["py", ["-3", "-c", script, ...args]],
+          ["python", ["-c", script, ...args]],
+        ]
+      : [
+          ["python3", ["-c", script, ...args]],
+          ["python", ["-c", script, ...args]],
+        ];
 
   for (const [bin, binArgs] of attempts) {
     const result = spawnSync(bin, binArgs, { encoding: "utf8" });
@@ -93,10 +106,13 @@ print(json.dumps(result))
     fail("Could not parse seed DB verification output.");
   }
 
-  const sensitiveRows = Array.isArray(parsed.sensitive_rows) ? parsed.sensitive_rows : [];
-  const tableCounts = parsed.table_counts && typeof parsed.table_counts === "object"
-    ? parsed.table_counts
-    : {};
+  const sensitiveRows = Array.isArray(parsed.sensitive_rows)
+    ? parsed.sensitive_rows
+    : [];
+  const tableCounts =
+    parsed.table_counts && typeof parsed.table_counts === "object"
+      ? parsed.table_counts
+      : {};
 
   if (sensitiveRows.length > 0) {
     const keys = sensitiveRows.map((row) => row[0]).join(", ");
@@ -108,7 +124,9 @@ print(json.dumps(result))
     .map(([table, count]) => `${table}=${count}`);
 
   if (nonEmptyTables.length > 0) {
-    fail(`Bundled seed DB has non-empty sensitive/local tables: ${nonEmptyTables.join(", ")}`);
+    fail(
+      `Bundled seed DB has non-empty sensitive/local tables: ${nonEmptyTables.join(", ")}`,
+    );
   }
 
   console.log("[seed-verify] OK: bundled seed DB is sanitized.");

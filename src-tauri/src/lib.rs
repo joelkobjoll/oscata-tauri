@@ -141,6 +141,19 @@ pub fn run() {
                 );
             }
             if let Some(seed_path) = commands::resolve_seed_db_path(&app.handle().clone()) {
+                match db.refresh_library_from_seed(&seed_path, &current_version) {
+                    Ok((inserted, merged)) if inserted > 0 || merged > 0 => {
+                        println!(
+                            "Refreshed user library from bundled seed (inserted {}, merged {})",
+                            inserted, merged
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        eprintln!("Seed library refresh skipped: {error}");
+                    }
+                }
+
                 match db.backfill_imdb_ids_from_seed(&seed_path) {
                     Ok(updated) if updated > 0 => {
                         println!(

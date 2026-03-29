@@ -437,7 +437,7 @@ impl Db {
         conn.execute_batch(&format!("ATTACH '{}' AS seed;", escaped_seed_path))
             .map_err(|e| e.to_string())?;
 
-        let result = (|| {
+        let result: Result<usize, String> = (|| {
             let mut stmt = conn
                 .prepare("PRAGMA seed.table_info(media_items)")
                 .map_err(|e| e.to_string())?;
@@ -473,6 +473,162 @@ impl Db {
 
         conn.execute_batch("DETACH seed;").ok();
         result
+    }
+
+    pub fn refresh_library_from_seed(
+        &self,
+        seed_path: &std::path::Path,
+        app_version: &str,
+    ) -> Result<(usize, usize), String> {
+        if !seed_path.exists() {
+            return Ok((0, 0));
+        }
+
+        let refresh_key = format!("seed_library_refreshed_for_{}", app_version);
+        if self.load_app_value(&refresh_key)?.as_deref() == Some("1") {
+            return Ok((0, 0));
+        }
+
+        let escaped_seed_path = Self::escape_sqlite_path(seed_path);
+        let conn = self.0.lock().unwrap();
+
+        conn.execute_batch(&format!("ATTACH '{}' AS seed;", escaped_seed_path))
+            .map_err(|e| e.to_string())?;
+
+        let result: Result<(usize, usize), String> = (|| {
+            let seed_has_media = conn
+                .query_row(
+                    "SELECT 1 FROM seed.sqlite_master WHERE type='table' AND name='media_items' LIMIT 1",
+                    [],
+                    |_row| Ok(()),
+                )
+                .optional()
+                .map_err(|e| e.to_string())?
+                .is_some();
+
+            if !seed_has_media {
+                return Ok((0, 0));
+            }
+
+            let inserted = conn
+                .execute(
+                    "INSERT INTO media_items (
+                        ftp_path, filename, size_bytes, title, year, season, episode, episode_end,
+                        resolution, codec, audio_codec, languages, hdr, release_type, release_group,
+                        media_type, tmdb_id, imdb_id, tmdb_type, tmdb_title, tmdb_title_en, tmdb_year,
+                        tmdb_release_date, tmdb_overview, tmdb_overview_en, tmdb_poster, tmdb_poster_en,
+                        tmdb_rating, tmdb_genres, indexed_at, metadata_at, manual_match
+                    )
+                    SELECT
+                        src.ftp_path, src.filename, src.size_bytes, src.title, src.year, src.season, src.episode, src.episode_end,
+                        src.resolution, src.codec, src.audio_codec, src.languages, src.hdr, src.release_type, src.release_group,
+                        src.media_type, src.tmdb_id, src.imdb_id, src.tmdb_type, src.tmdb_title, src.tmdb_title_en, src.tmdb_year,
+                        src.tmdb_release_date, src.tmdb_overview, src.tmdb_overview_en, src.tmdb_poster, src.tmdb_poster_en,
+                        src.tmdb_rating, src.tmdb_genres, src.indexed_at, src.metadata_at, COALESCE(src.manual_match, 0)
+                    FROM seed.media_items src
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM media_items local WHERE local.ftp_path = src.ftp_path
+                    )",
+                    [],
+                )
+                .map_err(|e| e.to_string())?;
+
+            let merged = conn
+                .execute(
+                    "UPDATE media_items
+                    SET
+                        imdb_id = COALESCE(NULLIF(TRIM(imdb_id), ''), (
+                            SELECT NULLIF(TRIM(src.imdb_id), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        indexed_at = COALESCE(NULLIF(TRIM(indexed_at), ''), (
+                            SELECT NULLIF(TRIM(src.indexed_at), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        media_type = COALESCE(NULLIF(TRIM(media_type), ''), (
+                            SELECT NULLIF(TRIM(src.media_type), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        tmdb_type = COALESCE(NULLIF(TRIM(tmdb_type), ''), (
+                            SELECT NULLIF(TRIM(src.tmdb_type), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        tmdb_id = COALESCE(tmdb_id, (
+                            SELECT src.tmdb_id
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        tmdb_title = COALESCE(NULLIF(TRIM(tmdb_title), ''), (
+                            SELECT NULLIF(TRIM(src.tmdb_title), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        tmdb_title_en = COALESCE(NULLIF(TRIM(tmdb_title_en), ''), (
+                            SELECT NULLIF(TRIM(src.tmdb_title_en), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        tmdb_release_date = COALESCE(NULLIF(TRIM(tmdb_release_date), ''), (
+                            SELECT NULLIF(TRIM(src.tmdb_release_date), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        tmdb_overview = COALESCE(NULLIF(TRIM(tmdb_overview), ''), (
+                            SELECT NULLIF(TRIM(src.tmdb_overview), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        tmdb_overview_en = COALESCE(NULLIF(TRIM(tmdb_overview_en), ''), (
+                            SELECT NULLIF(TRIM(src.tmdb_overview_en), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        tmdb_poster = COALESCE(NULLIF(TRIM(tmdb_poster), ''), (
+                            SELECT NULLIF(TRIM(src.tmdb_poster), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        tmdb_poster_en = COALESCE(NULLIF(TRIM(tmdb_poster_en), ''), (
+                            SELECT NULLIF(TRIM(src.tmdb_poster_en), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        tmdb_rating = COALESCE(tmdb_rating, (
+                            SELECT src.tmdb_rating
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        tmdb_genres = COALESCE(NULLIF(TRIM(tmdb_genres), ''), (
+                            SELECT NULLIF(TRIM(src.tmdb_genres), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        )),
+                        metadata_at = COALESCE(NULLIF(TRIM(metadata_at), ''), (
+                            SELECT NULLIF(TRIM(src.metadata_at), '')
+                            FROM seed.media_items src
+                            WHERE src.ftp_path = media_items.ftp_path
+                        ))
+                    WHERE EXISTS (
+                        SELECT 1 FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path
+                    )",
+                    [],
+                )
+                .map_err(|e| e.to_string())?;
+
+            Ok((inserted, merged))
+        })();
+
+        conn.execute_batch("DETACH seed;").ok();
+        let (inserted, merged) = result?;
+
+        drop(conn);
+        self.save_app_value(&refresh_key, "1")?;
+
+        Ok((inserted, merged))
     }
 
     pub fn backup_database_for_update(

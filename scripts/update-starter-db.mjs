@@ -43,7 +43,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--dry-run") dryRun = true;
-    else if (arg === "--from") source = argv[i + 1] ?? null, i += 1;
+    else if (arg === "--from") ((source = argv[i + 1] ?? null), (i += 1));
     else if (!arg.startsWith("--")) source = arg;
   }
 
@@ -51,9 +51,16 @@ function parseArgs(argv) {
 }
 
 function runPython(script, args = []) {
-  const attempts = process.platform === "win32"
-    ? [["py", ["-3", "-c", script, ...args]], ["python", ["-c", script, ...args]]]
-    : [["python3", ["-c", script, ...args]], ["python", ["-c", script, ...args]]];
+  const attempts =
+    process.platform === "win32"
+      ? [
+          ["py", ["-3", "-c", script, ...args]],
+          ["python", ["-c", script, ...args]],
+        ]
+      : [
+          ["python3", ["-c", script, ...args]],
+          ["python", ["-c", script, ...args]],
+        ];
 
   for (const [bin, binArgs] of attempts) {
     const result = spawnSync(bin, binArgs, { encoding: "utf8" });
@@ -73,7 +80,15 @@ cur = conn.cursor()
 tables = {
     row[0] for row in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
 }
-for table in ("app_config", "web_users", "web_sessions", "web_invites", "web_otps", "download_state"):
+for table in (
+  "app_config",
+  "web_users",
+  "web_sessions",
+  "web_invites",
+  "web_otp_challenges",
+  "web_otps",
+  "download_state",
+):
     if table in tables:
         cur.execute(f"DELETE FROM {table}")
 conn.commit()
@@ -91,7 +106,9 @@ function main() {
   console.log(`[seed-db] target: ${bundledSeedDbPath}`);
 
   if (!fs.existsSync(sourcePath)) {
-    fail("Source database not found. Pass a path or create/export the app database first.");
+    fail(
+      "Source database not found. Pass a path or create/export the app database first.",
+    );
   }
 
   if (dryRun) {
