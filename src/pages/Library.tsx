@@ -17,6 +17,7 @@ import DetailPanel from "../components/DetailPanel";
 import FixMatchModal from "../components/FixMatchModal";
 import DownloadsTab from "../components/DownloadsTab";
 import DownloadFeedbackToast from "../components/DownloadFeedbackToast";
+import IndexErrorToast from "../components/IndexErrorToast";
 import TVShowPanel from "../components/TVShowPanel";
 import VirtualMediaGrid from "../components/VirtualMediaGrid";
 import { AppLanguage, getLocalizedTitle } from "../utils/mediaLanguage";
@@ -176,7 +177,15 @@ function EpisodeListView({
 }
 
 export default function Library() {
-  const { items, progress, indexError, log, clearLog } = useIndexing();
+  const {
+    items,
+    progress,
+    indexError,
+    clearIndexError,
+    retryIndexing,
+    log,
+    clearLog,
+  } = useIndexing();
   const { startDownload } = useDownload();
   const {
     downloads,
@@ -465,7 +474,8 @@ export default function Library() {
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const currentPage = Math.min(page, pageCount);
-  const pageResetKey = `${activeTab}:${filters.search}:${filters.releaseType}:${filters.resolution}:${filters.hdr}:${filters.sort}:${currentPage}:${tvView}:${movieView}`;
+  const viewResetKey = `${activeTab}:${filters.search}:${filters.releaseType}:${filters.resolution}:${filters.hdr}:${filters.sort}:${tvView}:${movieView}`;
+  const pageResetKey = `${viewResetKey}:${currentPage}`;
   const paginatedItems = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     return filtered.slice(start, start + ITEMS_PER_PAGE);
@@ -537,6 +547,10 @@ export default function Library() {
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [currentPage]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [viewResetKey]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -735,6 +749,30 @@ export default function Library() {
       cancelled = true;
     };
   }, [activeTab, paginatedItems]);
+
+  const mediaContent = useEpisodeList ? (
+    <EpisodeListView
+      key={viewResetKey}
+      items={paginatedItems}
+      onSelect={handleCardSelect}
+      resetKey={pageResetKey}
+      language={language}
+    />
+  ) : (
+    <VirtualMediaGrid
+      key={viewResetKey}
+      items={paginatedItems}
+      selecting={selecting}
+      checkedIds={checkedIds}
+      onToggleCheck={toggleCheck}
+      onCardSelect={handleCardSelect}
+      onDownload={startDownload}
+      resetKey={pageResetKey}
+      language={language}
+      badgeMap={badgeMap}
+      downloadMap={downloadMap}
+    />
+  );
 
   return (
     <div
@@ -1344,41 +1382,6 @@ export default function Library() {
                   gap: 12,
                 }}
               >
-                {indexError && (
-                  <div
-                    style={{
-                      background:
-                        "color-mix(in srgb, var(--color-danger) 12%, transparent)",
-                      border:
-                        "1px solid color-mix(in srgb, var(--color-danger) 40%, transparent)",
-                      borderRadius: "var(--radius)",
-                      padding: "10px 14px",
-                      color: "var(--color-danger)",
-                      fontSize: 13,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
-                  >
-                    <span>⚠ {indexError}</span>
-                    <button
-                      onClick={() => setShowSettings(true)}
-                      style={{
-                        border: "none",
-                        background: "none",
-                        color: "var(--color-danger)",
-                        cursor: "pointer",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        textDecoration: "underline",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {t(language, "library.openSettings")}
-                    </button>
-                  </div>
-                )}
                 <FilterBar
                   filters={filters}
                   items={filterableItems}
@@ -1408,27 +1411,7 @@ export default function Library() {
               </div>
             ) : (
               <>
-                {useEpisodeList ? (
-                  <EpisodeListView
-                    items={paginatedItems}
-                    onSelect={handleCardSelect}
-                    resetKey={pageResetKey}
-                    language={language}
-                  />
-                ) : (
-                  <VirtualMediaGrid
-                    items={paginatedItems}
-                    selecting={selecting}
-                    checkedIds={checkedIds}
-                    onToggleCheck={toggleCheck}
-                    onCardSelect={handleCardSelect}
-                    onDownload={startDownload}
-                    resetKey={pageResetKey}
-                    language={language}
-                    badgeMap={badgeMap}
-                    downloadMap={downloadMap}
-                  />
-                )}
+                {mediaContent}
 
                 {filtered.length === 0 && !progress && (
                   <div
@@ -1465,6 +1448,15 @@ export default function Library() {
 
       <IndexStatus progress={progress} language={language} />
       <DownloadFeedbackToast language={language} />
+      {indexError && (
+        <IndexErrorToast
+          message={indexError}
+          language={language}
+          onRetry={retryIndexing}
+          onOpenSettings={() => setShowSettings(true)}
+          onDismiss={clearIndexError}
+        />
+      )}
 
       {activeTab !== "downloads" && filtered.length > 0 && pageCount > 1 && (
         <div

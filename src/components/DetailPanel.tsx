@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useDownload } from "../hooks/useDownload";
 import type { DownloadItem } from "../hooks/useDownloads";
 import type { MediaItem } from "../hooks/useIndexing";
@@ -91,6 +92,28 @@ export default function DetailPanel({
       .filter(Boolean)
       .map((key) => t(language, key as never));
   })();
+  const searchTitle = item.tmdb_title_en ?? item.tmdb_title ?? item.title ?? title;
+  const searchQuery = [searchTitle, item.year ?? item.tmdb_release_date?.slice(0, 4)]
+    .filter(Boolean)
+    .join(" ");
+  const tmdbMediaType =
+    item.tmdb_type ?? (item.media_type === "tv" ? "tv" : "movie");
+  const tmdbUrl = item.tmdb_id
+    ? `https://www.themoviedb.org/${tmdbMediaType}/${item.tmdb_id}`
+    : `https://www.themoviedb.org/search?query=${encodeURIComponent(searchQuery)}`;
+  const imdbUrl = `https://www.imdb.com/find/?q=${encodeURIComponent(searchQuery)}&s=tt`;
+  const externalLinkBtn: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    padding: "10px 12px",
+    borderRadius: "var(--radius-full)",
+    border: "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+    background: "color-mix(in srgb, var(--color-surface-2) 76%, transparent)",
+    color: "var(--color-text)",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 700,
+  };
 
   return (
     <>
@@ -498,6 +521,42 @@ export default function DetailPanel({
             </div>
           </div>
         )}
+
+        <div
+          style={{
+            padding: "1rem 1.5rem",
+            borderBottom:
+              "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+          }}
+        >
+          <div
+            style={{
+              color: "var(--color-text-muted)",
+              fontSize: "0.7rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              marginBottom: 10,
+            }}
+          >
+            {t(language, "detail.links")}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={() => void openUrl(tmdbUrl)}
+              style={externalLinkBtn}
+              title={tmdbUrl}
+            >
+              {t(language, "detail.openTmdb")}
+            </button>
+            <button
+              onClick={() => void openUrl(imdbUrl)}
+              style={externalLinkBtn}
+              title={imdbUrl}
+            >
+              {t(language, "detail.openImdb")}
+            </button>
+          </div>
+        </div>
 
         {/* Actions */}
         <div

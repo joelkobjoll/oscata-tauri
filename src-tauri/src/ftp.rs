@@ -4,6 +4,11 @@ use suppaftp::types::FileType;
 use futures::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
+/// suppaftp formats addresses with backtick+quote: `"host:port"` — strip that.
+fn clean_ftp_error(e: impl std::fmt::Display) -> String {
+    e.to_string().replace("`\"", "").replace("\"`", "")
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FtpFile {
     pub path: String,
@@ -22,10 +27,10 @@ pub async fn test_connection(
     let addr = format!("{host}:{port}");
     let mut ftp = AsyncFtpStream::connect(&addr)
         .await
-        .map_err(|e| format!("Cannot connect to {addr}: {e}"))?;
+        .map_err(|e| format!("Cannot connect to {addr}: {}", clean_ftp_error(e)))?;
     ftp.login(user, pass)
         .await
-        .map_err(|e| format!("Login failed: {e}"))?;
+        .map_err(|e| format!("Login failed: {}", clean_ftp_error(e)))?;
     ftp.quit().await.ok();
     Ok(())
 }
@@ -39,8 +44,8 @@ pub async fn list_raw(
 ) -> Result<Vec<String>, String> {
     let mut ftp = AsyncFtpStream::connect(format!("{host}:{port}"))
         .await
-        .map_err(|e| e.to_string())?;
-    ftp.login(user, pass).await.map_err(|e| e.to_string())?;
+        .map_err(|e| clean_ftp_error(e))?;
+    ftp.login(user, pass).await.map_err(|e| clean_ftp_error(e))?;
     ftp.cwd(path).await.map_err(|e| format!("CWD {path}: {e}"))?;
     let entries = ftp.list(None).await.map_err(|e| e.to_string())?;
     ftp.quit().await.ok();
@@ -57,8 +62,8 @@ pub async fn list_files(
 ) -> Result<Vec<FtpFile>, String> {
     let mut ftp = AsyncFtpStream::connect(format!("{host}:{port}"))
         .await
-        .map_err(|e| e.to_string())?;
-    ftp.login(user, pass).await.map_err(|e| e.to_string())?;
+        .map_err(|e| clean_ftp_error(e))?;
+    ftp.login(user, pass).await.map_err(|e| clean_ftp_error(e))?;
     on_log(format!("Connected — starting crawl from {root}"));
 
     let mut errors: Vec<String> = vec![];

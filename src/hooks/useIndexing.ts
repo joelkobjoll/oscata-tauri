@@ -40,13 +40,18 @@ const MAX_LOG = 500;
 
 export function useIndexing() {
   const [items, setItems] = useState<MediaItem[]>([]);
-  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [indexError, setIndexError] = useState<string | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const itemIndexRef = useRef<Map<number, number>>(new Map());
 
   const rebuildIndex = (nextItems: MediaItem[]) => {
-    itemIndexRef.current = new Map(nextItems.map((item, index) => [item.id, index]));
+    itemIndexRef.current = new Map(
+      nextItems.map((item, index) => [item.id, index]),
+    );
   };
 
   const addLog = (msg: string) =>
@@ -65,40 +70,43 @@ export function useIndexing() {
   useEffect(() => {
     const unProgress = listen<MediaItem & { current: number; total: number }>(
       "index:progress",
-        ({ payload }) => {
-          setIndexError(null);
-          setProgress({ current: payload.current, total: payload.total });
-          setItems((prev) => {
-            if (itemIndexRef.current.has(payload.id)) return prev;
-            const next = [...prev, payload];
-            itemIndexRef.current.set(payload.id, next.length - 1);
-            return next;
-          });
-          if (payload.current === payload.total) {
-            setProgress(null);
-            addLog(`✓ Done — ${payload.total} files indexed`);
+      ({ payload }) => {
+        setIndexError(null);
+        setProgress({ current: payload.current, total: payload.total });
+        setItems((prev) => {
+          if (itemIndexRef.current.has(payload.id)) return prev;
+          const next = [...prev, payload];
+          itemIndexRef.current.set(payload.id, next.length - 1);
+          return next;
+        });
+        if (payload.current === payload.total) {
+          setProgress(null);
+          addLog(`✓ Done — ${payload.total} files indexed`);
         }
-      }
+      },
     );
 
     const unUpdate = listen<Partial<MediaItem> & { id: number }>(
-        "index:update",
-        ({ payload }) => {
-          setItems((prev) => {
-            const index = itemIndexRef.current.get(payload.id);
-            if (index == null) return prev;
-            const next = prev.slice();
-            next[index] = { ...next[index], ...payload };
-            return next;
-          });
-        }
-      );
+      "index:update",
+      ({ payload }) => {
+        setItems((prev) => {
+          const index = itemIndexRef.current.get(payload.id);
+          if (index == null) return prev;
+          const next = prev.slice();
+          next[index] = { ...next[index], ...payload };
+          return next;
+        });
+      },
+    );
 
-    const unError = listen<{ message: string }>("index:error", ({ payload }) => {
-      setIndexError(payload.message);
-      setProgress(null);
-      addLog(`⚠ Error: ${payload.message}`);
-    });
+    const unError = listen<{ message: string }>(
+      "index:error",
+      ({ payload }) => {
+        setIndexError(payload.message);
+        setProgress(null);
+        addLog(`⚠ Error: ${payload.message}`);
+      },
+    );
 
     const unStart = listen("index:start", () => {
       setIndexError(null);
@@ -118,5 +126,13 @@ export function useIndexing() {
     };
   }, []);
 
-  return { items, progress, indexError, log, clearLog: () => setLog([]) };
+  return {
+    items,
+    progress,
+    indexError,
+    clearIndexError: () => setIndexError(null),
+    retryIndexing: () => invoke("start_indexing").catch(console.error),
+    log,
+    clearLog: () => setLog([]),
+  };
 }

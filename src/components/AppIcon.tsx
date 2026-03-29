@@ -19,7 +19,8 @@ type IconName =
   | "more-horizontal"
   | "clock"
   | "check"
-  | "refresh-cw";
+  | "refresh-cw"
+  | "wifi-off";
 
 export default function AppIcon({
   name,
@@ -160,6 +161,16 @@ export default function AppIcon({
             <path d="M3 4v6h6" {...common} />
             <path d="M3 12a9 9 0 0 0 15.3 6.4" {...common} />
             <path d="M21 20v-6h-6" {...common} />
+          </>
+        );
+      case "wifi-off":
+        return (
+          <>
+            <path d="M2 8.8A16.2 16.2 0 0 1 12 5c3.8 0 7.3 1.3 10 3.8" {...common} />
+            <path d="M5 12.6A11.3 11.3 0 0 1 12 10c2.6 0 5 .9 7 2.6" {...common} />
+            <path d="M8.5 16.2A6.5 6.5 0 0 1 12 15c1.3 0 2.6.4 3.6 1.2" {...common} />
+            <path d="M12 20h.01" {...common} />
+            <path d="M3 3l18 18" {...common} />
           </>
         );
       default:

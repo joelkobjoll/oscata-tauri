@@ -137,6 +137,9 @@ const messages = {
   "detail.videoCodec": { es: "Codec de video", en: "Video Codec" },
   "detail.audio": { es: "Audio", en: "Audio" },
   "detail.size": { es: "Tamaño", en: "Size" },
+  "detail.links": { es: "Enlaces", en: "Links" },
+  "detail.openTmdb": { es: "Abrir en TMDB", en: "Open in TMDB" },
+  "detail.openImdb": { es: "Abrir en IMDb", en: "Open in IMDb" },
   "detail.availableVersions": {
     es: "Versiones disponibles",
     en: "Available Versions",
@@ -180,6 +183,10 @@ const messages = {
     es: "Minimizar estado de actualización",
     en: "Minimize refresh status",
   },
+
+  "toast.error.title": { es: "Error de conexión", en: "Connection error" },
+  "toast.error.retry": { es: "Reintentar", en: "Retry" },
+  "toast.error.dismiss": { es: "Descartar", en: "Dismiss" },
 
   "tv.show": { es: "Serie", en: "TV Show" },
   "tv.seasons": { es: "Temporadas", en: "Seasons" },
@@ -436,9 +443,18 @@ const messages = {
     es: "Configura una librería nueva o restaura una base de datos existente para no empezar desde cero.",
     en: "Set up a new library or restore an existing database so you do not have to start from scratch.",
   },
-  "wizard.startFresh": { es: "Empezar configuración nueva", en: "Start fresh setup" },
-  "wizard.restoreBackup": { es: "Restaurar copia de librería", en: "Restore library backup" },
-  "wizard.restoringBackup": { es: "Restaurando copia…", en: "Restoring backup…" },
+  "wizard.startFresh": {
+    es: "Empezar configuración nueva",
+    en: "Start fresh setup",
+  },
+  "wizard.restoreBackup": {
+    es: "Restaurar copia de librería",
+    en: "Restore library backup",
+  },
+  "wizard.restoringBackup": {
+    es: "Restaurando copia…",
+    en: "Restoring backup…",
+  },
   "wizard.restoreHelp": {
     es: "Selecciona un backup SQLite exportado desde otra instalación de Oscata FTP Client.",
     en: "Choose a SQLite backup exported from another Oscata FTP Client installation.",
@@ -594,7 +610,10 @@ const messages = {
     es: "Controla dónde se guardan los archivos y cuántas descargas simultáneas puede ejecutar la app.",
     en: "Control where files go and how aggressively the app downloads them.",
   },
-  "settings.backupsTitle": { es: "Backups y restauración", en: "Backups & Restore" },
+  "settings.backupsTitle": {
+    es: "Backups y restauración",
+    en: "Backups & Restore",
+  },
   "settings.backupsDescription": {
     es: "Exporta tu librería indexada o restaura una base de datos existente en una instalación nueva.",
     en: "Export your indexed library or restore an existing database into a fresh installation.",

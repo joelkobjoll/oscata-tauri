@@ -544,19 +544,35 @@ pub async fn start_indexing_internal(
         serde_json::from_str(&config.folder_types).unwrap_or_default();
     let root = config.ftp_root.clone();
 
-    let files = crate::ftp::list_files(
-        &config.ftp_host,
-        config.ftp_port,
-        &config.ftp_user,
-        &config.ftp_pass,
-        &root,
-        on_log.clone(),
-    )
-    .await
-    .map_err(|e| {
-        window.emit("index:error", serde_json::json!({ "message": e })).ok();
-        e
-    })?;
+    const MAX_RETRIES: u32 = 3;
+    const RETRY_DELAY_SECS: u64 = 5;
+
+    let files = {
+        let mut attempt = 0u32;
+        loop {
+            match crate::ftp::list_files(
+                &config.ftp_host,
+                config.ftp_port,
+                &config.ftp_user,
+                &config.ftp_pass,
+                &root,
+                on_log.clone(),
+            )
+            .await
+            {
+                Ok(files) => break files,
+                Err(e) => {
+                    attempt += 1;
+                    if attempt >= MAX_RETRIES {
+                        window.emit("index:error", serde_json::json!({ "message": e })).ok();
+                        return Err(e);
+                    }
+                    on_log(format!("⚠ {e} — retrying in {RETRY_DELAY_SECS}s ({attempt}/{MAX_RETRIES})…"));
+                    tokio::time::sleep(std::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
+                }
+            }
+        }
+    };
 
     let total = files.len();
 
