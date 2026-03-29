@@ -157,7 +157,7 @@ pub fn run() {
             commands::restore_download_queue(db.clone(), queue.clone());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                let interval_secs = std::time::Duration::from_secs(3600);
+                let interval_secs = std::time::Duration::from_secs(15 * 60);
                 let db = handle.state::<db::Db>().inner().clone();
                 let queue = handle.state::<downloads::SharedQueue>().inner().clone();
                 if let Some(window) = handle.get_webview_window("main") {
@@ -178,6 +178,9 @@ pub fn run() {
                     if let Some(window) = handle.get_webview_window("main") {
                         commands::start_indexing_internal(db.clone(), Some(window)).await.ok();
                     }
+                    if let Some(window) = handle.get_webview_window("main") {
+                        commands::refresh_all_metadata_internal(db.clone(), Some(window)).await.ok();
+                    }
                 } else if let Some(value) = last_indexed_at
                     .as_deref()
                     .and_then(|raw| chrono::DateTime::parse_from_rfc3339(raw).ok())
@@ -191,6 +194,9 @@ pub fn run() {
                     interval.tick().await;
                     if let Some(window) = handle.get_webview_window("main") {
                         commands::start_indexing_internal(db.clone(), Some(window)).await.ok();
+                    }
+                    if let Some(window) = handle.get_webview_window("main") {
+                        commands::refresh_all_metadata_internal(db.clone(), Some(window)).await.ok();
                     }
                 }
             });

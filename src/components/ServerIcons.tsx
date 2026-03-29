@@ -1,0 +1,33 @@
+export function PlexIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 512 512"
+      width={size}
+      height={size}
+      style={{ borderRadius: 3, flexShrink: 0, display: "block" }}
+    >
+      <rect width="512" height="512" rx="15%" fill="#282a2d" />
+      <path d="M256 70H148l108 186-108 186h108l108-186z" fill="#e5a00d" />
+    </svg>
+  );
+}
+
+export function EmbyIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 512 512"
+      width={size}
+      height={size}
+      style={{ flexShrink: 0, display: "block" }}
+    >
+      <path
+        d="m97.1 229.4 26.5 26.5L0 379.5l132.4 132.4 26.5-26.5L282.5 609l141.2-141.2-26.5-26.5L512 326.5 379.6 194.1l-26.5 26.5L229.5 97z"
+        fill="#52b54b"
+        transform="translate(0 -97)"
+      />
+      <path d="M196.8 351.2v-193L366 254.7 281.4 303z" fill="#fff" />
+    </svg>
+  );
+}

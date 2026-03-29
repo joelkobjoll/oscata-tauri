@@ -67,7 +67,10 @@ export default function AppIcon({
       case "docs":
         return (
           <>
-            <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" {...common} />
+            <path
+              d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
+              {...common}
+            />
             <path d="M14 3v6h6M9 13h6M9 17h6" {...common} />
           </>
         );
@@ -82,7 +85,10 @@ export default function AppIcon({
       case "settings":
         return (
           <>
-            <path d="M10.3 3.3 9.6 5.5a7.2 7.2 0 0 0-1.5.9L5.9 5.7 4.3 7.3l.7 2.2a7.2 7.2 0 0 0-.9 1.5l-2.2.7v2.3l2.2.7c.2.5.5 1 .9 1.5l-.7 2.2 1.6 1.6 2.2-.7c.5.4 1 .7 1.5.9l.7 2.2h2.3l.7-2.2c.5-.2 1-.5 1.5-.9l2.2.7 1.6-1.6-.7-2.2c.4-.5.7-1 .9-1.5l2.2-.7v-2.3l-2.2-.7a7.2 7.2 0 0 0-.9-1.5l.7-2.2-1.6-1.6-2.2.7a7.2 7.2 0 0 0-1.5-.9l-.7-2.2z" {...common} />
+            <path
+              d="M10.3 3.3 9.6 5.5a7.2 7.2 0 0 0-1.5.9L5.9 5.7 4.3 7.3l.7 2.2a7.2 7.2 0 0 0-.9 1.5l-2.2.7v2.3l2.2.7c.2.5.5 1 .9 1.5l-.7 2.2 1.6 1.6 2.2-.7c.5.4 1 .7 1.5.9l.7 2.2h2.3l.7-2.2c.5-.2 1-.5 1.5-.9l2.2.7 1.6-1.6-.7-2.2c.4-.5.7-1 .9-1.5l2.2-.7v-2.3l-2.2-.7a7.2 7.2 0 0 0-.9-1.5l.7-2.2-1.6-1.6-2.2.7a7.2 7.2 0 0 0-1.5-.9l-.7-2.2z"
+              {...common}
+            />
             <circle cx="12" cy="12" r="3.2" {...common} />
           </>
         );
@@ -98,14 +104,20 @@ export default function AppIcon({
       case "refresh":
         return (
           <>
-            <path d="M20 11a8 8 0 0 0-14.7-3M4 13a8 8 0 0 0 14.7 3" {...common} />
+            <path
+              d="M20 11a8 8 0 0 0-14.7-3M4 13a8 8 0 0 0 14.7 3"
+              {...common}
+            />
             <path d="M20 4v7h-7M4 20v-7h7" {...common} />
           </>
         );
       case "trash":
         return (
           <>
-            <path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14" {...common} />
+            <path
+              d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"
+              {...common}
+            />
             <path d="M10 11v6M14 11v6" {...common} />
           </>
         );
@@ -128,7 +140,10 @@ export default function AppIcon({
       case "folder":
         return (
           <>
-            <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z" {...common} />
+            <path
+              d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z"
+              {...common}
+            />
           </>
         );
       case "chevron-down":
@@ -136,7 +151,12 @@ export default function AppIcon({
       case "chevron-right":
         return <path d="m9 6 6 6-6 6" {...common} />;
       case "star":
-        return <path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9z" {...common} />;
+        return (
+          <path
+            d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9z"
+            {...common}
+          />
+        );
       case "more-horizontal":
         return (
           <>
@@ -153,7 +173,7 @@ export default function AppIcon({
           </>
         );
       case "check":
-        return <path d="m5 12 4 4 10-10" {...common} />;
+        return <path d="M20 6 9 17l-5-5" {...common} />;
       case "refresh-cw":
         return (
           <>
@@ -166,9 +186,18 @@ export default function AppIcon({
       case "wifi-off":
         return (
           <>
-            <path d="M2 8.8A16.2 16.2 0 0 1 12 5c3.8 0 7.3 1.3 10 3.8" {...common} />
-            <path d="M5 12.6A11.3 11.3 0 0 1 12 10c2.6 0 5 .9 7 2.6" {...common} />
-            <path d="M8.5 16.2A6.5 6.5 0 0 1 12 15c1.3 0 2.6.4 3.6 1.2" {...common} />
+            <path
+              d="M2 8.8A16.2 16.2 0 0 1 12 5c3.8 0 7.3 1.3 10 3.8"
+              {...common}
+            />
+            <path
+              d="M5 12.6A11.3 11.3 0 0 1 12 10c2.6 0 5 .9 7 2.6"
+              {...common}
+            />
+            <path
+              d="M8.5 16.2A6.5 6.5 0 0 1 12 15c1.3 0 2.6.4 3.6 1.2"
+              {...common}
+            />
             <path d="M12 20h.01" {...common} />
             <path d="M3 3l18 18" {...common} />
           </>

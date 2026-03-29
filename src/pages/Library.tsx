@@ -466,7 +466,10 @@ export default function Library({
 
   const getAddedTimestamp = (item: MediaItem): number => {
     const indexed = item.indexed_at ? Date.parse(item.indexed_at) : NaN;
-    if (!Number.isNaN(indexed)) return indexed;
+    if (!Number.isNaN(indexed)) {
+      // Guard against bad future timestamps in imported or external metadata.
+      return Math.min(indexed, Date.now());
+    }
     return item.id;
   };
 
@@ -600,7 +603,7 @@ export default function Library({
           case "added-desc": {
             const ta = getAddedTimestamp(a);
             const tb = getAddedTimestamp(b);
-            return tb - ta || b.id - a.id;
+            return tb - ta || titleA.localeCompare(titleB);
           }
           default:
             return titleA.localeCompare(titleB);
@@ -1005,6 +1008,87 @@ export default function Library({
     });
   }, [activeTab, appendLog, badgePageIdsKey, badgeRefreshTick, currentPage]);
 
+  // When TVShowPanel is open, check badges for ALL its episodes (not just the
+  // deduplicated show card that appears in paginatedItems).
+  const tvShowEpisodesKey = useMemo(() => {
+    if (!tvShow) return "";
+    return getTvEpisodes(tvShow)
+      .map((ep) => ep.id)
+      .sort((a, b) => a - b)
+      .join(",");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tvShow, items]);
+
+  useEffect(() => {
+    if (!tvShow || !tvShowEpisodesKey) return;
+    const episodes = getTvEpisodes(tvShow);
+    if (episodes.length === 0) return;
+
+    const requestId = ++badgeRequestIdRef.current;
+
+    const payload = episodes.map((ep) => ({
+      id: ep.id,
+      ftpPath: ep.ftp_path,
+      filename: ep.filename,
+      title: ep.tmdb_title ?? ep.title ?? null,
+      titleEn: ep.tmdb_title_en ?? null,
+      year: ep.year ?? null,
+      imdbId: ep.imdb_id ?? null,
+      tmdbId: ep.tmdb_id ?? null,
+      mediaType: ep.media_type ?? ep.tmdb_type ?? null,
+    }));
+
+    const run = async () => {
+      let cursor = 0;
+      const workers = Math.min(6, payload.length);
+
+      const worker = async () => {
+        while (true) {
+          if (requestId !== badgeRequestIdRef.current) return;
+          const index = cursor;
+          cursor += 1;
+          if (index >= payload.length) return;
+
+          try {
+            const single = await call<
+              Array<{
+                id: number;
+                downloaded: boolean;
+                in_emby: boolean;
+                plex_in_library?: boolean;
+                emby_in_library?: boolean;
+                cache?: string;
+                debug?: string;
+              }>
+            >("check_media_badges", { items: [payload[index]] });
+
+            if (single[0] && requestId === badgeRequestIdRef.current) {
+              const result = single[0];
+              setBadgeMap((prev) => ({
+                ...prev,
+                [result.id]: {
+                  downloaded: result.downloaded,
+                  inEmby: result.in_emby,
+                  plexInLibrary: result.plex_in_library,
+                  embyInLibrary: result.emby_in_library,
+                  cache: result.cache,
+                  debug: result.debug,
+                },
+              }));
+            }
+          } catch {
+            // keep worker alive
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: workers }, () => worker()));
+    };
+
+    run().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tvShowEpisodesKey, badgeRefreshTick]);
+
   const mediaContent = useEpisodeList ? (
     <EpisodeListView
       key={viewResetKey}
@@ -1026,6 +1110,7 @@ export default function Library({
       language={language}
       badgeMap={badgeMap}
       downloadMap={downloadMap}
+      hideEpisodeBadge={isSeriesTab && !useEpisodeList}
     />
   );
 

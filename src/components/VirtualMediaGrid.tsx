@@ -15,6 +15,7 @@ export default function VirtualMediaGrid({
   language,
   badgeMap,
   downloadMap,
+  hideEpisodeBadge = false,
 }: {
   items: MediaItem[];
   selecting: boolean;
@@ -36,6 +37,7 @@ export default function VirtualMediaGrid({
     }
   >;
   downloadMap: Map<string, DownloadItem>;
+  hideEpisodeBadge?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -78,6 +80,7 @@ export default function VirtualMediaGrid({
               language={language}
               badges={badgeMap[item.id]}
               downloadItem={downloadMap.get(item.ftp_path)}
+              hideEpisodeBadge={hideEpisodeBadge}
               onDownload={onDownload}
               onSelect={(selected) => {
                 if (selecting) onToggleCheck(selected.id);

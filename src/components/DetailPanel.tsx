@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import type { DownloadItem } from "../hooks/useDownloads";
 import type { MediaItem } from "../hooks/useIndexing";
 import AppIcon from "./AppIcon";
@@ -319,6 +320,42 @@ export default function DetailPanel({
                   {g}
                 </span>
               ))}
+              {devBadge?.plexInLibrary && (
+                <span
+                  title="In Plex"
+                  style={{
+                    ...metaPill,
+                    width: "2rem",
+                    height: "2rem",
+                    minHeight: "2rem",
+                    justifyContent: "center",
+                    padding: 0,
+                    borderRadius: "50%",
+                    borderColor: "#282a2d",
+                    background: "#282a2d",
+                  }}
+                >
+                  <PlexIcon size={14} />
+                </span>
+              )}
+              {devBadge?.embyInLibrary && (
+                <span
+                  title="In Emby"
+                  style={{
+                    ...metaPill,
+                    width: "2rem",
+                    height: "2rem",
+                    minHeight: "2rem",
+                    justifyContent: "center",
+                    padding: 0,
+                    borderRadius: "50%",
+                    borderColor:
+                      "color-mix(in srgb, var(--color-border) 84%, transparent)",
+                  }}
+                >
+                  <EmbyIcon size={14} />
+                </span>
+              )}
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension, Result as SqlResult};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use chrono::Datelike;
 
 const DEFAULT_FTP_ROOT: &str = "/Compartida";
 const DEFAULT_FOLDER_TYPES: &str =
@@ -187,6 +188,52 @@ impl Db {
         }
     }
 
+    fn repair_future_indexed_timestamps(conn: &Connection) {
+        let now = chrono::Utc::now();
+        let future_threshold = now + chrono::Duration::days(1);
+
+        let mut stmt = match conn.prepare(
+            "SELECT id, indexed_at FROM media_items WHERE indexed_at IS NOT NULL",
+        ) {
+            Ok(stmt) => stmt,
+            Err(_) => return,
+        };
+
+        let rows = match stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        }) {
+            Ok(rows) => rows,
+            Err(_) => return,
+        };
+
+        let mut updates: Vec<(i64, String)> = Vec::new();
+        for row in rows.flatten() {
+            let (id, indexed_at) = row;
+            let parsed = match chrono::DateTime::parse_from_rfc3339(&indexed_at) {
+                Ok(value) => value.with_timezone(&chrono::Utc),
+                Err(_) => continue,
+            };
+
+            if parsed > future_threshold {
+                let normalized = if let Some(value) = parsed.with_year(parsed.year() - 1) {
+                    value
+                } else {
+                    parsed - chrono::Duration::days(365)
+                };
+                updates.push((id, normalized.to_rfc3339()));
+            }
+        }
+
+        let mut update_stmt = match conn.prepare("UPDATE media_items SET indexed_at = ?1 WHERE id = ?2") {
+            Ok(stmt) => stmt,
+            Err(_) => return,
+        };
+
+        for (id, normalized) in updates {
+            update_stmt.execute(params![normalized, id]).ok();
+        }
+    }
+
     fn app_data_dir() -> std::path::PathBuf {
         dirs_next::data_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -305,6 +352,10 @@ impl Db {
             [],
         )
         .ok();
+
+        // Data repair for clock-skewed FTP dates previously persisted into indexed_at.
+        // Rule: if indexed_at is in the future, subtract one year.
+        Self::repair_future_indexed_timestamps(conn);
         Ok(())
     }
 
@@ -911,6 +962,7 @@ impl Db {
         size_bytes: Option<u64>,
         parsed: &crate::parser::ParsedMedia,
         media_type: Option<&str>,
+        ftp_indexed_at: Option<&str>,
     ) -> Result<UpsertMediaResult, String> {
         let conn = self.0.lock().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
@@ -957,7 +1009,7 @@ impl Db {
                 (ftp_path, filename, size_bytes, title, year, season, episode, episode_end,
                  resolution, codec, audio_codec, hdr, languages, release_type, release_group,
                  media_type, indexed_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,COALESCE(?17, ?18))
              ON CONFLICT(ftp_path) DO UPDATE SET
                 filename=excluded.filename, size_bytes=excluded.size_bytes,
                 title=excluded.title, year=excluded.year,
@@ -967,7 +1019,7 @@ impl Db {
                 languages=excluded.languages,
                 release_type=excluded.release_type, release_group=excluded.release_group,
                 media_type=COALESCE(excluded.media_type, media_items.media_type),
-                     indexed_at=media_items.indexed_at",
+                     indexed_at=CASE WHEN ?17 IS NOT NULL THEN ?17 ELSE media_items.indexed_at END",
             params![
                 path,
                 filename,
@@ -985,6 +1037,7 @@ impl Db {
                 parsed.release_type,
                 parsed.release_group,
                 media_type,
+                ftp_indexed_at,
                 now,
             ],
         )

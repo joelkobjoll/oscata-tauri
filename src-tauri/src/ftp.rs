@@ -3,6 +3,7 @@ use suppaftp::AsyncFtpStream;
 use suppaftp::types::FileType;
 use futures::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 
 /// suppaftp formats addresses with backtick+quote: `"host:port"` — strip that.
 fn clean_ftp_error(e: impl std::fmt::Display) -> String {
@@ -14,6 +15,7 @@ pub struct FtpFile {
     pub path: String,
     pub size: u64,
     pub filename: String,
+    pub modified_at: Option<String>,
 }
 
 const MEDIA_EXTENSIONS: &[&str] = &["mkv", "mp4", "avi", "m2ts", "mov", "ts"];
@@ -35,16 +37,26 @@ fn parse_entries(raw: &[String], parent_path: &str) -> (Vec<String>, Vec<FtpFile
         let entry = entry.trim().to_string();
         if entry.is_empty() { continue; }
         let parts: Vec<&str> = entry.split_whitespace().collect();
-        let (is_dir, name_start, size) = if parts.len() >= 9
+        let (is_dir, name_start, size, modified_at) = if parts.len() >= 9
             && (parts[0].starts_with('-') || parts[0].starts_with('d') || parts[0].starts_with('l'))
         {
             let is_dir = parts[0].starts_with('d');
             let size: u64 = parts[4].parse().unwrap_or(0);
-            (is_dir, 8usize, size)
+            (
+                is_dir,
+                8usize,
+                size,
+                parse_unix_list_modified(&parts),
+            )
         } else if parts.len() >= 4 && parts[0].contains('-') && parts[1].contains(':') {
             let is_dir = parts[2].eq_ignore_ascii_case("<DIR>");
             let size: u64 = if is_dir { 0 } else { parts[2].parse().unwrap_or(0) };
-            (is_dir, 3usize, size)
+            (
+                is_dir,
+                3usize,
+                size,
+                parse_windows_list_modified(&parts),
+            )
         } else {
             continue;
         };
@@ -62,11 +74,76 @@ fn parse_entries(raw: &[String], parent_path: &str) -> (Vec<String>, Vec<FtpFile
                 .unwrap_or("")
                 .to_lowercase();
             if MEDIA_EXTENSIONS.contains(&ext.as_str()) {
-                files.push(FtpFile { path: child_path, size, filename: name });
+                files.push(FtpFile {
+                    path: child_path,
+                    size,
+                    filename: name,
+                    modified_at: modified_at.map(|value| value.to_rfc3339()),
+                });
             }
         }
     }
     (dirs, files)
+}
+
+fn normalize_ftp_modified(dt: DateTime<Utc>) -> DateTime<Utc> {
+    let now = Utc::now();
+    if dt > now + chrono::Duration::days(1) {
+        if let Some(one_year_back) = dt.with_year(dt.year() - 1) {
+            return one_year_back;
+        }
+        return dt - chrono::Duration::days(365);
+    }
+    dt
+}
+
+fn parse_unix_list_modified(parts: &[&str]) -> Option<DateTime<Utc>> {
+    if parts.len() < 8 {
+        return None;
+    }
+
+    let month = parts[5];
+    let day = parts[6];
+    let year_or_time = parts[7];
+    let now = Utc::now();
+
+    let naive = if year_or_time.contains(':') {
+        NaiveDateTime::parse_from_str(
+            &format!("{month} {day} {} {year_or_time}", now.year()),
+            "%b %e %Y %H:%M",
+        )
+        .ok()
+    } else {
+        NaiveDate::parse_from_str(
+            &format!("{month} {day} {year_or_time}"),
+            "%b %e %Y",
+        )
+        .ok()
+        .and_then(|date| date.and_hms_opt(0, 0, 0))
+    }?;
+
+    Some(normalize_ftp_modified(DateTime::<Utc>::from_naive_utc_and_offset(
+        naive,
+        Utc,
+    )))
+}
+
+fn parse_windows_list_modified(parts: &[&str]) -> Option<DateTime<Utc>> {
+    if parts.len() < 2 {
+        return None;
+    }
+
+    let raw = format!("{} {}", parts[0], parts[1]);
+    let naive = NaiveDateTime::parse_from_str(&raw, "%m-%d-%y %I:%M%p")
+        .or_else(|_| NaiveDateTime::parse_from_str(&raw, "%m-%d-%Y %I:%M%p"))
+        .or_else(|_| NaiveDateTime::parse_from_str(&raw, "%m-%d-%y %H:%M"))
+        .or_else(|_| NaiveDateTime::parse_from_str(&raw, "%m-%d-%Y %H:%M"))
+        .ok()?;
+
+    Some(normalize_ftp_modified(DateTime::<Utc>::from_naive_utc_and_offset(
+        naive,
+        Utc,
+    )))
 }
 
 pub async fn test_connection(

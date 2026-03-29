@@ -388,11 +388,26 @@ async fn plex_rating_key_has_episode(
 }
 
 pub(crate) fn plex_badge_cache_key(query: &MediaBadgeQuery) -> Option<String> {
+    // For TV/documentary episodes, include the episode coordinates in the key so that
+    // different episodes of the same show don't poison each other's cache slot.
+    let episode_suffix = {
+        let media_type = query.media_type.as_deref().unwrap_or_default();
+        if media_type == "tv" || media_type == "documentary" {
+            let parsed = crate::parser::parse_media_path(&query.ftp_path, &query.filename);
+            match (parsed.season, parsed.episode) {
+                (Some(s), Some(e)) => format!(":S{s:02}E{e:02}"),
+                _ => String::new(),
+            }
+        } else {
+            String::new()
+        }
+    };
+
     if let Some(imdb_id) = query.imdb_id.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
-        return Some(format!("imdb:{imdb_id}"));
+        return Some(format!("imdb:{imdb_id}{episode_suffix}"));
     }
     if let Some(tmdb_id) = query.tmdb_id {
-        return Some(format!("tmdb:{tmdb_id}"));
+        return Some(format!("tmdb:{tmdb_id}{episode_suffix}"));
     }
 
     let title = query
@@ -402,7 +417,7 @@ pub(crate) fn plex_badge_cache_key(query: &MediaBadgeQuery) -> Option<String> {
         .map(normalize_title)
         .filter(|t| !t.is_empty())?;
 
-    Some(format!("title:{title}:{}", query.year.unwrap_or_default()))
+    Some(format!("title:{title}:{}{episode_suffix}", query.year.unwrap_or_default()))
 }
 
 async fn exists_in_emby(
@@ -1179,7 +1194,14 @@ pub async fn start_indexing_internal(
             _ => "movie",
         }.to_string();
 
-        let upsert = db.upsert_media(&file.path, &file.filename, Some(file.size), &parsed, media_type_str)?;
+        let upsert = db.upsert_media(
+            &file.path,
+            &file.filename,
+            Some(file.size),
+            &parsed,
+            media_type_str,
+            file.modified_at.as_deref(),
+        )?;
         let id = upsert.id;
 
         on_log(format!("⚙ Indexing [{}/{}]: {}", i + 1, total, parsed.title));
@@ -1608,10 +1630,15 @@ pub async fn refresh_all_metadata_internal(
 
     // Process newest entries first on boot/library refresh.
     items.sort_by(|a, b| {
-        b.indexed_at
-            .as_deref()
-            .unwrap_or("")
-            .cmp(a.indexed_at.as_deref().unwrap_or(""))
+        let parse_ts = |value: Option<&str>| -> i64 {
+            value
+                .and_then(|raw| chrono::DateTime::parse_from_rfc3339(raw).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc).timestamp())
+                .unwrap_or(0)
+        };
+
+        parse_ts(b.indexed_at.as_deref())
+            .cmp(&parse_ts(a.indexed_at.as_deref()))
             .then_with(|| b.id.cmp(&a.id))
     });
 

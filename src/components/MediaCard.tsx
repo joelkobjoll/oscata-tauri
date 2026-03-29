@@ -3,6 +3,7 @@ import { MediaItem } from "../hooks/useIndexing";
 import type { DownloadItem } from "../hooks/useDownloads";
 import AppIcon from "./AppIcon";
 import DownloadRing from "./DownloadRing";
+import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import {
   AppLanguage,
   getLocalizedPosterPath,
@@ -19,6 +20,7 @@ interface Props {
     embyInLibrary?: boolean;
   };
   downloadItem?: DownloadItem;
+  hideEpisodeBadge?: boolean;
   onDownload: (item: MediaItem) => void;
   onSelect?: (item: MediaItem) => void;
 }
@@ -140,6 +142,7 @@ function MediaCard({
   language,
   badges,
   downloadItem,
+  hideEpisodeBadge = false,
   onDownload: _onDownload,
   onSelect,
 }: Props) {
@@ -248,7 +251,7 @@ function MediaCard({
         />
 
         {/* S/E badge top-left */}
-        {item.season != null && (
+        {!hideEpisodeBadge && item.season != null && (
           <div
             style={{
               position: "absolute",
@@ -286,18 +289,23 @@ function MediaCard({
               </OverlayBadge>
             )}
             {inPlex && (
-              <OverlayBadge tone="info" title="Plex">
-                Plex
+              <OverlayBadge
+                tone="info"
+                title="In Plex"
+                iconOnly
+                style={{ background: "#282a2d", borderColor: "#282a2d" }}
+              >
+                <PlexIcon size={13} />
               </OverlayBadge>
             )}
             {inEmby && (
-              <OverlayBadge tone="neutral" title="Emby">
-                Emby
+              <OverlayBadge tone="neutral" title="In Emby" iconOnly>
+                <EmbyIcon size={13} />
               </OverlayBadge>
             )}
             {showLibraryFallback && (
-              <OverlayBadge tone="info" title="Library">
-                Library
+              <OverlayBadge tone="info" title="In Library" iconOnly>
+                <AppIcon name="check" size={11} strokeWidth={2.8} />
               </OverlayBadge>
             )}
           </div>

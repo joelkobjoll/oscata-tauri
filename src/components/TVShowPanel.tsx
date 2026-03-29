@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import type { MediaItem } from "../hooks/useIndexing";
 import type { DownloadItem } from "../hooks/useDownloads";
 import AppIcon from "./AppIcon";
@@ -316,6 +317,8 @@ function EpisodeRow({
   const isDownloaded =
     downloadItem?.status === "done" ||
     downloadedBadgeMap[episode.id]?.downloaded === true;
+  const inPlex = downloadedBadgeMap[episode.id]?.plexInLibrary === true;
+  const inEmby = downloadedBadgeMap[episode.id]?.embyInLibrary === true;
   const downloadTooltip = isDownloaded
     ? t(language, "detail.alreadyDownloadedHint")
     : isDownloading
@@ -355,15 +358,27 @@ function EpisodeRow({
       <div style={{ minWidth: 0 }}>
         <div
           style={{
-            fontSize: 14,
-            fontWeight: 600,
-            color: "var(--color-text)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            minWidth: 0,
           }}
         >
-          {episode.title ?? episode.filename}
+          {inPlex && <PlexIcon size={13} />}
+          {inEmby && <EmbyIcon size={13} />}
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: "var(--color-text)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              minWidth: 0,
+            }}
+          >
+            {episode.title ?? episode.filename}
+          </div>
         </div>
         <div
           style={{
@@ -1110,6 +1125,40 @@ export default function TVShowPanel({
                   )}
                 {show.media_type &&
                   miniBadge("var(--color-surface-2)", show.media_type)}
+                {showBadge?.plexInLibrary && (
+                  <span
+                    title="In Plex"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "0.2rem",
+                      borderRadius: 6,
+                      background: "#282a2d",
+                      border: "1px solid #282a2d",
+                    }}
+                  >
+                    <PlexIcon size={14} />
+                  </span>
+                )}
+                {showBadge?.embyInLibrary && (
+                  <span
+                    title="In Emby"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "0.2rem",
+                      borderRadius: 6,
+                      background:
+                        "color-mix(in srgb, var(--color-border) 55%, transparent)",
+                      border:
+                        "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                    }}
+                  >
+                    <EmbyIcon size={14} />
+                  </span>
+                )}
               </div>
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
