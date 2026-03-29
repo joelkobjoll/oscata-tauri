@@ -1,38 +1,95 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import AppIcon from "../AppIcon";
 import type { AppLanguage } from "../../utils/mediaLanguage";
 import { t } from "../../utils/i18n";
 
 const fieldStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 4,
-  marginBottom: 12,
+  gap: 6,
 };
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "var(--color-text-muted)",
+};
+
 const inputStyle: React.CSSProperties = {
-  padding: "6px 10px",
-  border: "1px solid #d1d5db",
-  borderRadius: 4,
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "0.72rem 0.9rem",
+  borderRadius: "var(--radius)",
+  border: "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+  background: "color-mix(in srgb, var(--color-surface-2) 84%, transparent)",
+  color: "var(--color-text)",
   fontSize: 14,
+  outline: "none",
+  boxShadow: "inset 0 1px 0 color-mix(in srgb, white 4%, transparent)",
 };
-const btnStyle = (disabled?: boolean): React.CSSProperties => ({
-  padding: "8px 16px",
-  borderRadius: 4,
-  border: "none",
+
+const sectionCard: React.CSSProperties = {
+  borderRadius: "var(--radius-lg)",
+  border: "1px solid color-mix(in srgb, var(--color-border) 76%, transparent)",
+  background:
+    "linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 96%, transparent), color-mix(in srgb, var(--color-surface-2) 92%, transparent))",
+  boxShadow:
+    "0 14px 30px color-mix(in srgb, black 16%, transparent), inset 0 1px 0 color-mix(in srgb, white 4%, transparent)",
+  padding: "1rem",
+};
+
+const subtextStyle: React.CSSProperties = {
+  fontSize: 12,
+  lineHeight: 1.5,
+  color: "var(--color-text-muted)",
+};
+
+const ghostBtn = (disabled?: boolean): React.CSSProperties => ({
+  padding: "9px 14px",
+  borderRadius: "var(--radius-full)",
+  border: "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+  background: "color-mix(in srgb, var(--color-surface) 88%, transparent)",
+  color: "var(--color-text-muted)",
   cursor: disabled ? "not-allowed" : "pointer",
-  background: disabled ? "#9ca3af" : "#3b82f6",
-  color: "#fff",
+  fontSize: 13,
   fontWeight: 600,
-  marginTop: 4,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  opacity: disabled ? 0.7 : 1,
 });
 
-export default function StepFTP({ defaults, language, onNext }: { defaults: any; language: AppLanguage; onNext: (p: any) => void }) {
+const primaryBtn = (disabled?: boolean): React.CSSProperties => ({
+  ...ghostBtn(disabled),
+  border: "none",
+  background: disabled ? "color-mix(in srgb, var(--color-primary) 46%, transparent)" : "var(--color-primary)",
+  color: "#fff",
+});
+
+export default function StepFTP({
+  defaults,
+  language,
+  onNext,
+}: {
+  defaults: any;
+  language: AppLanguage;
+  onNext: (p: any) => void;
+}) {
   const [form, setForm] = useState(defaults);
-  const [status, setStatus] = useState<"idle" | "testing" | "ok" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "testing" | "ok" | "error">(
+    defaults.ftp_host ? "ok" : "idle",
+  );
   const [errorMsg, setErrorMsg] = useState("");
 
-  const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((f: any) => ({ ...f, [key]: key === "ftp_port" ? Number(e.target.value) : e.target.value }));
+  const set =
+    (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm((f: any) => ({
+        ...f,
+        [key]: key === "ftp_port" ? Number(e.target.value) : e.target.value,
+      }));
 
   const test = async () => {
     setStatus("testing");
@@ -52,40 +109,74 @@ export default function StepFTP({ defaults, language, onNext }: { defaults: any;
   };
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onNext(form); }}>
-      <div style={fieldStyle}>
-        <label>{t(language, "wizard.host")}</label>
-        <input style={inputStyle} value={form.ftp_host} onChange={set("ftp_host")} required />
-      </div>
-      <div style={fieldStyle}>
-        <label>{t(language, "wizard.port")}</label>
-        <input style={inputStyle} type="number" value={form.ftp_port} onChange={set("ftp_port")} />
-      </div>
-      <div style={fieldStyle}>
-        <label>{t(language, "wizard.username")}</label>
-        <input style={inputStyle} value={form.ftp_user} onChange={set("ftp_user")} required />
-      </div>
-      <div style={fieldStyle}>
-        <label>{t(language, "wizard.password")}</label>
-        <input style={inputStyle} type="password" value={form.ftp_pass} onChange={set("ftp_pass")} />
-      </div>
-      <div style={fieldStyle}>
-        <label>{t(language, "wizard.rootPath")}</label>
-        <input style={inputStyle} value={form.ftp_root} onChange={set("ftp_root")} placeholder="/" />
-      </div>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onNext(form);
+      }}
+      style={{ display: "grid", gap: 16 }}
+    >
+      <section style={sectionCard}>
+        <div style={{ display: "grid", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 120px", gap: 12 }}>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{t(language, "wizard.host")}</label>
+              <input style={inputStyle} value={form.ftp_host} onChange={set("ftp_host")} required />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{t(language, "wizard.port")}</label>
+              <input style={inputStyle} type="number" value={form.ftp_port} onChange={set("ftp_port")} />
+            </div>
+          </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-        <button type="button" style={btnStyle(status === "testing")} onClick={test} disabled={status === "testing"}>
-          {status === "testing" ? t(language, "common.testing") : t(language, "wizard.testConnection")}
-        </button>
-        {status === "ok" && <span style={{ color: "#16a34a" }}>✓ {t(language, "common.connected")}</span>}
-        {status === "error" && (
-          <span style={{ color: "#dc2626" }}>✗ {errorMsg || t(language, "wizard.failedCredentials")}</span>
-        )}
-      </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{t(language, "wizard.username")}</label>
+              <input style={inputStyle} value={form.ftp_user} onChange={set("ftp_user")} required />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{t(language, "wizard.password")}</label>
+              <input style={inputStyle} type="password" value={form.ftp_pass} onChange={set("ftp_pass")} />
+            </div>
+          </div>
 
-      <div style={{ marginTop: 16 }}>
-        <button type="submit" style={btnStyle(status !== "ok")} disabled={status !== "ok"}>
+          <div style={fieldStyle}>
+            <label style={labelStyle}>{t(language, "wizard.rootPath")}</label>
+            <input style={inputStyle} value={form.ftp_root} onChange={set("ftp_root")} placeholder="/" />
+            <span style={subtextStyle}>{t(language, "settings.ftpDescription")}</span>
+          </div>
+        </div>
+      </section>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+          <button type="button" style={ghostBtn(status === "testing")} onClick={test} disabled={status === "testing"}>
+            <AppIcon name="activity" size={15} strokeWidth={2.1} />
+            {status === "testing" ? t(language, "common.testing") : t(language, "wizard.testConnection")}
+          </button>
+          {status === "ok" && (
+            <span
+              style={{
+                ...ghostBtn(true),
+                cursor: "default",
+                opacity: 1,
+                border: "none",
+                background: "color-mix(in srgb, var(--color-success) 14%, transparent)",
+                color: "var(--color-success)",
+              }}
+            >
+              <AppIcon name="check" size={14} strokeWidth={2.5} />
+              {t(language, "common.connected")}
+            </span>
+          )}
+          {status === "error" && (
+            <span style={{ ...subtextStyle, color: "var(--color-danger)" }}>
+              {errorMsg || t(language, "wizard.failedCredentials")}
+            </span>
+          )}
+        </div>
+
+        <button type="submit" style={primaryBtn(status !== "ok")} disabled={status !== "ok"}>
           {t(language, "wizard.next")}
         </button>
       </div>

@@ -444,6 +444,22 @@ const messages = {
     es: "Guardar e iniciar indexado",
     en: "Save & Start Indexing",
   },
+  "wizard.confirmDescription": {
+    es: "Revisa la conexión, el idioma inicial y la carpeta de descargas antes de lanzar el primer indexado.",
+    en: "Review the connection, startup language, and download folder before launching the first index.",
+  },
+  "wizard.setupOverview": {
+    es: "Pon a punto la conexión principal y deja la librería lista para empezar a indexar.",
+    en: "Dial in the core connection and leave the library ready for its first index.",
+  },
+  "wizard.startFreshDescription": {
+    es: "Conecta tu FTP, valida TMDB y define las preferencias básicas desde el inicio.",
+    en: "Connect your FTP, validate TMDB, and define the core preferences from the start.",
+  },
+  "wizard.summaryTitle": {
+    es: "Resumen de configuración",
+    en: "Setup summary",
+  },
 
   "settings.title": { es: "Ajustes", en: "Settings" },
   "settings.subtitle": {

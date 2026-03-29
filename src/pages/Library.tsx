@@ -40,7 +40,7 @@ const defaultFilters = (): Filters => ({
   hdr: "",
   sort: "release-desc",
 });
-const ITEMS_PER_PAGE = 50;
+const ITEMS_PER_PAGE = 48;
 
 function tabFilter(item: MediaItem, tab: TabId): boolean {
   if (tab === "all") return true;
