@@ -6,11 +6,10 @@ import StepFTP from "../components/wizard/StepFTP";
 import StepTMDB from "../components/wizard/StepTMDB";
 import StepConfirm from "../components/wizard/StepConfirm";
 import { t } from "../utils/i18n";
-import { mergeInferredFolderTypes } from "../utils/folderTypes";
+import { DEFAULT_FOLDER_TYPES_STRING, mergeInferredFolderTypes } from "../utils/folderTypes";
 import type { AppLanguage } from "../utils/mediaLanguage";
 
 const DEFAULT_FTP_ROOT = "/Compartida";
-const DEFAULT_FOLDER_TYPES = "{}";
 
 interface Config {
   ftp_host: string;
@@ -166,7 +165,7 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
     tmdb_api_key: "",
     default_language: "es",
     download_folder: "",
-    folder_types: DEFAULT_FOLDER_TYPES,
+    folder_types: DEFAULT_FOLDER_TYPES_STRING,
     max_concurrent_downloads: 2,
     emby_url: "",
     emby_api_key: "",

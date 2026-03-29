@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
 const DEFAULT_FTP_ROOT: &str = "/Compartida";
-const DEFAULT_FOLDER_TYPES: &str = r#"{}"#;
+const DEFAULT_FOLDER_TYPES: &str =
+    r#"{"Peliculas":"movie","Series":"tv","Documentales":"documentary","Movies":"movie","TV Shows":"tv","Documentaries":"documentary","Documentales 4K 2160p - HD 1080p":"documentary","P-Peticiones":"mixed","Peliculas BDRemux 1080p":"movie","Peliculas BDrip 1080p X264":"movie","Peliculas BDrip 1080p X265":"movie","Peliculas UHDRemux 2160p":"movie","Peliculas WEB DL Micro 1080p":"movie","Peliculas WEB DL-UHDRip 2160p":"movie","Peliculas y Series mas antiguas":"movie","Series 4K 2160p":"tv","Series HD 1080p":"tv","Series HD 1080p X265":"tv"}"#;
 const LEGACY_FOLDER_TYPES: &str =
     r#"{"Peliculas":"movie","Series":"tv","Documentales":"documentary","Movies":"movie","TV Shows":"tv","Documentaries":"documentary"}"#;
 
