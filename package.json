@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "seed-db": "node ./scripts/update-starter-db.mjs",
+    "seed-sync": "node ./scripts/sync-local-db-from-seed.mjs",
     "release": "node ./scripts/publish.mjs",
     "release:patch": "node ./scripts/publish.mjs patch",
     "release:minor": "node ./scripts/publish.mjs minor",

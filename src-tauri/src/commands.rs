@@ -218,6 +218,7 @@ pub struct MediaBadgeQuery {
     pub title: Option<String>,
     pub title_en: Option<String>,
     pub year: Option<i64>,
+    pub imdb_id: Option<String>,
     pub media_type: Option<String>,
 }
 
@@ -333,6 +334,50 @@ async fn exists_in_emby(
     }
 
     Ok(false)
+}
+
+async fn exists_in_plex(
+    config: &crate::db::AppConfig,
+    query: &MediaBadgeQuery,
+) -> Result<bool, String> {
+    if config.plex_url.trim().is_empty() || config.plex_token.trim().is_empty() {
+        return Ok(false);
+    }
+
+    let imdb_id = match query.imdb_id.as_deref() {
+        Some(value) if !value.trim().is_empty() => value.trim(),
+        _ => return Ok(false),
+    };
+
+    let guid = format!("imdb://{imdb_id}");
+    let base = config.plex_url.trim_end_matches('/');
+    let endpoint = format!(
+        "{base}/library/all?guid={}&X-Plex-Token={}",
+        urlencoding::encode(&guid),
+        urlencoding::encode(&config.plex_token),
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get(&endpoint)
+        .send()
+        .await
+        .map_err(|e| format!("Could not query Plex library: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Plex returned HTTP {}", resp.status().as_u16()));
+    }
+
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("Could not parse Plex response: {e}"))?;
+
+    Ok(body.contains(imdb_id))
 }
 
 #[tauri::command]
@@ -1167,14 +1212,26 @@ pub async fn check_media_badges(
 ) -> Result<Vec<MediaBadgeResult>, String> {
     let config = state.load_config()?;
     let mut results = Vec::with_capacity(items.len());
+    let mut plex_imdb_cache: std::collections::HashMap<String, bool> =
+        std::collections::HashMap::new();
 
     for item in items {
         let downloaded = compute_local_path(&config, &item.ftp_path, &item.filename, item.media_type.as_deref())
             .map(|path| path.exists())
             .unwrap_or(false);
-        // Keep badge checks fast and deterministic for both desktop and web.
-        // Emby network probing can block rendering and delay downloaded badges.
-        let in_emby = false;
+
+        let in_emby = if let Some(imdb_id) = item.imdb_id.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+            if let Some(hit) = plex_imdb_cache.get(imdb_id).copied() {
+                hit
+            } else {
+                let hit = exists_in_plex(&config, &item).await.unwrap_or(false);
+                plex_imdb_cache.insert(imdb_id.to_string(), hit);
+                hit
+            }
+        } else {
+            false
+        };
+
         results.push(MediaBadgeResult {
             id: item.id,
             downloaded,

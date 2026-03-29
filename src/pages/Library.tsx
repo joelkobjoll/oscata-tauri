@@ -788,6 +788,7 @@ export default function Library({
           title: item.tmdb_title ?? item.title ?? null,
           titleEn: item.tmdb_title_en ?? null,
           year: item.year ?? null,
+          imdbId: item.imdb_id ?? null,
           mediaType: item.media_type ?? item.tmdb_type ?? null,
         })),
       },

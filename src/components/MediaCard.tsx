@@ -125,7 +125,9 @@ function InlineBadge({
   releaseColor?: string;
 }) {
   return (
-    <span style={badgeSurface(tone, releaseColor, { compact: true, shadow: false })}>
+    <span
+      style={badgeSurface(tone, releaseColor, { compact: true, shadow: false })}
+    >
       {children}
     </span>
   );
@@ -278,8 +280,8 @@ function MediaCard({
               </OverlayBadge>
             )}
             {badges.inEmby && (
-              <OverlayBadge tone="info" title="Emby">
-                Emby
+              <OverlayBadge tone="info" title="Plex">
+                Plex
               </OverlayBadge>
             )}
           </div>
@@ -305,7 +307,9 @@ function MediaCard({
             </OverlayBadge>
           )}
           {item.resolution && (
-            <OverlayBadge title={item.resolution}>{item.resolution}</OverlayBadge>
+            <OverlayBadge title={item.resolution}>
+              {item.resolution}
+            </OverlayBadge>
           )}
         </div>
 
@@ -376,9 +380,7 @@ function MediaCard({
           {langs.length > 0 && langs[0] !== "EN" && langs[0] !== "en" && (
             <>
               <span style={{ opacity: 0.4 }}>·</span>
-              <span
-                style={{ display: "inline-flex" }}
-              >
+              <span style={{ display: "inline-flex" }}>
                 <InlineBadge
                   tone="release"
                   releaseColor={LANG_COLORS[langs[0]] || "#6b7280"}
