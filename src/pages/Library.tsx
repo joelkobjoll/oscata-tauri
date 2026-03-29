@@ -186,7 +186,7 @@ export default function Library() {
     log,
     clearLog,
   } = useIndexing();
-  const { startDownload } = useDownload();
+  const { startDownload, isDownloadPending } = useDownload();
   const {
     downloads,
     cancelDownload,
@@ -320,6 +320,19 @@ export default function Library() {
 
   const handleDownloadSeason = async (episodes: MediaItem[]) => {
     for (const ep of episodes) {
+      const existingDownload = downloadMap.get(ep.ftp_path);
+      const isActive =
+        isDownloadPending(ep.ftp_path) ||
+        existingDownload?.status === "queued" ||
+        existingDownload?.status === "downloading";
+      const isAlreadyDownloaded =
+        existingDownload?.status === "done" ||
+        badgeMap[ep.id]?.downloaded === true;
+
+      if (isActive || isAlreadyDownloaded) {
+        continue;
+      }
+
       await startDownload(ep);
     }
   };
@@ -1551,7 +1564,11 @@ export default function Library() {
           downloadItem={
             selected ? downloadMap.get(selected.ftp_path) : undefined
           }
+          downloadMap={downloadMap}
+          downloadedBadgeMap={badgeMap}
           isDownloaded={selected ? !!badgeMap[selected.id]?.downloaded : false}
+          onDownload={startDownload}
+          isDownloadPending={isDownloadPending}
           onRetry={retryDownload}
         />
       )}
@@ -1565,6 +1582,7 @@ export default function Library() {
           onDownload={startDownload}
           onDownloadSeason={handleDownloadSeason}
           downloadMap={downloadMap}
+          isDownloadPending={isDownloadPending}
           downloadedBadgeMap={badgeMap}
           onFixMatch={(episodes) => {
             const [first] = episodes;

@@ -274,6 +274,7 @@ function EpisodeRow({
   onDownload,
   onFixMatch,
   downloadMap,
+  isDownloadPending,
   downloadedBadgeMap,
 }: {
   episode: MediaItem;
@@ -281,6 +282,7 @@ function EpisodeRow({
   onDownload: (item: MediaItem) => void;
   onFixMatch: (items: MediaItem[]) => void;
   downloadMap: Map<string, DownloadItem>;
+  isDownloadPending: (ftpPath: string) => boolean;
   downloadedBadgeMap: Record<
     number,
     { downloaded?: boolean; inEmby?: boolean }
@@ -300,8 +302,9 @@ function EpisodeRow({
 
   const downloadItem = downloadMap.get(episode.ftp_path);
   const isDownloading =
-    downloadItem != null &&
-    ["queued", "downloading"].includes(downloadItem.status);
+    isDownloadPending(episode.ftp_path) ||
+    downloadItem?.status === "queued" ||
+    downloadItem?.status === "downloading";
   const isDownloaded =
     downloadItem?.status === "done" ||
     downloadedBadgeMap[episode.id]?.downloaded === true;
@@ -424,11 +427,13 @@ function GroupHeader({
   count,
   language,
   onDownloadGroup,
+  disabled,
 }: {
   group: ReleaseGroup;
   count: number;
   language: AppLanguage;
   onDownloadGroup: () => void;
+  disabled: boolean;
 }) {
   return (
     <div
@@ -483,6 +488,7 @@ function GroupHeader({
       </span>
       <button
         onClick={onDownloadGroup}
+        disabled={disabled}
         style={{
           marginLeft: "auto",
           display: "inline-flex",
@@ -494,9 +500,10 @@ function GroupHeader({
           background:
             "color-mix(in srgb, var(--color-primary) 18%, transparent)",
           color: "var(--color-primary)",
-          cursor: "pointer",
+          cursor: disabled ? "default" : "pointer",
           fontSize: 12,
           fontWeight: 700,
+          opacity: disabled ? 0.5 : 1,
         }}
       >
         <AppIcon name="download" size={13} strokeWidth={2.2} />
@@ -514,6 +521,7 @@ function SeasonGroup({
   onDownloadSeason,
   onFixMatch,
   downloadMap,
+  isDownloadPending,
   downloadedBadgeMap,
 }: {
   season: number | null;
@@ -523,6 +531,7 @@ function SeasonGroup({
   onDownloadSeason: (episodes: MediaItem[]) => void;
   onFixMatch: (items: MediaItem[]) => void;
   downloadMap: Map<string, DownloadItem>;
+  isDownloadPending: (ftpPath: string) => boolean;
   downloadedBadgeMap: Record<
     number,
     { downloaded?: boolean; inEmby?: boolean }
@@ -559,6 +568,17 @@ function SeasonGroup({
           season: String(season).padStart(2, "0"),
         })
       : t(language, "tv.unknownSeason");
+  const downloadableEpisodes = episodes.filter((episode) => {
+    const downloadItem = downloadMap.get(episode.ftp_path);
+    const isActive =
+      isDownloadPending(episode.ftp_path) ||
+      downloadItem?.status === "queued" ||
+      downloadItem?.status === "downloading";
+    const isDone =
+      downloadItem?.status === "done" ||
+      downloadedBadgeMap[episode.id]?.downloaded === true;
+    return !isActive && !isDone;
+  });
 
   return (
     <section
@@ -620,8 +640,9 @@ function SeasonGroup({
         <button
           onClick={(event) => {
             event.stopPropagation();
-            onDownloadSeason(episodes);
+            onDownloadSeason(downloadableEpisodes);
           }}
+          disabled={downloadableEpisodes.length === 0}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -631,9 +652,10 @@ function SeasonGroup({
             border: "none",
             background: "var(--color-primary)",
             color: "#fff",
-            cursor: "pointer",
+            cursor: downloadableEpisodes.length === 0 ? "default" : "pointer",
             fontSize: 12,
             fontWeight: 700,
+            opacity: downloadableEpisodes.length === 0 ? 0.5 : 1,
           }}
         >
           <AppIcon name="download" size={13} strokeWidth={2.2} />
@@ -646,12 +668,29 @@ function SeasonGroup({
           {grouped.map(({ group, eps }) => (
             <div key={group.folderName}>
               {grouped.length > 1 && (
+                (() => {
+                  const downloadableGroupEpisodes = eps.filter((episode) => {
+                    const downloadItem = downloadMap.get(episode.ftp_path);
+                    const isActive =
+                      isDownloadPending(episode.ftp_path) ||
+                      downloadItem?.status === "queued" ||
+                      downloadItem?.status === "downloading";
+                    const isDone =
+                      downloadItem?.status === "done" ||
+                      downloadedBadgeMap[episode.id]?.downloaded === true;
+                    return !isActive && !isDone;
+                  });
+
+                  return (
                 <GroupHeader
                   group={group}
                   count={eps.length}
                   language={language}
-                  onDownloadGroup={() => onDownloadSeason(eps)}
+                  onDownloadGroup={() => onDownloadSeason(downloadableGroupEpisodes)}
+                  disabled={downloadableGroupEpisodes.length === 0}
                 />
+                  );
+                })()
               )}
               {eps
                 .slice()
@@ -668,6 +707,7 @@ function SeasonGroup({
                     onDownload={onDownload}
                     onFixMatch={onFixMatch}
                     downloadMap={downloadMap}
+                    isDownloadPending={isDownloadPending}
                     downloadedBadgeMap={downloadedBadgeMap}
                   />
                 ))}
@@ -688,6 +728,7 @@ export default function TVShowPanel({
   onDownloadSeason,
   onFixMatch,
   downloadMap,
+  isDownloadPending,
   downloadedBadgeMap,
 }: {
   show: MediaItem;
@@ -698,6 +739,7 @@ export default function TVShowPanel({
   onDownloadSeason: (episodes: MediaItem[]) => void;
   onFixMatch: (items: MediaItem[]) => void;
   downloadMap: Map<string, DownloadItem>;
+  isDownloadPending: (ftpPath: string) => boolean;
   downloadedBadgeMap: Record<
     number,
     { downloaded?: boolean; inEmby?: boolean }
@@ -740,6 +782,17 @@ export default function TVShowPanel({
     )
       return false;
     return true;
+  });
+  const downloadableFiltered = filtered.filter((episode) => {
+    const downloadItem = downloadMap.get(episode.ftp_path);
+    const isActive =
+      isDownloadPending(episode.ftp_path) ||
+      downloadItem?.status === "queued" ||
+      downloadItem?.status === "downloading";
+    const isDone =
+      downloadItem?.status === "done" ||
+      downloadedBadgeMap[episode.id]?.downloaded === true;
+    return !isActive && !isDone;
   });
 
   const filteredBySeason = filtered.reduce<Record<string, MediaItem[]>>(
@@ -929,8 +982,8 @@ export default function TVShowPanel({
                     title={t(language, "tv.downloadAllVisible")}
                     icon="download"
                     tone="primary"
-                    onClick={() => onDownloadSeason(filtered)}
-                    disabled={filtered.length === 0}
+                    onClick={() => onDownloadSeason(downloadableFiltered)}
+                    disabled={downloadableFiltered.length === 0}
                   />
                   <IconActionButton
                     title={t(language, "tv.close")}
@@ -1243,6 +1296,7 @@ export default function TVShowPanel({
                 onDownloadSeason={onDownloadSeason}
                 onFixMatch={onFixMatch}
                 downloadMap={downloadMap}
+                isDownloadPending={isDownloadPending}
                 downloadedBadgeMap={downloadedBadgeMap}
               />
             ))

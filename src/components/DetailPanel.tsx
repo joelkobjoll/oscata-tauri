@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useDownload } from "../hooks/useDownload";
 import type { DownloadItem } from "../hooks/useDownloads";
 import type { MediaItem } from "../hooks/useIndexing";
 import AppIcon from "./AppIcon";
@@ -59,7 +58,11 @@ export default function DetailPanel({
   onOpenItem,
   onUpdated,
   downloadItem,
+  downloadMap,
+  downloadedBadgeMap,
   isDownloaded = false,
+  onDownload,
+  isDownloadPending,
   onRetry,
 }: {
   item: MediaItem;
@@ -70,10 +73,13 @@ export default function DetailPanel({
   onOpenItem?: (item: MediaItem) => void;
   onUpdated?: (id: number, patch: Partial<MediaItem>) => void;
   downloadItem?: DownloadItem;
+  downloadMap: Map<string, DownloadItem>;
+  downloadedBadgeMap: Record<number, { downloaded?: boolean; inEmby?: boolean }>;
   isDownloaded?: boolean;
+  onDownload: (item: MediaItem) => Promise<number>;
+  isDownloadPending: (ftpPath: string) => boolean;
   onRetry?: (id: number) => void;
 }) {
-  const { startDownload } = useDownload();
   const [showFix, setShowFix] = useState(false);
 
   const title = getLocalizedTitle(item, language);
@@ -136,22 +142,57 @@ export default function DetailPanel({
           top: 0,
           right: 0,
           bottom: 0,
-          width: 500,
-          background: "var(--color-bg)",
-          zIndex: "var(--z-detail-panel)",
-          overflowY: "auto",
-          borderLeft:
-            "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
-          boxShadow: "-4px 0 32px color-mix(in srgb, black 50%, transparent)",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: "1.25rem 1.5rem 1rem",
-            display: "flex",
+                  {(() => {
+                    const versionDownloadItem = downloadMap.get(version.ftp_path);
+                    const versionIsPending = isDownloadPending(version.ftp_path);
+                    const versionIsActive =
+                      versionIsPending ||
+                      versionDownloadItem?.status === "queued" ||
+                      versionDownloadItem?.status === "downloading";
+                    const versionIsDownloaded =
+                      versionDownloadItem?.status === "done" ||
+                      downloadedBadgeMap[version.id]?.downloaded === true;
+                    const downloadLabel = versionIsDownloaded
+                      ? t(language, "detail.alreadyDownloaded")
+                      : versionDownloadItem?.status === "downloading"
+                        ? t(language, "downloads.downloading")
+                        : versionIsActive
+                          ? t(language, "downloads.queued")
+                          : t(language, "detail.download");
+
+                    return (
+                      <button
+                        onClick={() => void onDownload(version)}
+                        disabled={versionIsActive || versionIsDownloaded}
+                        title={
+                          versionIsDownloaded
+                            ? t(language, "detail.alreadyDownloadedHint")
+                            : downloadLabel
+                        }
+                        style={{
+                          padding: "9px 12px",
+                          borderRadius: "var(--radius-full)",
+                          border: "none",
+                          background: versionIsDownloaded
+                            ? "color-mix(in srgb, var(--color-success) 18%, var(--color-surface) 82%)"
+                            : versionIsActive
+                              ? "color-mix(in srgb, var(--color-warning) 26%, var(--color-surface) 74%)"
+                              : "color-mix(in srgb, var(--color-primary) 16%, transparent)",
+                          color: versionIsDownloaded
+                            ? "var(--color-success)"
+                            : versionIsActive
+                              ? "var(--color-warning)"
+                              : "var(--color-primary)",
+                          cursor: versionIsActive || versionIsDownloaded ? "default" : "pointer",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          opacity: versionIsActive || versionIsDownloaded ? 0.8 : 1,
+                        }}
+                      >
+                        {downloadLabel}
+                      </button>
+                    );
+                  })()}
             alignItems: "center",
             justifyContent: "space-between",
             borderBottom:
@@ -573,7 +614,8 @@ export default function DetailPanel({
               item,
               downloadItem,
               isDownloaded,
-              startDownload,
+              isDownloadPending(item.ftp_path),
+              onDownload,
               onRetry,
               language,
             )}
@@ -637,7 +679,8 @@ function renderDownloadButton(
   item: MediaItem,
   downloadItem: DownloadItem | undefined,
   isDownloaded: boolean,
-  startDownload: (item: MediaItem) => void,
+  isPendingDownload: boolean,
+  onDownload: (item: MediaItem) => Promise<number>,
   onRetry: ((id: number) => void) | undefined,
   language: AppLanguage,
 ): React.ReactNode {
@@ -701,7 +744,7 @@ function renderDownloadButton(
     );
   }
 
-  if (dlStatus === "queued") {
+  if (isPendingDownload || dlStatus === "queued") {
     return (
       <button
         disabled
@@ -783,7 +826,7 @@ function renderDownloadButton(
   // idle / cancelled / undefined
   return (
     <button
-      onClick={() => startDownload(item)}
+      onClick={() => void onDownload(item)}
       style={{
         ...baseStyle,
         background: "var(--color-primary)",
