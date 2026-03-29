@@ -181,7 +181,7 @@ export default function StepConfirm({
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button onClick={save} disabled={saving} style={successBtn(saving)}>
           <AppIcon name="check" size={15} strokeWidth={2.4} />
-          {saving ? t(language, "common.saving") : t(language, "wizard.saveAndStart")}
+          {saving ? t(language, "wizard.preparingLibrary") : t(language, "wizard.finishSetup")}
         </button>
       </div>
       {errorMsg && (

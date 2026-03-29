@@ -459,13 +459,17 @@ const messages = {
     es: "Selecciona un backup SQLite exportado desde otra instalación de Oscata FTP Client.",
     en: "Choose a SQLite backup exported from another Oscata FTP Client installation.",
   },
-  "wizard.saveAndStart": {
-    es: "Guardar e iniciar indexado",
-    en: "Save & Start Indexing",
+  "wizard.finishSetup": {
+    es: "Guardar y abrir biblioteca",
+    en: "Save & Open Library",
+  },
+  "wizard.preparingLibrary": {
+    es: "Preparando biblioteca…",
+    en: "Preparing library…",
   },
   "wizard.confirmDescription": {
-    es: "Revisa la conexión, el idioma inicial y la carpeta de descargas antes de lanzar el primer indexado.",
-    en: "Review the connection, startup language, and download folder before launching the first index.",
+    es: "Revisa la conexión, el idioma inicial, la carpeta de descargas y la estructura de la biblioteca antes de terminar la configuración.",
+    en: "Review the connection, startup language, download folder, and library structure before finishing setup.",
   },
   "wizard.setupOverview": {
     es: "Pon a punto la conexión principal y deja la librería lista para empezar a indexar.",
