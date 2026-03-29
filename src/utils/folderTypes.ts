@@ -9,7 +9,7 @@ export const DEFAULT_FOLDER_TYPES: Record<string, FolderTypeValue> = {
   "Peliculas UHDRemux 2160p": "movie",
   "Peliculas WEB DL Micro 1080p": "movie",
   "Peliculas WEB DL-UHDRip 2160p": "movie",
-  "Peliculas y Series mas antiguas": "movie",
+  "Peliculas y Series mas antiguas": "mixed",
   "Series 4K 2160p": "tv",
   "Series HD 1080p": "tv",
   "Series HD 1080p X265": "tv",
@@ -49,7 +49,9 @@ function normalizeFolderName(value: string): string {
     .toLowerCase();
 }
 
-export function parseFolderTypes(raw: string | null | undefined): Record<string, FolderTypeValue> {
+export function parseFolderTypes(
+  raw: string | null | undefined,
+): Record<string, FolderTypeValue> {
   const trimmed = raw?.trim() ?? "";
   if (!trimmed || trimmed === "{}" || trimmed === LEGACY_DEFAULT_FOLDER_TYPES) {
     return { ...DEFAULT_FOLDER_TYPES };
@@ -66,11 +68,15 @@ export function parseFolderTypes(raw: string | null | undefined): Record<string,
 export function inferFolderType(dir: string): FolderTypeValue | "" {
   const normalized = normalizeFolderName(dir);
 
-  const isDocumentary = /(documental|documentary|documentaries|docs?)(\b|$)/.test(normalized);
+  const isDocumentary =
+    /(documental|documentary|documentaries|docs?)(\b|$)/.test(normalized);
   const isTv = /(series|tv|shows?)(\b|$)/.test(normalized);
   const isMovie = /(peliculas|pelicula|movies?|films?)(\b|$)/.test(normalized);
-  const isMixed = /(peticiones|peticion|request|requests|mixto|mixed|varios|older|antiguas|antiguos)/.test(normalized)
-    || (isMovie && isTv);
+  const isMixed =
+    /(peticiones|peticion|request|requests|mixto|mixed|varios|older|antiguas|antiguos)/.test(
+      normalized,
+    ) ||
+    (isMovie && isTv);
 
   if (isMixed) return "mixed";
   if (isDocumentary) return "documentary";

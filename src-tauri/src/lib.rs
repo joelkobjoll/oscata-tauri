@@ -133,6 +133,20 @@ pub fn run() {
                     current_version, backup_path
                 );
             }
+            if let Some(seed_path) = commands::resolve_seed_db_path(&app.handle().clone()) {
+                match db.backfill_imdb_ids_from_seed(&seed_path) {
+                    Ok(updated) if updated > 0 => {
+                        println!(
+                            "Backfilled imdb_id for {} library items from bundled seed database",
+                            updated
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        eprintln!("IMDb seed backfill skipped: {error}");
+                    }
+                }
+            }
             commands::restore_download_queue(db.clone(), queue.clone());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

@@ -488,7 +488,7 @@ pub async fn has_config(state: tauri::State<'_, crate::db::Db>) -> Result<bool, 
     state.has_config()
 }
 
-fn resolve_seed_db_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+pub(crate) fn resolve_seed_db_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     let mut candidates = Vec::new();
 
     if let Ok(path) = app

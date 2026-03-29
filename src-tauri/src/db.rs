@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 const DEFAULT_FTP_ROOT: &str = "/Compartida";
 const DEFAULT_FOLDER_TYPES: &str =
-    r#"{"Documentales 4K 2160p - HD 1080p":"documentary","P-Peticiones":"mixed","Peliculas BDRemux 1080p":"movie","Peliculas BDrip 1080p X264":"movie","Peliculas BDrip 1080p X265":"movie","Peliculas UHDRemux 2160p":"movie","Peliculas WEB DL Micro 1080p":"movie","Peliculas WEB DL-UHDRip 2160p":"movie","Peliculas y Series mas antiguas":"movie","Series 4K 2160p":"tv","Series HD 1080p":"tv","Series HD 1080p X265":"tv"}"#;
+    r#"{"Documentales 4K 2160p - HD 1080p":"documentary","P-Peticiones":"mixed","Peliculas BDRemux 1080p":"movie","Peliculas BDrip 1080p X264":"movie","Peliculas BDrip 1080p X265":"movie","Peliculas UHDRemux 2160p":"movie","Peliculas WEB DL Micro 1080p":"movie","Peliculas WEB DL-UHDRip 2160p":"movie","Peliculas y Series mas antiguas":"mixed","Series 4K 2160p":"tv","Series HD 1080p":"tv","Series HD 1080p X265":"tv"}"#;
 const LEGACY_FOLDER_TYPES: &str =
     r#"{"Peliculas":"movie","Series":"tv","Documentales":"documentary","Movies":"movie","TV Shows":"tv","Documentaries":"documentary"}"#;
 const REMOVED_FOLDER_TYPE_KEYS: &[&str] = &[
@@ -149,6 +149,43 @@ impl Db {
         }
     }
 
+    fn migrate_old_folder_type_mapping(conn: &Connection) {
+        let raw: Option<String> = conn
+            .query_row(
+                "SELECT value FROM app_config WHERE key = 'folder_types' LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten();
+
+        let Some(raw) = raw else {
+            return;
+        };
+
+        let mut parsed = serde_json::from_str::<std::collections::HashMap<String, String>>(&raw)
+            .unwrap_or_default();
+        let key = "Peliculas y Series mas antiguas";
+        let needs_update = parsed
+            .get(key)
+            .map(|value| !value.eq_ignore_ascii_case("mixed"))
+            .unwrap_or(false);
+
+        if !needs_update {
+            return;
+        }
+
+        parsed.insert(key.to_string(), "mixed".to_string());
+        if let Ok(serialized) = serde_json::to_string(&parsed) {
+            conn.execute(
+                "INSERT OR REPLACE INTO app_config (key, value) VALUES ('folder_types', ?1)",
+                params![serialized],
+            )
+            .ok();
+        }
+    }
+
     fn app_data_dir() -> std::path::PathBuf {
         dirs_next::data_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -249,6 +286,10 @@ impl Db {
              );",
         ).ok();
 
+        // Folder type migration: this directory contains mixed content and should
+        // no longer be treated as movie-only in older persisted configs.
+        Self::migrate_old_folder_type_mapping(conn);
+
         // Data repair for old installs: episodic entries that were saved as movie
         // should be categorized as TV so they render in the correct tab.
         conn.execute(
@@ -307,6 +348,10 @@ impl Db {
         }
     }
 
+    fn escape_sqlite_path(path: &std::path::Path) -> String {
+        path.to_string_lossy().replace('\'', "''")
+    }
+
     pub fn prepare_for_app_version(&self, current_version: &str) -> Result<Option<String>, String> {
         let previous_version = self.load_app_value("last_app_version")?;
         match previous_version.as_deref() {
@@ -324,6 +369,58 @@ impl Db {
                 Ok(None)
             }
         }
+    }
+
+    pub fn backfill_imdb_ids_from_seed(
+        &self,
+        seed_path: &std::path::Path,
+    ) -> Result<usize, String> {
+        if !seed_path.exists() {
+            return Ok(0);
+        }
+
+        let escaped_seed_path = Self::escape_sqlite_path(seed_path);
+        let conn = self.0.lock().unwrap();
+
+        conn.execute_batch(&format!("ATTACH '{}' AS seed;", escaped_seed_path))
+            .map_err(|e| e.to_string())?;
+
+        let result = (|| {
+            let mut stmt = conn
+                .prepare("PRAGMA seed.table_info(media_items)")
+                .map_err(|e| e.to_string())?;
+            let source_has_imdb = stmt
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(|e| e.to_string())?
+                .filter_map(Result::ok)
+                .any(|name| name == "imdb_id");
+
+            if !source_has_imdb {
+                return Ok(0);
+            }
+
+            conn.execute(
+                "UPDATE media_items AS local
+                 SET imdb_id = (
+                     SELECT src.imdb_id
+                     FROM seed.media_items src
+                     WHERE src.ftp_path = local.ftp_path
+                 )
+                 WHERE (local.imdb_id IS NULL OR TRIM(local.imdb_id) = '')
+                   AND EXISTS (
+                       SELECT 1
+                       FROM seed.media_items src
+                       WHERE src.ftp_path = local.ftp_path
+                         AND src.imdb_id IS NOT NULL
+                         AND TRIM(src.imdb_id) <> ''
+                   )",
+                [],
+            )
+            .map_err(|e| e.to_string())
+        })();
+
+        conn.execute_batch("DETACH seed;").ok();
+        result
     }
 
     pub fn backup_database_for_update(

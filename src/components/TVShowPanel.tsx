@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { MediaItem } from "../hooks/useIndexing";
 import type { DownloadItem } from "../hooks/useDownloads";
 import AppIcon from "./AppIcon";
@@ -751,6 +752,38 @@ export default function TVShowPanel({
   const [filterSeason, setFilterSeason] = useState("all");
   const showTitle = getLocalizedTitle(show, language);
   const showOverview = getLocalizedOverview(show, language);
+  const searchTitle =
+    show.tmdb_title_en ?? show.tmdb_title ?? show.title ?? showTitle;
+  const searchQuery = [
+    searchTitle,
+    show.year ?? show.tmdb_release_date?.slice(0, 4),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const tmdbMediaType =
+    show.tmdb_type ?? (show.media_type === "movie" ? "movie" : "tv");
+  const tmdbUrl = show.tmdb_id
+    ? `https://www.themoviedb.org/${tmdbMediaType}/${show.tmdb_id}`
+    : `https://www.themoviedb.org/search?query=${encodeURIComponent(searchQuery)}`;
+  const imdbUrl = show.imdb_id
+    ? `https://www.imdb.com/title/${encodeURIComponent(show.imdb_id)}/`
+    : `https://www.imdb.com/find/?q=${encodeURIComponent(searchQuery)}&s=tt`;
+  const externalLinkBtn: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    minWidth: 0,
+    padding: "0.52rem 0.82rem",
+    borderRadius: "var(--radius-full)",
+    border:
+      "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+    background: "color-mix(in srgb, var(--color-surface-2) 76%, transparent)",
+    color: "var(--color-text)",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 700,
+  };
 
   const releaseTypes = [
     ...new Set(allEpisodes.map((ep) => ep.release_type).filter(Boolean)),
@@ -1073,6 +1106,20 @@ export default function TVShowPanel({
                   {filtered.length === allEpisodes.length
                     ? t(language, "tv.fixShow")
                     : t(language, "tv.fixVisible")}
+                </button>
+                <button
+                  onClick={() => void openUrl(tmdbUrl)}
+                  style={externalLinkBtn}
+                  title={tmdbUrl}
+                >
+                  {t(language, "detail.openTmdb")}
+                </button>
+                <button
+                  onClick={() => void openUrl(imdbUrl)}
+                  style={externalLinkBtn}
+                  title={imdbUrl}
+                >
+                  {t(language, "detail.openImdb")}
                 </button>
               </div>
 
