@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import AppIcon from "../components/AppIcon";
 import type { AppLanguage } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
+import { mergeInferredFolderTypes, parseFolderTypes } from "../utils/folderTypes";
 
 interface Config {
   ftp_host: string;
@@ -244,13 +245,7 @@ export default function Settings({
     );
   }
 
-  const folderTypes: Record<string, string> = (() => {
-    try {
-      return JSON.parse(form.folder_types || "{}");
-    } catch {
-      return {};
-    }
-  })();
+  const folderTypes: Record<string, string> = parseFolderTypes(form.folder_types);
 
   const setFolderType = (dir: string, type: string) => {
     const next = { ...folderTypes };
@@ -361,9 +356,22 @@ export default function Settings({
   const loadRootDirs = async () => {
     setLoadingDirs(true);
     try {
-      await invoke("save_config", { config: form });
-      const dirs = await invoke<string[]>("ftp_list_root_dirs");
+      const dirs = await invoke<string[]>("ftp_list_root_dirs_preview", {
+        host: form.ftp_host,
+        port: form.ftp_port,
+        user: form.ftp_user,
+        pass: form.ftp_pass,
+        root: form.ftp_root,
+      });
       setRootDirs(dirs);
+      setForm((current) =>
+        current
+          ? {
+              ...current,
+              folder_types: mergeInferredFolderTypes(current.folder_types, dirs),
+            }
+          : current,
+      );
     } catch {
       setRootDirs([]);
     } finally {

@@ -6,17 +6,11 @@ import StepFTP from "../components/wizard/StepFTP";
 import StepTMDB from "../components/wizard/StepTMDB";
 import StepConfirm from "../components/wizard/StepConfirm";
 import { t } from "../utils/i18n";
+import { mergeInferredFolderTypes } from "../utils/folderTypes";
 import type { AppLanguage } from "../utils/mediaLanguage";
 
 const DEFAULT_FTP_ROOT = "/Compartida";
-const DEFAULT_FOLDER_TYPES = JSON.stringify({
-  Peliculas: "movie",
-  Series: "tv",
-  Documentales: "documentary",
-  Movies: "movie",
-  "TV Shows": "tv",
-  Documentaries: "documentary",
-});
+const DEFAULT_FOLDER_TYPES = "{}";
 
 interface Config {
   ftp_host: string;
@@ -183,8 +177,25 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
     updater_pubkey: "",
   });
 
-  const next = (partial: Partial<Config>) => {
-    setConfig((c) => ({ ...c, ...partial }));
+  const next = async (partial: Partial<Config>) => {
+    const merged = { ...config, ...partial };
+
+    if (step === 1) {
+      try {
+        const dirs = await invoke<string[]>("ftp_list_root_dirs_preview", {
+          host: merged.ftp_host,
+          port: merged.ftp_port,
+          user: merged.ftp_user,
+          pass: merged.ftp_pass,
+          root: merged.ftp_root,
+        });
+        merged.folder_types = mergeInferredFolderTypes(merged.folder_types, dirs);
+      } catch {
+        // Leave folder mapping empty if FTP root inference is unavailable.
+      }
+    }
+
+    setConfig(merged);
     setStep((current) => (typeof current === "number" ? current + 1 : 0));
   };
 

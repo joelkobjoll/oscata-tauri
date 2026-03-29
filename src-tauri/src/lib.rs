@@ -46,6 +46,7 @@ pub fn run() {
             commands::refresh_all_metadata,
             commands::check_media_badges,
             commands::ftp_list_root_dirs,
+            commands::ftp_list_root_dirs_preview,
         ])
         .setup(|app| {
             let db = app.state::<db::Db>().inner().clone();

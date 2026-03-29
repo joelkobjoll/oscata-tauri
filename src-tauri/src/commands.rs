@@ -452,6 +452,7 @@ pub async fn seed_starter_library(
 
     state.import_database_from(&seed_path.to_string_lossy())?;
     state.clear_app_config()?;
+    state.save_last_indexed_at(&chrono::Utc::now().to_rfc3339())?;
     Ok(true)
 }
 
@@ -1151,5 +1152,38 @@ pub async fn ftp_list_root_dirs(
             if name != "." && name != ".." { Some(name) } else { None }
         } else { None }
     }).collect();
+    Ok(dirs)
+}
+
+#[tauri::command]
+pub async fn ftp_list_root_dirs_preview(
+    host: String,
+    port: u16,
+    user: String,
+    pass: String,
+    root: String,
+) -> Result<Vec<String>, String> {
+    let entries = crate::ftp::list_raw(&host, port, &user, &pass, &root).await?;
+    let dirs = entries
+        .into_iter()
+        .filter_map(|line| {
+            let is_dir = line.starts_with('d') || line.to_uppercase().contains("<DIR>");
+            if !is_dir {
+                return None;
+            }
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            let name_start = if line.starts_with('d') { 8 } else { 3 };
+            if parts.len() > name_start {
+                let name = parts[name_start..].join(" ");
+                if name != "." && name != ".." {
+                    Some(name)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
     Ok(dirs)
 }

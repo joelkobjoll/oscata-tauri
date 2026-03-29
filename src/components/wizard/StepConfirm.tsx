@@ -100,15 +100,20 @@ export default function StepConfirm({
     setSaving(true);
     setErrorMsg("");
     try {
-      await invoke<boolean>("seed_starter_library");
+      const seeded = await invoke<boolean>("seed_starter_library");
       await invoke("save_config", { config });
-      await invoke("start_indexing");
       onComplete();
+      if (!seeded) {
+        invoke("start_indexing").catch((error: unknown) => {
+          setErrorMsg(String(error));
+        });
+      }
     } catch (error: unknown) {
       setErrorMsg(String(error));
-    } finally {
       setSaving(false);
+      return;
     }
+    setSaving(false);
   };
 
   return (

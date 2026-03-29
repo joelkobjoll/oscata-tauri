@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
 const DEFAULT_FTP_ROOT: &str = "/Compartida";
-const DEFAULT_FOLDER_TYPES: &str =
+const DEFAULT_FOLDER_TYPES: &str = r#"{}"#;
+const LEGACY_FOLDER_TYPES: &str =
     r#"{"Peliculas":"movie","Series":"tv","Documentales":"documentary","Movies":"movie","TV Shows":"tv","Documentaries":"documentary"}"#;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,7 +81,7 @@ impl Db {
         match value {
             Some(raw) => {
                 let trimmed = raw.trim();
-                if trimmed.is_empty() || trimmed == "{}" {
+                if trimmed.is_empty() || trimmed == "{}" || trimmed == LEGACY_FOLDER_TYPES {
                     Self::default_folder_types()
                 } else {
                     raw
