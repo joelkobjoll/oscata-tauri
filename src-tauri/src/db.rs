@@ -801,6 +801,15 @@ impl Db {
     ) -> Result<UpsertMediaResult, String> {
         let conn = self.0.lock().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
+        let existed_before = conn
+            .query_row(
+                "SELECT 1 FROM media_items WHERE ftp_path = ?1 LIMIT 1",
+                params![path],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .is_some();
         conn.execute(
             "INSERT INTO media_items
                 (ftp_path, filename, size_bytes, title, year, season, episode, episode_end,
@@ -848,7 +857,9 @@ impl Db {
             .map_err(|e| e.to_string())?;
         Ok(UpsertMediaResult {
             id,
-            needs_metadata: metadata_at.is_none(),
+            // During library updates, only request TMDB metadata for newly inserted rows.
+            // Existing rows can be refreshed explicitly via the dedicated metadata actions.
+            needs_metadata: !existed_before && metadata_at.is_none(),
         })
     }
 

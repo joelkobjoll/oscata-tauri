@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
+use std::sync::LazyLock;
+use std::time::{Duration, Instant};
+
+static TMDB_LAST_REQUEST_AT: LazyLock<tokio::sync::Mutex<Instant>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(Instant::now() - Duration::from_secs(1)));
+const TMDB_MIN_REQUEST_INTERVAL: Duration = Duration::from_millis(35);
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TmdbMovie {
@@ -95,12 +101,22 @@ fn truncate_for_error(value: &str, max_chars: usize) -> String {
     }
 }
 
+async fn throttle_tmdb_request() {
+    let mut last_request = TMDB_LAST_REQUEST_AT.lock().await;
+    let elapsed = last_request.elapsed();
+    if elapsed < TMDB_MIN_REQUEST_INTERVAL {
+        tokio::time::sleep(TMDB_MIN_REQUEST_INTERVAL - elapsed).await;
+    }
+    *last_request = Instant::now();
+}
+
 async fn fetch_json_with_retry<T: DeserializeOwned>(url: &str, context: &str) -> Result<T, String> {
     const MAX_ATTEMPTS: u8 = 3;
     let client = reqwest::Client::new();
     let mut last_error = String::new();
 
     for attempt in 1..=MAX_ATTEMPTS {
+        throttle_tmdb_request().await;
         match client.get(url).send().await {
             Ok(response) => {
                 let status = response.status();
