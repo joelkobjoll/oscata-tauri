@@ -8,6 +8,16 @@ import StepConfirm from "../components/wizard/StepConfirm";
 import { t } from "../utils/i18n";
 import type { AppLanguage } from "../utils/mediaLanguage";
 
+const DEFAULT_FTP_ROOT = "/Compartida";
+const DEFAULT_FOLDER_TYPES = JSON.stringify({
+  Peliculas: "movie",
+  Series: "tv",
+  Documentales: "documentary",
+  Movies: "movie",
+  "TV Shows": "tv",
+  Documentaries: "documentary",
+});
+
 interface Config {
   ftp_host: string;
   ftp_port: number;
@@ -144,11 +154,11 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
     ftp_port: 21,
     ftp_user: "",
     ftp_pass: "",
-    ftp_root: "/",
+    ftp_root: DEFAULT_FTP_ROOT,
     tmdb_api_key: "",
     default_language: "es",
     download_folder: "",
-    folder_types: "{}",
+    folder_types: DEFAULT_FOLDER_TYPES,
     max_concurrent_downloads: 2,
     emby_url: "",
     emby_api_key: "",

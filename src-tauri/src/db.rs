@@ -2,6 +2,10 @@ use rusqlite::{params, Connection, OptionalExtension, Result as SqlResult};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
+const DEFAULT_FTP_ROOT: &str = "/Compartida";
+const DEFAULT_FOLDER_TYPES: &str =
+    r#"{"Peliculas":"movie","Series":"tv","Documentales":"documentary","Movies":"movie","TV Shows":"tv","Documentaries":"documentary"}"#;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub ftp_host: String,
@@ -68,6 +72,24 @@ pub struct UpsertMediaResult {
 }
 
 impl Db {
+    fn default_folder_types() -> String {
+        DEFAULT_FOLDER_TYPES.to_string()
+    }
+
+    fn normalized_folder_types(value: Option<String>) -> String {
+        match value {
+            Some(raw) => {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() || trimmed == "{}" {
+                    Self::default_folder_types()
+                } else {
+                    raw
+                }
+            }
+            None => Self::default_folder_types(),
+        }
+    }
+
     fn app_data_dir() -> std::path::PathBuf {
         dirs_next::data_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -355,11 +377,11 @@ impl Db {
                 .map_err(|_| "Invalid ftp_port".to_string())?,
             ftp_user: get("ftp_user")?,
             ftp_pass: get("ftp_pass")?,
-            ftp_root: get("ftp_root")?,
+            ftp_root: get("ftp_root").unwrap_or_else(|_| DEFAULT_FTP_ROOT.to_string()),
             tmdb_api_key: get("tmdb_api_key")?,
             default_language: get("default_language").unwrap_or_else(|_| "es".to_string()),
             download_folder: get("download_folder").unwrap_or_default(),
-            folder_types: get("folder_types").unwrap_or_else(|_| "{}".to_string()),
+            folder_types: Self::normalized_folder_types(get("folder_types").ok()),
             max_concurrent_downloads: get("max_concurrent_downloads")
                 .ok()
                 .and_then(|v| v.parse().ok())

@@ -142,7 +142,12 @@ export default function StepFTP({
 
           <div style={fieldStyle}>
             <label style={labelStyle}>{t(language, "wizard.rootPath")}</label>
-            <input style={inputStyle} value={form.ftp_root} onChange={set("ftp_root")} placeholder="/" />
+            <input
+              style={inputStyle}
+              value={form.ftp_root}
+              onChange={set("ftp_root")}
+              placeholder="/Compartida"
+            />
             <span style={subtextStyle}>{t(language, "settings.ftpDescription")}</span>
           </div>
         </div>
