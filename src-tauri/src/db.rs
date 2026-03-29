@@ -248,6 +248,21 @@ impl Db {
                      created_at TEXT NOT NULL
              );",
         ).ok();
+
+        // Data repair for old installs: episodic entries that were saved as movie
+        // should be categorized as TV so they render in the correct tab.
+        conn.execute(
+            "UPDATE media_items
+             SET media_type = 'tv',
+                 tmdb_type = CASE
+                     WHEN tmdb_type IS NULL OR tmdb_type = '' OR tmdb_type = 'movie' THEN 'tv'
+                     ELSE tmdb_type
+                 END
+             WHERE (season IS NOT NULL OR episode IS NOT NULL OR episode_end IS NOT NULL)
+               AND (media_type = 'movie' OR media_type IS NULL OR media_type = '')",
+            [],
+        )
+        .ok();
         Ok(())
     }
 
