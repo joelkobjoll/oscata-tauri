@@ -1510,7 +1510,7 @@ export default function Library() {
                 cursor: currentPage === 1 ? "default" : "pointer",
               }}
             >
-              Prev
+              {t(language, "library.prev")}
             </button>
             <span
               style={{
@@ -1534,7 +1534,7 @@ export default function Library() {
                 cursor: currentPage === pageCount ? "default" : "pointer",
               }}
             >
-              Next
+              {t(language, "library.next")}
             </button>
           </div>
         </div>
@@ -1573,6 +1573,7 @@ export default function Library() {
           onDownload={startDownload}
           onDownloadSeason={handleDownloadSeason}
           downloadMap={downloadMap}
+          downloadedBadgeMap={badgeMap}
           onFixMatch={(episodes) => {
             const [first] = episodes;
             setFixMatchRequest({

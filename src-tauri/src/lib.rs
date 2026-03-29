@@ -24,6 +24,8 @@ pub fn run() {
             commands::test_plex_connection,
             commands::save_config,
             commands::has_config,
+            commands::export_library_backup,
+            commands::import_library_backup,
             commands::get_all_media,
             commands::start_indexing,
             commands::rematch_all,
@@ -47,6 +49,15 @@ pub fn run() {
         .setup(|app| {
             let db = app.state::<db::Db>().inner().clone();
             let queue = app.state::<downloads::SharedQueue>().inner().clone();
+            if !db.has_config().unwrap_or(false) {
+                if let Ok(seed_path) =
+                    app.path().resolve("resources/library.seed.db", tauri::path::BaseDirectory::Resource)
+                {
+                    if seed_path.exists() {
+                        db.import_database_from(&seed_path.to_string_lossy()).ok();
+                    }
+                }
+            }
             let current_version = app.package_info().version.to_string();
             if let Ok(Some(backup_path)) = db.prepare_for_app_version(&current_version) {
                 println!(

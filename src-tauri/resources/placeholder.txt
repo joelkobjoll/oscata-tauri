@@ -1,0 +1,5 @@
+Optional resource files for release builds live here.
+
+If you want a fresh install to ship with a pre-indexed library, place a SQLite backup at:
+
+library.seed.db

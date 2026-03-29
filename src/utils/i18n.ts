@@ -56,6 +56,8 @@ const messages = {
   "library.matching": { es: "Re-haciendo match…", en: "Re-matching…" },
   "library.page": { es: "Página", en: "Page" },
   "library.of": { es: "de", en: "of" },
+  "library.prev": { es: "Anterior", en: "Prev" },
+  "library.next": { es: "Siguiente", en: "Next" },
   "library.grouped": { es: "Agrupadas", en: "Grouped" },
   "library.files": { es: "Archivos", en: "Files" },
   "library.selectedCount": {
@@ -426,6 +428,18 @@ const messages = {
     es: "TMDB API key: configurada ✓",
     en: "TMDB API key: configured ✓",
   },
+  "wizard.welcomeTitle": { es: "Bienvenido a Oscata", en: "Welcome to Oscata" },
+  "wizard.welcomeDescription": {
+    es: "Configura una librería nueva o restaura una base de datos existente para no empezar desde cero.",
+    en: "Set up a new library or restore an existing database so you do not have to start from scratch.",
+  },
+  "wizard.startFresh": { es: "Empezar configuración nueva", en: "Start fresh setup" },
+  "wizard.restoreBackup": { es: "Restaurar copia de librería", en: "Restore library backup" },
+  "wizard.restoringBackup": { es: "Restaurando copia…", en: "Restoring backup…" },
+  "wizard.restoreHelp": {
+    es: "Selecciona un backup SQLite exportado desde otra instalación de Oscata.",
+    en: "Choose a SQLite backup exported from another Oscata installation.",
+  },
   "wizard.saveAndStart": {
     es: "Guardar e iniciar indexado",
     en: "Save & Start Indexing",
@@ -560,6 +574,25 @@ const messages = {
   "settings.downloadsDescription": {
     es: "Controla dónde se guardan los archivos y cuántas descargas simultáneas puede ejecutar la app.",
     en: "Control where files go and how aggressively the app downloads them.",
+  },
+  "settings.backupsTitle": { es: "Backups y restauración", en: "Backups & Restore" },
+  "settings.backupsDescription": {
+    es: "Exporta tu librería indexada o restaura una base de datos existente en una instalación nueva.",
+    en: "Export your indexed library or restore an existing database into a fresh installation.",
+  },
+  "settings.exportBackup": { es: "Exportar backup", en: "Export backup" },
+  "settings.importBackup": { es: "Importar backup", en: "Import backup" },
+  "settings.backupsHelp": {
+    es: "Los backups incluyen la librería indexada, metadatos TMDB, configuración y estado persistido de descargas.",
+    en: "Backups include indexed library data, TMDB metadata, configuration, and persisted download state.",
+  },
+  "settings.backupExportSuccess": {
+    es: "Backup exportado correctamente.",
+    en: "Backup exported successfully.",
+  },
+  "settings.backupImportSuccess": {
+    es: "Backup importado. Recargando la app…",
+    en: "Backup imported. Reloading the app…",
   },
   "settings.downloadFolder": {
     es: "Carpeta de descargas",

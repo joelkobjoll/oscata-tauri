@@ -78,10 +78,7 @@ impl Db {
         Self::app_data_dir().join("library.db")
     }
 
-    pub fn new() -> SqlResult<Self> {
-        let data_dir = Self::app_data_dir();
-        std::fs::create_dir_all(&data_dir).ok();
-        let conn = Connection::open(Self::db_path())?;
+    fn apply_migrations(conn: &Connection) -> SqlResult<()> {
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS app_config (
@@ -123,7 +120,6 @@ impl Db {
                 manual_match  INTEGER DEFAULT 0
              );",
         )?;
-        // Migrations for new columns
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN media_type TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN tmdb_release_date TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN season INTEGER;").ok();
@@ -135,6 +131,14 @@ impl Db {
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN tmdb_title_en TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN tmdb_overview_en TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN tmdb_poster_en TEXT;").ok();
+        Ok(())
+    }
+
+    pub fn new() -> SqlResult<Self> {
+        let data_dir = Self::app_data_dir();
+        std::fs::create_dir_all(&data_dir).ok();
+        let conn = Connection::open(Self::db_path())?;
+        Self::apply_migrations(&conn)?;
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 
@@ -215,6 +219,44 @@ impl Db {
             .map_err(|e| e.to_string())?;
 
         Ok(Some(backup_path.to_string_lossy().to_string()))
+    }
+
+    pub fn export_database_to(&self, target_path: &str) -> Result<(), String> {
+        let target = std::path::Path::new(target_path);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        if target.exists() {
+            std::fs::remove_file(target).map_err(|e| e.to_string())?;
+        }
+
+        let conn = self.0.lock().unwrap();
+        let mut dest = Connection::open(target).map_err(|e| e.to_string())?;
+        let backup =
+            rusqlite::backup::Backup::new(&conn, &mut dest).map_err(|e| e.to_string())?;
+        backup
+            .run_to_completion(128, std::time::Duration::from_millis(5), None)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn import_database_from(&self, source_path: &str) -> Result<(), String> {
+        let source = std::path::Path::new(source_path);
+        if !source.exists() {
+            return Err("Selected backup file does not exist".to_string());
+        }
+
+        let source_conn = Connection::open(source).map_err(|e| e.to_string())?;
+        let mut dest_conn = self.0.lock().unwrap();
+        {
+            let backup = rusqlite::backup::Backup::new(&source_conn, &mut dest_conn)
+                .map_err(|e| e.to_string())?;
+            backup
+                .run_to_completion(128, std::time::Duration::from_millis(5), None)
+                .map_err(|e| e.to_string())?;
+        }
+        Self::apply_migrations(&dest_conn).map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub fn save_config(&self, config: &AppConfig) -> Result<(), String> {

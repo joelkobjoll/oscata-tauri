@@ -120,6 +120,7 @@ Key settings include:
 - max concurrent downloads
 - folder-type mapping
 - Emby and Plex connection details
+- backup export / restore actions
 
 ## Data storage
 
@@ -138,6 +139,8 @@ That database includes:
 - timestamps such as the last successful indexing time
 
 This means local library state survives normal app restarts and rebuilds.
+
+You can also export the database from Settings and later import it into a fresh install.
 
 ## Validation commands
 
@@ -189,6 +192,18 @@ That will also run:
 ```bash
 npm run tauri build
 ```
+
+Optional bundled starter database:
+
+```bash
+npm run seed-db
+npm run seed-db -- --from /path/to/library-backup.db
+npm run release -- patch --build --seed-db /path/to/library-backup.db
+```
+
+`npm run seed-db` copies the current local app database into `src-tauri/resources/library.seed.db`.
+
+If `src-tauri/resources/library.seed.db` is present in the build, fresh installs can auto-seed their local database from that bundled backup on first launch.
 
 ## Current updater status
 

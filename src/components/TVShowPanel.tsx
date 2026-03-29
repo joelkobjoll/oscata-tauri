@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type { MediaItem } from "../hooks/useIndexing";
+import type { DownloadItem } from "../hooks/useDownloads";
 import AppIcon from "./AppIcon";
 import {
   AppLanguage,
@@ -274,12 +274,17 @@ function EpisodeRow({
   onDownload,
   onFixMatch,
   downloadMap,
+  downloadedBadgeMap,
 }: {
   episode: MediaItem;
   language: AppLanguage;
   onDownload: (item: MediaItem) => void;
   onFixMatch: (items: MediaItem[]) => void;
-  downloadMap: Map<string, any>;
+  downloadMap: Map<string, DownloadItem>;
+  downloadedBadgeMap: Record<
+    number,
+    { downloaded?: boolean; inEmby?: boolean }
+  >;
 }) {
   const episodeData = resolvedEpisodeData(episode);
   const season = resolvedSeason(episode);
@@ -295,10 +300,13 @@ function EpisodeRow({
 
   const downloadItem = downloadMap.get(episode.ftp_path);
   const isDownloading =
-    downloadItem && ["queued", "downloading"].includes(downloadItem.status);
-  const isDownloaded = downloadItem && ["done"].includes(downloadItem.status);
+    downloadItem != null &&
+    ["queued", "downloading"].includes(downloadItem.status);
+  const isDownloaded =
+    downloadItem?.status === "done" ||
+    downloadedBadgeMap[episode.id]?.downloaded === true;
   const downloadTooltip = isDownloaded
-    ? t(language, "detail.alreadyDownloaded")
+    ? t(language, "detail.alreadyDownloadedHint")
     : isDownloading
       ? t(language, "downloads.downloading")
       : t(language, "tv.downloadEpisode");
@@ -506,6 +514,7 @@ function SeasonGroup({
   onDownloadSeason,
   onFixMatch,
   downloadMap,
+  downloadedBadgeMap,
 }: {
   season: number | null;
   episodes: MediaItem[];
@@ -513,7 +522,11 @@ function SeasonGroup({
   onDownload: (item: MediaItem) => void;
   onDownloadSeason: (episodes: MediaItem[]) => void;
   onFixMatch: (items: MediaItem[]) => void;
-  downloadMap: Map<string, any>;
+  downloadMap: Map<string, DownloadItem>;
+  downloadedBadgeMap: Record<
+    number,
+    { downloaded?: boolean; inEmby?: boolean }
+  >;
 }) {
   const [open, setOpen] = useState(true);
 
@@ -655,6 +668,7 @@ function SeasonGroup({
                     onDownload={onDownload}
                     onFixMatch={onFixMatch}
                     downloadMap={downloadMap}
+                    downloadedBadgeMap={downloadedBadgeMap}
                   />
                 ))}
             </div>
@@ -674,6 +688,7 @@ export default function TVShowPanel({
   onDownloadSeason,
   onFixMatch,
   downloadMap,
+  downloadedBadgeMap,
 }: {
   show: MediaItem;
   allEpisodes: MediaItem[];
@@ -682,26 +697,17 @@ export default function TVShowPanel({
   onDownload: (item: MediaItem) => void;
   onDownloadSeason: (episodes: MediaItem[]) => void;
   onFixMatch: (items: MediaItem[]) => void;
-  downloadMap: Map<string, any>;
+  downloadMap: Map<string, DownloadItem>;
+  downloadedBadgeMap: Record<
+    number,
+    { downloaded?: boolean; inEmby?: boolean }
+  >;
 }) {
   const [filterRelease, setFilterRelease] = useState("all");
   const [filterResolution, setFilterResolution] = useState("all");
   const [filterSeason, setFilterSeason] = useState("all");
-  const [clearing, setClearing] = useState(false);
   const showTitle = getLocalizedTitle(show, language);
   const showOverview = getLocalizedOverview(show, language);
-
-  const clearShowMetadata = async () => {
-    if (!show.tmdb_id) return;
-    if (!confirm(t(language, "tv.clearConfirm", { title: showTitle }))) return;
-    setClearing(true);
-    try {
-      await invoke("clear_show_metadata", { tmdbId: show.tmdb_id });
-      await invoke("rematch_all");
-    } finally {
-      setClearing(false);
-    }
-  };
 
   const releaseTypes = [
     ...new Set(allEpisodes.map((ep) => ep.release_type).filter(Boolean)),
@@ -1009,35 +1015,6 @@ export default function TVShowPanel({
                     ? t(language, "tv.fixShow")
                     : t(language, "tv.fixVisible")}
                 </button>
-
-                <button
-                  onClick={clearShowMetadata}
-                  disabled={!show.tmdb_id || clearing}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "0.78rem 1rem",
-                    borderRadius: "var(--radius-full)",
-                    border:
-                      "1px solid color-mix(in srgb, var(--color-danger) 36%, transparent)",
-                    background:
-                      "color-mix(in srgb, var(--color-danger) 10%, transparent)",
-                    color:
-                      !show.tmdb_id || clearing
-                        ? "var(--color-text-muted)"
-                        : "var(--color-danger)",
-                    cursor: !show.tmdb_id || clearing ? "default" : "pointer",
-                    opacity: !show.tmdb_id || clearing ? 0.5 : 1,
-                    fontSize: 13,
-                    fontWeight: 700,
-                  }}
-                >
-                  <AppIcon name="trash" size={15} strokeWidth={2.2} />
-                  {clearing
-                    ? t(language, "tv.clearingShowMetadata")
-                    : t(language, "tv.clearShowMetadata")}
-                </button>
               </div>
 
               {showOverview && (
@@ -1266,6 +1243,7 @@ export default function TVShowPanel({
                 onDownloadSeason={onDownloadSeason}
                 onFixMatch={onFixMatch}
                 downloadMap={downloadMap}
+                downloadedBadgeMap={downloadedBadgeMap}
               />
             ))
           )}

@@ -408,6 +408,22 @@ pub async fn has_config(state: tauri::State<'_, crate::db::Db>) -> Result<bool, 
 }
 
 #[tauri::command]
+pub async fn export_library_backup(
+    state: tauri::State<'_, crate::db::Db>,
+    destination_path: String,
+) -> Result<(), String> {
+    state.export_database_to(&destination_path)
+}
+
+#[tauri::command]
+pub async fn import_library_backup(
+    state: tauri::State<'_, crate::db::Db>,
+    source_path: String,
+) -> Result<(), String> {
+    state.import_database_from(&source_path)
+}
+
+#[tauri::command]
 pub async fn get_all_media(
     state: tauri::State<'_, crate::db::Db>,
 ) -> Result<Vec<crate::db::MediaItem>, String> {

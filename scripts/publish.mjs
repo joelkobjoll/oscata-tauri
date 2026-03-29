@@ -6,6 +6,8 @@ const rootDir = path.resolve(import.meta.dirname, "..");
 const packageJsonPath = path.join(rootDir, "package.json");
 const packageLockPath = path.join(rootDir, "package-lock.json");
 const cargoTomlPath = path.join(rootDir, "src-tauri", "Cargo.toml");
+const tauriResourcesDir = path.join(rootDir, "src-tauri", "resources");
+const bundledSeedDbPath = path.join(tauriResourcesDir, "library.seed.db");
 
 const VALID_SEMVER = /^\d+\.\d+\.\d+$/;
 
@@ -29,15 +31,18 @@ function parseArgs(argv) {
   let build = false;
   let skipChecks = false;
   let dryRun = false;
+  let seedDb = null;
 
-  for (const arg of argv) {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
     if (arg === "--build") build = true;
     else if (arg === "--skip-checks") skipChecks = true;
     else if (arg === "--dry-run") dryRun = true;
+    else if (arg === "--seed-db") seedDb = argv[i + 1] ?? null, i += 1;
     else if (!arg.startsWith("--")) target = arg;
   }
 
-  return { target, build, skipChecks, dryRun };
+  return { target, build, skipChecks, dryRun, seedDb };
 }
 
 function bumpVersion(version, bump) {
@@ -69,7 +74,7 @@ function updateCargoToml(content, nextVersion) {
 }
 
 function main() {
-  const { target, build, skipChecks, dryRun } = parseArgs(process.argv.slice(2));
+  const { target, build, skipChecks, dryRun, seedDb } = parseArgs(process.argv.slice(2));
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   const packageLock = fs.existsSync(packageLockPath)
     ? JSON.parse(fs.readFileSync(packageLockPath, "utf8"))
@@ -85,6 +90,9 @@ function main() {
 
   console.log(`[release] current version: ${currentVersion}`);
   console.log(`[release] next version:    ${nextVersion}`);
+  if (seedDb) {
+    console.log(`[release] seed db:         ${seedDb}`);
+  }
 
   if (dryRun) {
     console.log("[release] dry run only; no files changed.");
@@ -103,6 +111,15 @@ function main() {
   }
 
   fs.writeFileSync(cargoTomlPath, updateCargoToml(cargoToml, nextVersion));
+
+  if (seedDb) {
+    const sourceSeedDb = path.resolve(rootDir, seedDb);
+    if (!fs.existsSync(sourceSeedDb)) {
+      fail(`Seed DB not found: ${sourceSeedDb}`);
+    }
+    fs.mkdirSync(tauriResourcesDir, { recursive: true });
+    fs.copyFileSync(sourceSeedDb, bundledSeedDbPath);
+  }
 
   if (!skipChecks) {
     run("source ~/.nvm/nvm.sh && nvm use 22 --silent && npm run build");

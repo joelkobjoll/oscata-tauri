@@ -39,6 +39,85 @@ const LANG_COLORS: Record<string, string> = {
   SUBBED: "#6b7280",
 };
 
+type BadgeTone = "neutral" | "success" | "info" | "violet" | "release";
+
+function badgeSurface(
+  tone: BadgeTone,
+  releaseColor?: string,
+  options?: { compact?: boolean; shadow?: boolean; iconOnly?: boolean },
+): React.CSSProperties {
+  const background = {
+    neutral: "color-mix(in srgb, black 78%, transparent)",
+    success: "color-mix(in srgb, var(--color-success) 72%, black 12%)",
+    info: "color-mix(in srgb, var(--color-info) 72%, black 12%)",
+    violet: "color-mix(in srgb, #7c3aed 74%, black 10%)",
+    release: releaseColor ?? "color-mix(in srgb, #1e293b 80%, black 10%)",
+  }[tone];
+
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: options?.compact ? 18 : 22,
+    minWidth: options?.iconOnly ? (options?.compact ? 18 : 22) : undefined,
+    padding: options?.iconOnly
+      ? 0
+      : options?.compact
+        ? "0.12rem 0.38rem"
+        : "0.16rem 0.48rem",
+    borderRadius: 999,
+    border: "1px solid color-mix(in srgb, white 16%, transparent)",
+    background,
+    color: "#fff",
+    boxShadow:
+      options?.shadow === false
+        ? "none"
+        : "0 6px 16px color-mix(in srgb, black 28%, transparent)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    fontSize: options?.compact ? "0.56rem" : "0.62rem",
+    fontWeight: 800,
+    lineHeight: 1,
+    letterSpacing: "0.07em",
+    textTransform: options?.iconOnly ? "none" : "uppercase",
+    whiteSpace: "nowrap",
+  };
+}
+
+function OverlayBadge({
+  children,
+  tone = "neutral",
+  releaseColor,
+  iconOnly = false,
+}: {
+  children: React.ReactNode;
+  tone?: BadgeTone;
+  releaseColor?: string;
+  iconOnly?: boolean;
+}) {
+  return (
+    <span style={badgeSurface(tone, releaseColor, { iconOnly })}>
+      {children}
+    </span>
+  );
+}
+
+function InlineBadge({
+  children,
+  tone = "neutral",
+  releaseColor,
+}: {
+  children: React.ReactNode;
+  tone?: BadgeTone;
+  releaseColor?: string;
+}) {
+  return (
+    <span style={badgeSurface(tone, releaseColor, { compact: true, shadow: false })}>
+      {children}
+    </span>
+  );
+}
+
 function MediaCard({
   item,
   language,
@@ -154,17 +233,12 @@ function MediaCard({
               position: "absolute",
               top: "0.4rem",
               left: "0.4rem",
-              background: "color-mix(in srgb, black 82%, transparent)",
-              color: "white",
-              fontSize: "0.65rem",
-              fontWeight: 600,
-              padding: "0.15rem 0.4rem",
-              borderRadius: 9999,
-              border: "1px solid color-mix(in srgb, white 28%, transparent)",
-              lineHeight: 1.4,
+              zIndex: 4,
             }}
           >
-            {`S${String(item.season).padStart(2, "0")}${item.episode != null ? `E${String(item.episode).padStart(2, "0")}` : ""}${item.episode_end != null && item.episode_end !== item.episode ? `-E${String(item.episode_end).padStart(2, "0")}` : ""}`}
+            <OverlayBadge>
+              {`S${String(item.season).padStart(2, "0")}${item.episode != null ? `E${String(item.episode).padStart(2, "0")}` : ""}${item.episode_end != null && item.episode_end !== item.episode ? `-E${String(item.episode_end).padStart(2, "0")}` : ""}`}
+            </OverlayBadge>
           </div>
         )}
 
@@ -182,36 +256,12 @@ function MediaCard({
             }}
           >
             {badges.downloaded && (
-              <span
-                style={{
-                  background:
-                    "color-mix(in srgb, var(--color-success) 82%, transparent)",
-                  color: "#fff",
-                  fontSize: "0.6rem",
-                  fontWeight: 700,
-                  padding: "0.12rem 0.4rem",
-                  borderRadius: 999,
-                  letterSpacing: "0.04em",
-                }}
-              >
-                DOWNLOADED
-              </span>
+              <OverlayBadge tone="success" iconOnly>
+                <AppIcon name="check" size={12} strokeWidth={2.8} />
+              </OverlayBadge>
             )}
             {badges.inEmby && (
-              <span
-                style={{
-                  background:
-                    "color-mix(in srgb, var(--color-info) 78%, transparent)",
-                  color: "#fff",
-                  fontSize: "0.6rem",
-                  fontWeight: 700,
-                  padding: "0.12rem 0.4rem",
-                  borderRadius: 999,
-                  letterSpacing: "0.04em",
-                }}
-              >
-                EMBY
-              </span>
+              <OverlayBadge tone="info">Emby</OverlayBadge>
             )}
           </div>
         )}
@@ -229,35 +279,10 @@ function MediaCard({
           }}
         >
           {item.hdr && (
-            <span
-              style={{
-                background: "color-mix(in srgb, #7c3aed 80%, transparent)",
-                color: "white",
-                fontSize: "0.6rem",
-                fontWeight: 700,
-                padding: "0.1rem 0.35rem",
-                borderRadius: 4,
-                letterSpacing: "0.04em",
-              }}
-            >
-              {item.hdr}
-            </span>
+            <OverlayBadge tone="violet">{item.hdr}</OverlayBadge>
           )}
           {item.resolution && (
-            <span
-              style={{
-                background: "color-mix(in srgb, black 82%, transparent)",
-                color: "white",
-                fontSize: "0.6rem",
-                fontWeight: 700,
-                padding: "0.1rem 0.35rem",
-                borderRadius: 4,
-                border: "1px solid color-mix(in srgb, white 20%, transparent)",
-                letterSpacing: "0.03em",
-              }}
-            >
-              {item.resolution}
-            </span>
+            <OverlayBadge>{item.resolution}</OverlayBadge>
           )}
         </div>
 
@@ -268,17 +293,15 @@ function MediaCard({
               position: "absolute",
               bottom: "0.4rem",
               left: "0.4rem",
-              background: RELEASE_TYPE_COLORS[item.release_type] || "#1e293b",
-              color: "white",
-              fontSize: "0.6rem",
-              fontWeight: 600,
-              padding: "0.1rem 0.35rem",
-              borderRadius: 4,
-              letterSpacing: "0.03em",
               zIndex: 4,
             }}
           >
-            {item.release_type}
+            <OverlayBadge
+              tone="release"
+              releaseColor={RELEASE_TYPE_COLORS[item.release_type] || "#1e293b"}
+            >
+              {item.release_type}
+            </OverlayBadge>
           </div>
         )}
 
@@ -329,16 +352,14 @@ function MediaCard({
             <>
               <span style={{ opacity: 0.4 }}>·</span>
               <span
-                style={{
-                  background: LANG_COLORS[langs[0]] || "#6b7280",
-                  color: "white",
-                  fontSize: "0.6rem",
-                  fontWeight: 600,
-                  padding: "0.05rem 0.3rem",
-                  borderRadius: 999,
-                }}
+                style={{ display: "inline-flex" }}
               >
-                {langs[0]}
+                <InlineBadge
+                  tone="release"
+                  releaseColor={LANG_COLORS[langs[0]] || "#6b7280"}
+                >
+                  {langs[0]}
+                </InlineBadge>
               </span>
             </>
           )}

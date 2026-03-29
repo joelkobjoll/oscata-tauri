@@ -44,6 +44,12 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html,
+body,
+#root {
+  background-color: var(--color-bg);
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

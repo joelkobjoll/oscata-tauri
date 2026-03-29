@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "seed-db": "node ./scripts/update-starter-db.mjs",
     "release": "node ./scripts/publish.mjs",
     "release:patch": "node ./scripts/publish.mjs patch",
     "release:minor": "node ./scripts/publish.mjs minor",

@@ -182,6 +182,9 @@ export default function Settings({ language, onClose }: { language: AppLanguage;
   const [embyMsg, setEmbyMsg] = useState("");
   const [plexStatus, setPlexStatus] = useState<ConnectionState>("idle");
   const [plexMsg, setPlexMsg] = useState("");
+  const [backupMessage, setBackupMessage] = useState("");
+  const [backupError, setBackupError] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
 
   useEffect(() => {
     invoke<Config>("get_config").then(setForm).catch(console.error);
@@ -263,7 +266,7 @@ export default function Settings({ language, onClose }: { language: AppLanguage;
     }
   };
 
-  const save = async () => {
+  const saveConfig = async () => {
     setSaving(true);
     try {
       await invoke("save_config", { config: form });
@@ -276,7 +279,7 @@ export default function Settings({ language, onClose }: { language: AppLanguage;
   };
 
   const saveAndReindex = async () => {
-    await save();
+    await saveConfig();
     invoke("start_indexing");
     onClose();
   };
@@ -312,6 +315,49 @@ export default function Settings({ language, onClose }: { language: AppLanguage;
     : ftpStatus === "error"
       ? ftpError || t(language, "common.connectionFailed")
       : t(language, "common.testing");
+
+  const exportBackup = async () => {
+    setBackupBusy(true);
+    setBackupError("");
+    setBackupMessage("");
+    try {
+      const selectedFolder = await open({
+        directory: true,
+        multiple: false,
+      });
+      if (typeof selectedFolder !== "string") return;
+      const destination = `${selectedFolder.replace(/[\\/]$/, "")}/oscata-library-backup.db`;
+      await invoke("export_library_backup", { destinationPath: destination });
+      setBackupMessage(t(language, "settings.backupExportSuccess"));
+    } catch (error: any) {
+      setBackupError(String(error));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const importBackup = async () => {
+    setBackupBusy(true);
+    setBackupError("");
+    setBackupMessage("");
+    try {
+      const source = await open({
+        multiple: false,
+        filters: [
+          { name: "SQLite", extensions: ["db", "sqlite", "sqlite3"] },
+          { name: "All files", extensions: ["*"] },
+        ],
+      });
+      if (typeof source !== "string") return;
+      await invoke("import_library_backup", { sourcePath: source });
+      setBackupMessage(t(language, "settings.backupImportSuccess"));
+      window.location.reload();
+    } catch (error: any) {
+      setBackupError(String(error));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
 
   const folderDirs = rootDirs ?? Object.keys(folderTypes);
 
@@ -545,6 +591,36 @@ export default function Settings({ language, onClose }: { language: AppLanguage;
             </div>
 
             <SectionCard
+              icon="folder"
+              title={t(language, "settings.backupsTitle")}
+              description={t(language, "settings.backupsDescription")}
+            >
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  <button onClick={exportBackup} disabled={backupBusy} style={ghostBtn}>
+                    <AppIcon name="download" size={15} />
+                    {t(language, "settings.exportBackup")}
+                  </button>
+                  <button onClick={importBackup} disabled={backupBusy} style={ghostBtn}>
+                    <AppIcon name="folder" size={15} />
+                    {t(language, "settings.importBackup")}
+                  </button>
+                </div>
+                <span style={subtextStyle}>{t(language, "settings.backupsHelp")}</span>
+                {backupMessage && (
+                  <span style={{ ...subtextStyle, color: "var(--color-success)" }}>
+                    {backupMessage}
+                  </span>
+                )}
+                {backupError && (
+                  <span style={{ ...subtextStyle, color: "var(--color-danger)" }}>
+                    {backupError}
+                  </span>
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard
               icon="activity"
               title={t(language, "settings.mediaServersTitle")}
               description={t(language, "settings.mediaServersDescription")}
@@ -702,7 +778,7 @@ export default function Settings({ language, onClose }: { language: AppLanguage;
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button onClick={onClose} style={ghostBtn}>{t(language, "common.cancel")}</button>
-            <button onClick={save} disabled={saving} style={primaryBtn}>
+            <button onClick={saveConfig} disabled={saving} style={primaryBtn}>
               {saved ? t(language, "common.saved") : saving ? t(language, "common.saving") : t(language, "common.save")}
             </button>
             <button onClick={saveAndReindex} disabled={saving} style={successBtn}>
