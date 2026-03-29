@@ -205,6 +205,29 @@ npm run release -- patch --build --seed-db /path/to/library-backup.db
 
 If `src-tauri/resources/library.seed.db` is present in the build, fresh installs can auto-seed their local database from that bundled backup on first launch.
 
+### GitHub release installers
+
+This repository now includes a GitHub Actions workflow at `.github/workflows/release-installers.yml`.
+
+When you publish a GitHub Release, the workflow will:
+
+- build installers on macOS, Windows, and Linux runners
+- upload the generated installers back to that GitHub Release
+- include `src-tauri/resources/library.seed.db` in the app bundle when that file is committed in the repository
+
+Recommended release flow:
+
+```bash
+npm run seed-db
+git add src-tauri/resources/library.seed.db
+git commit -m "Update starter database"
+git push
+```
+
+Then create or publish the GitHub Release for the version you want to ship. The workflow will build platform-specific installers for that release.
+
+If you want fresh installs to ship with indexed media and metadata, make sure the updated `src-tauri/resources/library.seed.db` is committed before publishing the release.
+
 ## Current updater status
 
 The runtime updater is currently disabled/removed. Versioning and release preparation are in place, but in-app update checking/install flow is not active right now.
