@@ -272,6 +272,19 @@ fn crawl_sequential<'a>(
             }
         };
         let (sub_dirs, mut files) = parse_entries(&raw, path);
+
+        // Fallback for FTP servers whose LIST format does not expose dates in a
+        // parseable way. Ask MDTM per file only when LIST parsing failed.
+        for file in &mut files {
+            if file.modified_at.is_some() {
+                continue;
+            }
+            if let Ok(naive) = ftp.mdtm(&file.filename).await {
+                let dt = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
+                file.modified_at = Some(normalize_ftp_modified(dt).to_rfc3339());
+            }
+        }
+
         for f in &files {
             on_log(format!("🎬 Found: {}", f.filename));
         }
