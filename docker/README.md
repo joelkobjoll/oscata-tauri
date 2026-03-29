@@ -89,6 +89,14 @@ You can override runtime settings when invoking it:
 VNC_PASSWORD=mysecret WEBGUI_PORT=48000 npm run docker:vnc:up
 ```
 
+For explicit host port remapping (recommended):
+
+```bash
+VNC_HOST_PORT=5901 NOVNC_HOST_PORT=6081 WEBGUI_HOST_PORT=47861 npm run docker:vnc:up
+```
+
+If you hit `bind: address already in use` on `5900`, change `VNC_HOST_PORT` (host port) instead of container internals.
+
 If `VNC_PASSWORD` is omitted, VNC starts without a password.
 
 ## Unraid Notes
@@ -115,8 +123,12 @@ The container does not auto-fill your FTP/TMDB settings. You still complete thos
 ## Environment Variables
 
 - `VNC_PASSWORD`: optional; if omitted or empty, VNC starts without a password
-- `VNC_PORT`: defaults to `5900`
-- `NOVNC_PORT`: defaults to `6080`
+- `VNC_HOST_PORT`: defaults to `5900` (or `VNC_PORT` alias)
+- `NOVNC_HOST_PORT`: defaults to `6080` (or `NOVNC_PORT` alias)
+- `WEBGUI_HOST_PORT`: defaults to `47860` (or `WEBGUI_PORT` alias)
+- `VNC_CONTAINER_PORT`: defaults to `5900` (advanced)
+- `NOVNC_CONTAINER_PORT`: defaults to `6080` (advanced)
+- `WEBGUI_CONTAINER_PORT`: defaults to `47860` (advanced)
 - `VNC_RESOLUTION`: defaults to `1440x960`
 - `VNC_COL_DEPTH`: defaults to `24`
 - `OSCATA_BOOTSTRAP_WEBGUI`: defaults to `1`
