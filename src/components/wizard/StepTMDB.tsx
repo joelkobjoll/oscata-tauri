@@ -70,6 +70,13 @@ const primaryBtn = (disabled?: boolean): React.CSSProperties => ({
   color: "#fff",
 });
 
+const responsiveColumnGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: 16,
+  alignItems: "start",
+};
+
 export default function StepTMDB({
   defaults,
   language,
@@ -99,7 +106,7 @@ export default function StepTMDB({
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 }}>
+      <div style={responsiveColumnGrid}>
         <section style={sectionCard}>
           <div style={{ display: "grid", gap: 12 }}>
             <div style={fieldStyle}>
@@ -145,7 +152,7 @@ export default function StepTMDB({
           <div style={{ display: "grid", gap: 12 }}>
             <div style={fieldStyle}>
               <label style={labelStyle}>{t(language, "settings.downloadFolder")}</label>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <input
                   style={{ ...inputStyle, flex: 1 }}
                   value={form.download_folder}
@@ -162,7 +169,7 @@ export default function StepTMDB({
                       setForm((current) => ({ ...current, download_folder: dir }));
                     }
                   }}
-                  style={{ ...ghostBtn(false), whiteSpace: "nowrap" }}
+                  style={{ ...ghostBtn(false), whiteSpace: "nowrap", minHeight: 42 }}
                 >
                   <AppIcon name="folder" size={15} strokeWidth={2.1} />
                   {t(language, "common.browse")}

@@ -42,6 +42,12 @@ const subtextStyle: React.CSSProperties = {
   color: "var(--color-text-muted)",
 };
 
+const responsiveSummaryGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 16,
+};
+
 function SummaryCard({
   icon,
   title,
@@ -105,7 +111,7 @@ export default function StepConfirm({
         <p style={{ ...subtextStyle, margin: 0 }}>{t(language, "wizard.confirmDescription")}</p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 }}>
+      <div style={responsiveSummaryGrid}>
         <SummaryCard icon="folder" title={t(language, "wizard.stepFtp")}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}>
             {config.ftp_user}@{config.ftp_host}:{config.ftp_port}

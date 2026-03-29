@@ -69,6 +69,12 @@ const primaryBtn = (disabled?: boolean): React.CSSProperties => ({
   color: "#fff",
 });
 
+const responsivePairGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
+};
+
 export default function StepFTP({
   defaults,
   language,
@@ -118,7 +124,7 @@ export default function StepFTP({
     >
       <section style={sectionCard}>
         <div style={{ display: "grid", gap: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 120px", gap: 12 }}>
+          <div style={{ ...responsivePairGrid, gridTemplateColumns: "minmax(0, 1fr) minmax(120px, 180px)" }}>
             <div style={fieldStyle}>
               <label style={labelStyle}>{t(language, "wizard.host")}</label>
               <input style={inputStyle} value={form.ftp_host} onChange={set("ftp_host")} required />
@@ -129,7 +135,7 @@ export default function StepFTP({
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+          <div style={responsivePairGrid}>
             <div style={fieldStyle}>
               <label style={labelStyle}>{t(language, "wizard.username")}</label>
               <input style={inputStyle} value={form.ftp_user} onChange={set("ftp_user")} required />

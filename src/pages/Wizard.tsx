@@ -76,6 +76,20 @@ const ghostBtn: React.CSSProperties = {
   gap: 8,
 };
 
+const responsiveOverviewGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+  gap: 20,
+  alignItems: "start",
+};
+
+const responsiveWizardGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(260px, 300px) minmax(0, 1fr)",
+  gap: 20,
+  alignItems: "start",
+};
+
 function ChoiceCard({
   icon,
   title,
@@ -222,7 +236,7 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
     <div
       style={{
         minHeight: "100dvh",
-        padding: "2rem 1.5rem",
+        padding: "clamp(1rem, 3vw, 2rem) clamp(1rem, 3vw, 1.5rem)",
         background:
           "radial-gradient(circle at top, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 42%), var(--color-bg)",
       }}
@@ -288,7 +302,7 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
         </section>
 
         {step === 0 ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 20 }}>
+          <div style={responsiveOverviewGrid}>
             <section style={{ ...shellCard, padding: "1.4rem 1.5rem" }}>
               <div style={{ display: "grid", gap: 16 }}>
                 <div style={{ display: "grid", gap: 6 }}>
@@ -383,7 +397,7 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
             </section>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0, 1fr)", gap: 20 }}>
+          <div style={responsiveWizardGrid}>
             <aside style={{ display: "grid", gap: 16, alignSelf: "start" }}>
               <section style={{ ...shellCard, padding: "1rem" }}>
                 <div style={{ display: "grid", gap: 10 }}>
@@ -502,7 +516,7 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
               </section>
             </aside>
 
-            <section style={{ ...shellCard, overflow: "hidden" }}>
+            <section style={{ ...shellCard, overflow: "hidden", alignSelf: "start" }}>
               <div
                 style={{
                   padding: "1.2rem 1.35rem 1rem",
