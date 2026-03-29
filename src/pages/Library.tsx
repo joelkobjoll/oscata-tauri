@@ -176,7 +176,11 @@ function EpisodeListView({
   );
 }
 
-export default function Library() {
+export default function Library({
+  startIndexingOnMount = false,
+}: {
+  startIndexingOnMount?: boolean;
+}) {
   const {
     items,
     progress,
@@ -229,6 +233,20 @@ export default function Library() {
   const actionsMenuRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const paginationInitRef = useRef(false);
+  const hasStartedInitialIndexRef = useRef(false);
+
+  useEffect(() => {
+    if (!startIndexingOnMount || hasStartedInitialIndexRef.current) {
+      return;
+    }
+
+    hasStartedInitialIndexRef.current = true;
+    const timer = window.setTimeout(() => {
+      invoke("start_indexing").catch(console.error);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [startIndexingOnMount]);
 
   const getTvEpisodes = (show: MediaItem): MediaItem[] => {
     return items.filter((ep) =>

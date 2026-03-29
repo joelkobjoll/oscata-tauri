@@ -91,7 +91,7 @@ export default function StepConfirm({
 }: {
   config: any;
   language: AppLanguage;
-  onComplete: () => void;
+  onComplete: (options?: { startIndexing?: boolean }) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -102,12 +102,7 @@ export default function StepConfirm({
     try {
       const seeded = await invoke<boolean>("seed_starter_library");
       await invoke("save_config", { config });
-      onComplete();
-      if (!seeded) {
-        invoke("start_indexing").catch((error: unknown) => {
-          setErrorMsg(String(error));
-        });
-      }
+      onComplete({ startIndexing: !seeded });
     } catch (error: unknown) {
       setErrorMsg(String(error));
       setSaving(false);

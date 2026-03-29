@@ -7,6 +7,7 @@ import type { AppLanguage } from "./utils/mediaLanguage";
 
 export default function Router() {
   const [ready, setReady] = useState<boolean | null>(null);
+  const [startIndexingAfterWizard, setStartIndexingAfterWizard] = useState(false);
   const language: AppLanguage = "es";
 
   useEffect(() => {
@@ -18,5 +19,14 @@ export default function Router() {
       <div style={{ color: "var(--color-text-muted)", fontSize: 14 }}>{t(language, "router.loading")}</div>
     </div>
   );
-  return ready ? <Library /> : <Wizard onComplete={() => setReady(true)} />;
+  return ready ? (
+    <Library startIndexingOnMount={startIndexingAfterWizard} />
+  ) : (
+    <Wizard
+      onComplete={(options) => {
+        setStartIndexingAfterWizard(options?.startIndexing === true);
+        setReady(true);
+      }}
+    />
+  );
 }

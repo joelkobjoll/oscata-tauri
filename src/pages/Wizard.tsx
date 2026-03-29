@@ -151,7 +151,11 @@ function ChoiceCard({
   );
 }
 
-export default function Wizard({ onComplete }: { onComplete: () => void }) {
+export default function Wizard({
+  onComplete,
+}: {
+  onComplete: (options?: { startIndexing?: boolean }) => void;
+}) {
   const [step, setStep] = useState(0);
   const language: AppLanguage = "es";
   const [restoring, setRestoring] = useState(false);
@@ -232,7 +236,7 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
       });
       if (typeof selected !== "string") return;
       await invoke("import_library_backup", { sourcePath: selected });
-      onComplete();
+      onComplete({ startIndexing: false });
     } catch (error: any) {
       setRestoreError(String(error));
     } finally {
