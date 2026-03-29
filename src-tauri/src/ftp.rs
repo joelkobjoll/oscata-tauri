@@ -182,7 +182,7 @@ pub async fn download_file(
         .map_err(|e| e.to_string())?;
 
     let size = ftp.size(remote_path).await.unwrap_or(0) as u64;
-    let mut existing_size = tokio::fs::metadata(local_path)
+    let existing_size = tokio::fs::metadata(local_path)
         .await
         .map(|meta| meta.len())
         .unwrap_or(0);
@@ -193,15 +193,12 @@ pub async fn download_file(
     }
 
     if existing_size > 0 {
-        if let Err(err) = ftp.resume_transfer(existing_size as usize).await {
+        if let Err(_) = ftp.resume_transfer(existing_size as usize).await {
             tokio::fs::remove_file(local_path).await.ok();
-            existing_size = 0;
             ftp.transfer_type(FileType::Binary)
                 .await
                 .map_err(|e| e.to_string())?;
-            if err.to_string().is_empty() {
-                return Err("Resume failed and partial file was removed. Download will restart on retry.".to_string());
-            }
+            return Err("Resume failed and partial file was removed. Download will restart on retry.".to_string());
         }
     }
 
@@ -235,9 +232,11 @@ pub async fn download_file(
         if n == 0 {
             break;
         }
-        file.write_all(&buf[..n])
-            .await
-            .map_err(|e| e.to_string())?;
+        if let Err(e) = file.write_all(&buf[..n]).await {
+            drop(file);
+            tokio::fs::remove_file(local_path).await.ok();
+            return Err(format!("Write error: {e}"));
+        }
         downloaded += n as u64;
         if !on_progress(downloaded, size) {
             cancelled = true;
@@ -252,5 +251,17 @@ pub async fn download_file(
         tokio::fs::remove_file(local_path).await.ok();
         return Err("Cancelled".to_string());
     }
+
+    // If the server reported a size and we didn't receive all of it, the stream
+    // ended prematurely (connection drop, timeout, etc.). Remove the incomplete
+    // file so the next retry starts fresh rather than showing it as Done.
+    if size > 0 && downloaded < size {
+        tokio::fs::remove_file(local_path).await.ok();
+        return Err(format!(
+            "Download incomplete: received {} of {} bytes. Will retry automatically.",
+            downloaded, size
+        ));
+    }
+
     Ok(())
 }

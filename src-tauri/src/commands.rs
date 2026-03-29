@@ -755,14 +755,14 @@ pub fn compute_local_path(
     } else if db_media_type == Some("documentary") {
         let title = &parsed.title;
         let first = title.chars().find(|c| c.is_alphanumeric())
-            .map(|c| c.to_uppercase().to_string())
+            .map(|c| if c.is_ascii_digit() { "0-9".to_string() } else { c.to_uppercase().to_string() })
             .unwrap_or_else(|| "#".to_string());
         let folder_name = if let Some(y) = parsed.year { format!("{} ({})", title, y) } else { title.clone() };
         base.join("Documentaries").join(first).join(folder_name).join(filename)
     } else {
         let title = &parsed.title;
         let first = title.chars().find(|c| c.is_alphanumeric())
-            .map(|c| c.to_uppercase().to_string())
+            .map(|c| if c.is_ascii_digit() { "0-9".to_string() } else { c.to_uppercase().to_string() })
             .unwrap_or_else(|| "#".to_string());
         let folder_name = if let Some(y) = parsed.year { format!("{} ({})", title, y) } else { title.clone() };
         base.join("Movies").join(first).join(folder_name).join(filename)
@@ -785,6 +785,15 @@ pub async fn queue_download(
     let config = db.load_config()?;
     let db_media_type: Option<String> = db_state.get_media_type_by_path(&ftp_path).ok().flatten();
     let local_path = compute_local_path(&config, &ftp_path, &filename, db_media_type.as_deref())?;
+
+    // Deduplicate: if this ftp_path is already Queued or Downloading, return the existing id.
+    let existing_id = {
+        let queue = queue_state.lock().unwrap();
+        queue.find_active_by_ftp_path(&ftp_path)
+    };
+    if let Some(id) = existing_id {
+        return Ok(id);
+    }
 
     std::fs::create_dir_all(local_path.parent().unwrap())
         .map_err(|e| format!("Could not create directory: {e}"))?;

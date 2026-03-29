@@ -173,6 +173,15 @@ impl DownloadQueue {
         self.max_concurrent = max;
         self.semaphore = Arc::new(tokio::sync::Semaphore::new(max));
     }
+
+    /// Returns the id of an existing download for the given FTP path if it is
+    /// currently `Queued` or `Downloading`. Used to prevent duplicate entries.
+    pub fn find_active_by_ftp_path(&self, ftp_path: &str) -> Option<u64> {
+        self.items.iter().find(|i| {
+            i.ftp_path == ftp_path
+                && matches!(i.status, DownloadStatus::Queued | DownloadStatus::Downloading)
+        }).map(|i| i.id)
+    }
 }
 
 pub type SharedQueue = Arc<Mutex<DownloadQueue>>;
