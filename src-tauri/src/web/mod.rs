@@ -9,6 +9,7 @@ use axum::{
     Router,
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use tauri::Manager;
 use tower_http::{cors::CorsLayer, services::{ServeDir, ServeFile}};
 
 static WEBGUI_RUNNING: std::sync::LazyLock<std::sync::atomic::AtomicBool> =
@@ -62,7 +63,8 @@ pub fn spawn_if_enabled(db: crate::db::Db, queue: crate::downloads::SharedQueue,
 
 fn build_router(state: AppState) -> Router {
     let cors = CorsLayer::permissive();
-    let auth_mw = middleware::from_fn_with_state(state.clone(), auth::auth_middleware);
+    let api_state = state.clone();
+    let auth_mw = middleware::from_fn_with_state(api_state.clone(), auth::auth_middleware);
 
     let api = Router::new()
         // public
@@ -98,27 +100,27 @@ fn build_router(state: AppState) -> Router {
         .route("/webgui/config",           get(handlers::get_webgui_config_handler).put(handlers::put_webgui_config_handler))
         .route("/tmdb/search",             post(handlers::search_tmdb_handler))
         .layer(auth_mw)
-        .with_state(state);
+        .with_state(api_state);
 
-    // Try to serve built frontend from dist/ next to binary (production) or cwd (dev)
-    let dist = find_dist_dir();
+    // Serve built frontend from bundled resources first, then local dist fallbacks.
+    let dist = find_dist_dir(&state.app_handle);
     let mut root = Router::new().nest("/api", api);
     if let Some(d) = dist {
         let index = d.join("index.html");
         root = root.fallback_service(
             ServeDir::new(&d).not_found_service(ServeFile::new(index))
         );
-        } else {
-                root = root
-                        .route("/", get(dev_root_page))
-                        .fallback(get(dev_root_page));
+    } else {
+        root = root
+            .route("/", get(dev_root_page))
+            .fallback(get(dev_root_page));
     }
     root.layer(cors)
 }
 
 async fn dev_root_page() -> Html<&'static str> {
-        Html(
-                r#"<!doctype html>
+    Html(
+    r#"<!doctype html>
 <html lang="en">
     <head>
         <meta charset="utf-8" />
@@ -153,22 +155,46 @@ async fn dev_root_page() -> Html<&'static str> {
             <h1>WebGUI API is running</h1>
             <p>The root page is unavailable because no built frontend was found in <code>dist/</code>.</p>
             <p>API health check: <a href="/api/health">/api/health</a></p>
-            <p>During desktop development, use the Vite UI at <a href="http://localhost:1420/">http://localhost:1420/</a>.</p>
         </div>
     </body>
 </html>"#,
-        )
+    )
 }
 
-fn find_dist_dir() -> Option<std::path::PathBuf> {
-    // 1. Next to the binary (production install)
+fn find_dist_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    // 1. Bundled resource paths (production install)
+    let resource_candidates = [
+        "dist/index.html",
+        "index.html",
+        "frontend/index.html",
+        "www/index.html",
+    ];
+    for rel in resource_candidates {
+        if let Ok(candidate) = app_handle
+            .path()
+            .resolve(rel, tauri::path::BaseDirectory::Resource)
+        {
+            if candidate.exists() {
+                return candidate.parent().map(|p| p.to_path_buf());
+            }
+        }
+    }
+
+    // 2. Next to the binary
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             let candidate = dir.join("dist");
             if candidate.join("index.html").exists() { return Some(candidate); }
+
+            // Common macOS app bundle layout: <App>.app/Contents/MacOS/<exe>
+            let macos_resources = dir.join("..").join("Resources").join("dist");
+            if macos_resources.join("index.html").exists() {
+                return Some(macos_resources);
+            }
         }
     }
-    // 2. Current working directory (dev mode)
+
+    // 3. Current working directory (dev mode)
     let cwd = std::path::PathBuf::from("dist");
     if cwd.join("index.html").exists() { return Some(cwd); }
     None
