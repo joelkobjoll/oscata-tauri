@@ -667,7 +667,7 @@ function SeasonGroup({
         <div>
           {grouped.map(({ group, eps }) => (
             <div key={group.folderName}>
-              {grouped.length > 1 && (
+              {grouped.length > 1 &&
                 (() => {
                   const downloadableGroupEpisodes = eps.filter((episode) => {
                     const downloadItem = downloadMap.get(episode.ftp_path);
@@ -682,16 +682,17 @@ function SeasonGroup({
                   });
 
                   return (
-                <GroupHeader
-                  group={group}
-                  count={eps.length}
-                  language={language}
-                  onDownloadGroup={() => onDownloadSeason(downloadableGroupEpisodes)}
-                  disabled={downloadableGroupEpisodes.length === 0}
-                />
+                    <GroupHeader
+                      group={group}
+                      count={eps.length}
+                      language={language}
+                      onDownloadGroup={() =>
+                        onDownloadSeason(downloadableGroupEpisodes)
+                      }
+                      disabled={downloadableGroupEpisodes.length === 0}
+                    />
                   );
-                })()
-              )}
+                })()}
               {eps
                 .slice()
                 .sort(
@@ -808,6 +809,11 @@ export default function TVShowPanel({
   const seasonKeys = Object.keys(filteredBySeason).sort((a, b) =>
     a === "null" ? 1 : b === "null" ? -1 : Number(a) - Number(b),
   );
+
+  const showFiltersCard =
+    releaseTypes.length > 1 ||
+    resolutions.length > 1 ||
+    seasonsAvailable.length > 1;
 
   const filterPillBase: React.CSSProperties = {
     padding: "0.34rem 0.72rem",
@@ -1096,184 +1102,186 @@ export default function TVShowPanel({
             gap: 16,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-              padding: "1rem",
-              borderRadius: "var(--radius-lg)",
-              border:
-                "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
-              background:
-                "color-mix(in srgb, var(--color-surface) 90%, transparent)",
-              boxShadow:
-                "0 12px 30px color-mix(in srgb, black 16%, transparent)",
-            }}
-          >
-            {releaseTypes.length > 1 && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                }}
-              >
-                <span
+          {showFiltersCard && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                padding: "1rem",
+                borderRadius: "var(--radius-lg)",
+                border:
+                  "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+                background:
+                  "color-mix(in srgb, var(--color-surface) 90%, transparent)",
+                boxShadow:
+                  "0 12px 30px color-mix(in srgb, black 16%, transparent)",
+              }}
+            >
+              {releaseTypes.length > 1 && (
+                <div
                   style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    color: "var(--color-text-muted)",
-                    minWidth: 62,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
                   }}
                 >
-                  {t(language, "tv.source")}
-                </span>
-                {["all", ...releaseTypes].map((release) => (
-                  <button
-                    key={release}
-                    onClick={() => setFilterRelease(release)}
+                  <span
                     style={{
-                      ...filterPillBase,
-                      background:
-                        filterRelease === release
-                          ? "var(--color-primary)"
-                          : "var(--color-surface-2)",
-                      color:
-                        filterRelease === release
-                          ? "#fff"
-                          : "var(--color-text-muted)",
-                      borderColor:
-                        filterRelease === release
-                          ? "var(--color-primary)"
-                          : "color-mix(in srgb, var(--color-border) 80%, transparent)",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      color: "var(--color-text-muted)",
+                      minWidth: 62,
                     }}
                   >
-                    {release === "all" ? t(language, "common.all") : release}
-                  </button>
-                ))}
-              </div>
-            )}
+                    {t(language, "tv.source")}
+                  </span>
+                  {["all", ...releaseTypes].map((release) => (
+                    <button
+                      key={release}
+                      onClick={() => setFilterRelease(release)}
+                      style={{
+                        ...filterPillBase,
+                        background:
+                          filterRelease === release
+                            ? "var(--color-primary)"
+                            : "var(--color-surface-2)",
+                        color:
+                          filterRelease === release
+                            ? "#fff"
+                            : "var(--color-text-muted)",
+                        borderColor:
+                          filterRelease === release
+                            ? "var(--color-primary)"
+                            : "color-mix(in srgb, var(--color-border) 80%, transparent)",
+                      }}
+                    >
+                      {release === "all" ? t(language, "common.all") : release}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-            {resolutions.length > 1 && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                }}
-              >
-                <span
+              {resolutions.length > 1 && (
+                <div
                   style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    color: "var(--color-text-muted)",
-                    minWidth: 62,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
                   }}
                 >
-                  {t(language, "tv.quality")}
-                </span>
-                {["all", ...resolutions].map((resolution) => (
-                  <button
-                    key={resolution}
-                    onClick={() => setFilterResolution(resolution)}
+                  <span
                     style={{
-                      ...filterPillBase,
-                      background:
-                        filterResolution === resolution
-                          ? "var(--color-primary)"
-                          : "var(--color-surface-2)",
-                      color:
-                        filterResolution === resolution
-                          ? "#fff"
-                          : "var(--color-text-muted)",
-                      borderColor:
-                        filterResolution === resolution
-                          ? "var(--color-primary)"
-                          : "color-mix(in srgb, var(--color-border) 80%, transparent)",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      color: "var(--color-text-muted)",
+                      minWidth: 62,
                     }}
                   >
-                    {resolution === "all"
-                      ? t(language, "common.all")
-                      : resolution}
-                  </button>
-                ))}
-              </div>
-            )}
+                    {t(language, "tv.quality")}
+                  </span>
+                  {["all", ...resolutions].map((resolution) => (
+                    <button
+                      key={resolution}
+                      onClick={() => setFilterResolution(resolution)}
+                      style={{
+                        ...filterPillBase,
+                        background:
+                          filterResolution === resolution
+                            ? "var(--color-primary)"
+                            : "var(--color-surface-2)",
+                        color:
+                          filterResolution === resolution
+                            ? "#fff"
+                            : "var(--color-text-muted)",
+                        borderColor:
+                          filterResolution === resolution
+                            ? "var(--color-primary)"
+                            : "color-mix(in srgb, var(--color-border) 80%, transparent)",
+                      }}
+                    >
+                      {resolution === "all"
+                        ? t(language, "common.all")
+                        : resolution}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-            {seasonsAvailable.length > 1 && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                }}
-              >
-                <span
+              {seasonsAvailable.length > 1 && (
+                <div
                   style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    color: "var(--color-text-muted)",
-                    minWidth: 62,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
                   }}
                 >
-                  {t(language, "tv.season")}
-                </span>
-                <button
-                  onClick={() => setFilterSeason("all")}
-                  style={{
-                    ...filterPillBase,
-                    background:
-                      filterSeason === "all"
-                        ? "var(--color-primary)"
-                        : "var(--color-surface-2)",
-                    color:
-                      filterSeason === "all"
-                        ? "#fff"
-                        : "var(--color-text-muted)",
-                    borderColor:
-                      filterSeason === "all"
-                        ? "var(--color-primary)"
-                        : "color-mix(in srgb, var(--color-border) 80%, transparent)",
-                  }}
-                >
-                  {t(language, "common.all")}
-                </button>
-                {seasonsAvailable.map((season) => (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      color: "var(--color-text-muted)",
+                      minWidth: 62,
+                    }}
+                  >
+                    {t(language, "tv.season")}
+                  </span>
                   <button
-                    key={season}
-                    onClick={() => setFilterSeason(String(season))}
+                    onClick={() => setFilterSeason("all")}
                     style={{
                       ...filterPillBase,
                       background:
-                        filterSeason === String(season)
+                        filterSeason === "all"
                           ? "var(--color-primary)"
                           : "var(--color-surface-2)",
                       color:
-                        filterSeason === String(season)
+                        filterSeason === "all"
                           ? "#fff"
                           : "var(--color-text-muted)",
                       borderColor:
-                        filterSeason === String(season)
+                        filterSeason === "all"
                           ? "var(--color-primary)"
                           : "color-mix(in srgb, var(--color-border) 80%, transparent)",
                     }}
                   >
-                    S{String(season).padStart(2, "0")}
+                    {t(language, "common.all")}
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
+                  {seasonsAvailable.map((season) => (
+                    <button
+                      key={season}
+                      onClick={() => setFilterSeason(String(season))}
+                      style={{
+                        ...filterPillBase,
+                        background:
+                          filterSeason === String(season)
+                            ? "var(--color-primary)"
+                            : "var(--color-surface-2)",
+                        color:
+                          filterSeason === String(season)
+                            ? "#fff"
+                            : "var(--color-text-muted)",
+                        borderColor:
+                          filterSeason === String(season)
+                            ? "var(--color-primary)"
+                            : "color-mix(in srgb, var(--color-border) 80%, transparent)",
+                      }}
+                    >
+                      S{String(season).padStart(2, "0")}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {seasonKeys.length === 0 ? (
             <div

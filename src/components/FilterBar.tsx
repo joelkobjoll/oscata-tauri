@@ -226,8 +226,7 @@ export default function FilterBar({
   ].filter(Boolean).length;
 
   const releaseTypeFilterOptions = releaseTypeOptions.filter(
-    (option) =>
-      releaseTypeCounts.has(option) || filters.releaseType === option,
+    (option) => releaseTypeCounts.has(option) || filters.releaseType === option,
   );
   const resolutionFilterOptions = RESOLUTION_OPTIONS.filter(
     (option) =>

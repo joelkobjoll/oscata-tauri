@@ -4,7 +4,10 @@ import { open } from "@tauri-apps/plugin-dialog";
 import AppIcon from "../components/AppIcon";
 import type { AppLanguage } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
-import { mergeInferredFolderTypes, parseFolderTypes } from "../utils/folderTypes";
+import {
+  mergeInferredFolderTypes,
+  parseFolderTypes,
+} from "../utils/folderTypes";
 import { call, isTauri } from "../lib/transport";
 
 interface Config {
@@ -242,6 +245,9 @@ export default function Settings({
   const [webGuiInitBusy, setWebGuiInitBusy] = useState(false);
   const [webGuiMessage, setWebGuiMessage] = useState("");
   const [webGuiError, setWebGuiError] = useState("");
+  const [appVersion, setAppVersion] = useState<string>(
+    import.meta.env.VITE_APP_VERSION || "0.0.0",
+  );
   const webGuiSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webMode = !isTauri();
 
@@ -250,7 +256,17 @@ export default function Settings({
   }, []);
 
   useEffect(() => {
-    call<WebGuiConfig>("get_webgui_config").then(setWebGuiConfig).catch(console.error);
+    call<WebGuiConfig>("get_webgui_config")
+      .then(setWebGuiConfig)
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    import("@tauri-apps/api/app")
+      .then(({ getVersion }) => getVersion())
+      .then((version) => setAppVersion(version))
+      .catch(() => {});
   }, []);
 
   const saveWebGuiConfig = async () => {
@@ -264,7 +280,9 @@ export default function Settings({
       if (webGuiSavedTimer.current) clearTimeout(webGuiSavedTimer.current);
       webGuiSavedTimer.current = setTimeout(() => setWebGuiSaved(false), 3000);
     } catch (e) {
-      setWebGuiError(e instanceof Error ? e.message : "Failed to save WebGUI settings");
+      setWebGuiError(
+        e instanceof Error ? e.message : "Failed to save WebGUI settings",
+      );
       console.error("Failed to save WebGUI config:", e);
     } finally {
       setWebGuiSaving(false);
@@ -289,13 +307,14 @@ export default function Settings({
       if (webGuiSavedTimer.current) clearTimeout(webGuiSavedTimer.current);
       webGuiSavedTimer.current = setTimeout(() => setWebGuiSaved(false), 3000);
     } catch (e) {
-      setWebGuiError(e instanceof Error ? e.message : "Failed to initialize WebGUI");
+      setWebGuiError(
+        e instanceof Error ? e.message : "Failed to initialize WebGUI",
+      );
       console.error("Failed to initialize WebGUI:", e);
     } finally {
       setWebGuiInitBusy(false);
     }
   };
-
 
   if (!form) {
     return (
@@ -317,7 +336,9 @@ export default function Settings({
     );
   }
 
-  const folderTypes: Record<string, string> = parseFolderTypes(form.folder_types);
+  const folderTypes: Record<string, string> = parseFolderTypes(
+    form.folder_types,
+  );
 
   const setFolderType = (dir: string, type: string) => {
     const next = { ...folderTypes };
@@ -440,7 +461,10 @@ export default function Settings({
         current
           ? {
               ...current,
-              folder_types: mergeInferredFolderTypes(current.folder_types, dirs),
+              folder_types: mergeInferredFolderTypes(
+                current.folder_types,
+                dirs,
+              ),
             }
           : current,
       );
@@ -585,6 +609,28 @@ export default function Settings({
               >
                 {t(language, "settings.subtitle")}
               </p>
+              <div
+                style={{
+                  marginTop: 10,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "0.3rem 0.65rem",
+                  borderRadius: "var(--radius-full)",
+                  border:
+                    "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+                  background:
+                    "color-mix(in srgb, var(--color-surface) 92%, transparent)",
+                  color: "var(--color-text-muted)",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                <span>{t(language, "settings.currentVersion")}</span>
+                <span style={{ color: "var(--color-text)" }}>
+                  v{appVersion}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1310,89 +1356,315 @@ export default function Settings({
                 title="Web Interface (LAN)"
                 description="Expose a browser-accessible web interface on your local network. Restart the app after changing settings."
               >
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 14 }}
+                >
                   {/* Enable toggle */}
-                  <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                    <input type="checkbox" checked={webGuiConfig.enabled} onChange={e => setWebGuiConfig(c => c ? { ...c, enabled: e.target.checked } : c)} />
-                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)" }}>Enable web interface</span>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={webGuiConfig.enabled}
+                      onChange={(e) =>
+                        setWebGuiConfig((c) =>
+                          c ? { ...c, enabled: e.target.checked } : c,
+                        )
+                      }
+                    />
+                    <span
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      Enable web interface
+                    </span>
                   </label>
 
                   {webGuiConfig.enabled && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 12,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 120px",
+                          gap: 10,
+                        }}
+                      >
                         <div style={fieldStyle}>
                           <label style={labelStyle}>Bind host</label>
-                          <input style={inputStyle} value={webGuiConfig.host} onChange={e => setWebGuiConfig(c => c ? { ...c, host: e.target.value } : c)} placeholder="0.0.0.0" />
+                          <input
+                            style={inputStyle}
+                            value={webGuiConfig.host}
+                            onChange={(e) =>
+                              setWebGuiConfig((c) =>
+                                c ? { ...c, host: e.target.value } : c,
+                              )
+                            }
+                            placeholder="0.0.0.0"
+                          />
                         </div>
                         <div style={fieldStyle}>
                           <label style={labelStyle}>Port</label>
-                          <input style={inputStyle} type="number" min={1024} max={65535} value={webGuiConfig.port} onChange={e => setWebGuiConfig(c => c ? { ...c, port: parseInt(e.target.value) || c.port } : c)} />
+                          <input
+                            style={inputStyle}
+                            type="number"
+                            min={1024}
+                            max={65535}
+                            value={webGuiConfig.port}
+                            onChange={(e) =>
+                              setWebGuiConfig((c) =>
+                                c
+                                  ? {
+                                      ...c,
+                                      port: parseInt(e.target.value) || c.port,
+                                    }
+                                  : c,
+                              )
+                            }
+                          />
                         </div>
                       </div>
 
-                      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10 }}>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "120px 1fr",
+                          gap: 10,
+                        }}
+                      >
                         <div style={fieldStyle}>
                           <label style={labelStyle}>Exposed port</label>
-                          <input style={inputStyle} type="number" min={0} max={65535} value={webGuiConfig.exposed_port ?? ""} placeholder="Same as port" onChange={e => setWebGuiConfig(c => c ? { ...c, exposed_port: e.target.value ? parseInt(e.target.value) : null } : c)} />
+                          <input
+                            style={inputStyle}
+                            type="number"
+                            min={0}
+                            max={65535}
+                            value={webGuiConfig.exposed_port ?? ""}
+                            placeholder="Same as port"
+                            onChange={(e) =>
+                              setWebGuiConfig((c) =>
+                                c
+                                  ? {
+                                      ...c,
+                                      exposed_port: e.target.value
+                                        ? parseInt(e.target.value)
+                                        : null,
+                                    }
+                                  : c,
+                              )
+                            }
+                          />
                         </div>
                         <div style={fieldStyle}>
-                          <label style={labelStyle}>App URL (optional, for email links)</label>
-                          <input style={inputStyle} value={webGuiConfig.app_url} placeholder="http://192.168.1.x:47860" onChange={e => setWebGuiConfig(c => c ? { ...c, app_url: e.target.value } : c)} />
+                          <label style={labelStyle}>
+                            App URL (optional, for email links)
+                          </label>
+                          <input
+                            style={inputStyle}
+                            value={webGuiConfig.app_url}
+                            placeholder="http://192.168.1.x:47860"
+                            onChange={(e) =>
+                              setWebGuiConfig((c) =>
+                                c ? { ...c, app_url: e.target.value } : c,
+                              )
+                            }
+                          />
                         </div>
                       </div>
 
                       {/* OTP / SMTP */}
-                      <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                        <input type="checkbox" checked={webGuiConfig.otp_enabled} onChange={e => setWebGuiConfig(c => c ? { ...c, otp_enabled: e.target.checked } : c)} />
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>Require email OTP on login</span>
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={webGuiConfig.otp_enabled}
+                          onChange={(e) =>
+                            setWebGuiConfig((c) =>
+                              c ? { ...c, otp_enabled: e.target.checked } : c,
+                            )
+                          }
+                        />
+                        <span
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: "var(--color-text)",
+                          }}
+                        >
+                          Require email OTP on login
+                        </span>
                       </label>
 
                       {webGuiConfig.otp_enabled && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "10px 12px", borderRadius: "var(--radius)", border: "1px solid var(--color-border)", background: "var(--color-surface-2)" }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" as const, color: "var(--color-text-muted)" }}>SMTP settings</div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 10 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 10,
+                            padding: "10px 12px",
+                            borderRadius: "var(--radius)",
+                            border: "1px solid var(--color-border)",
+                            background: "var(--color-surface-2)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              letterSpacing: "0.04em",
+                              textTransform: "uppercase" as const,
+                              color: "var(--color-text-muted)",
+                            }}
+                          >
+                            SMTP settings
+                          </div>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr 100px",
+                              gap: 10,
+                            }}
+                          >
                             <div style={fieldStyle}>
                               <label style={labelStyle}>SMTP host</label>
-                              <input style={inputStyle} value={webGuiConfig.smtp_host} placeholder="smtp.gmail.com" onChange={e => setWebGuiConfig(c => c ? { ...c, smtp_host: e.target.value } : c)} />
+                              <input
+                                style={inputStyle}
+                                value={webGuiConfig.smtp_host}
+                                placeholder="smtp.gmail.com"
+                                onChange={(e) =>
+                                  setWebGuiConfig((c) =>
+                                    c ? { ...c, smtp_host: e.target.value } : c,
+                                  )
+                                }
+                              />
                             </div>
                             <div style={fieldStyle}>
                               <label style={labelStyle}>Port</label>
-                              <input style={inputStyle} type="number" value={webGuiConfig.smtp_port} onChange={e => setWebGuiConfig(c => c ? { ...c, smtp_port: parseInt(e.target.value) || c.smtp_port } : c)} />
+                              <input
+                                style={inputStyle}
+                                type="number"
+                                value={webGuiConfig.smtp_port}
+                                onChange={(e) =>
+                                  setWebGuiConfig((c) =>
+                                    c
+                                      ? {
+                                          ...c,
+                                          smtp_port:
+                                            parseInt(e.target.value) ||
+                                            c.smtp_port,
+                                        }
+                                      : c,
+                                  )
+                                }
+                              />
                             </div>
                           </div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr 1fr",
+                              gap: 10,
+                            }}
+                          >
                             <div style={fieldStyle}>
                               <label style={labelStyle}>Username</label>
-                              <input style={inputStyle} value={webGuiConfig.smtp_user} onChange={e => setWebGuiConfig(c => c ? { ...c, smtp_user: e.target.value } : c)} />
+                              <input
+                                style={inputStyle}
+                                value={webGuiConfig.smtp_user}
+                                onChange={(e) =>
+                                  setWebGuiConfig((c) =>
+                                    c ? { ...c, smtp_user: e.target.value } : c,
+                                  )
+                                }
+                              />
                             </div>
                             <div style={fieldStyle}>
                               <label style={labelStyle}>Password</label>
-                              <input style={inputStyle} type="password" value={webGuiConfig.smtp_pass} onChange={e => setWebGuiConfig(c => c ? { ...c, smtp_pass: e.target.value } : c)} />
+                              <input
+                                style={inputStyle}
+                                type="password"
+                                value={webGuiConfig.smtp_pass}
+                                onChange={(e) =>
+                                  setWebGuiConfig((c) =>
+                                    c ? { ...c, smtp_pass: e.target.value } : c,
+                                  )
+                                }
+                              />
                             </div>
                           </div>
                           <div style={fieldStyle}>
                             <label style={labelStyle}>From address</label>
-                            <input style={inputStyle} type="email" value={webGuiConfig.smtp_from} placeholder="oscata@yourdomain.com" onChange={e => setWebGuiConfig(c => c ? { ...c, smtp_from: e.target.value } : c)} />
+                            <input
+                              style={inputStyle}
+                              type="email"
+                              value={webGuiConfig.smtp_from}
+                              placeholder="oscata@yourdomain.com"
+                              onChange={(e) =>
+                                setWebGuiConfig((c) =>
+                                  c ? { ...c, smtp_from: e.target.value } : c,
+                                )
+                              }
+                            />
                           </div>
                         </div>
                       )}
                     </div>
                   )}
 
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <button style={webGuiSaved ? successBtn : primaryBtn} disabled={webGuiSaving} onClick={saveWebGuiConfig}>
-                      {webGuiSaving ? "Saving…" : webGuiSaved ? "✓ Saved" : "Save Web Interface Settings"}
+                  <div
+                    style={{ display: "flex", gap: 10, alignItems: "center" }}
+                  >
+                    <button
+                      style={webGuiSaved ? successBtn : primaryBtn}
+                      disabled={webGuiSaving}
+                      onClick={saveWebGuiConfig}
+                    >
+                      {webGuiSaving
+                        ? "Saving…"
+                        : webGuiSaved
+                          ? "✓ Saved"
+                          : "Save Web Interface Settings"}
                     </button>
-                    <button style={ghostBtn} disabled={webGuiInitBusy} onClick={saveAndInitWebGui}>
+                    <button
+                      style={ghostBtn}
+                      disabled={webGuiInitBusy}
+                      onClick={saveAndInitWebGui}
+                    >
                       {webGuiInitBusy ? "Starting…" : "Save + Initialize Now"}
                     </button>
                   </div>
                   {webGuiMessage && (
-                    <div style={{ ...subtextStyle, color: "var(--color-success)" }}>{webGuiMessage}</div>
+                    <div
+                      style={{ ...subtextStyle, color: "var(--color-success)" }}
+                    >
+                      {webGuiMessage}
+                    </div>
                   )}
                   {webGuiError && (
-                    <div style={{ ...subtextStyle, color: "var(--color-danger)" }}>{webGuiError}</div>
+                    <div
+                      style={{ ...subtextStyle, color: "var(--color-danger)" }}
+                    >
+                      {webGuiError}
+                    </div>
                   )}
                 </div>
               </SectionCard>
