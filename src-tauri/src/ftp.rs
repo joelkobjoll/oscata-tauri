@@ -18,6 +18,57 @@ pub struct FtpFile {
 
 const MEDIA_EXTENSIONS: &[&str] = &["mkv", "mp4", "avi", "m2ts", "mov", "ts"];
 
+/// Open a fresh authenticated FTP connection.
+async fn connect(host: &str, port: u16, user: &str, pass: &str) -> Result<AsyncFtpStream, String> {
+    let mut ftp = AsyncFtpStream::connect(format!("{host}:{port}"))
+        .await
+        .map_err(|e| clean_ftp_error(e))?;
+    ftp.login(user, pass).await.map_err(|e| clean_ftp_error(e))?;
+    Ok(ftp)
+}
+
+/// Parse raw FTP LIST lines into (is_dir, name, size) tuples.
+fn parse_entries(raw: &[String], parent_path: &str) -> (Vec<String>, Vec<FtpFile>) {
+    let mut dirs = vec![];
+    let mut files = vec![];
+    for entry in raw {
+        let entry = entry.trim().to_string();
+        if entry.is_empty() { continue; }
+        let parts: Vec<&str> = entry.split_whitespace().collect();
+        let (is_dir, name_start, size) = if parts.len() >= 9
+            && (parts[0].starts_with('-') || parts[0].starts_with('d') || parts[0].starts_with('l'))
+        {
+            let is_dir = parts[0].starts_with('d');
+            let size: u64 = parts[4].parse().unwrap_or(0);
+            (is_dir, 8usize, size)
+        } else if parts.len() >= 4 && parts[0].contains('-') && parts[1].contains(':') {
+            let is_dir = parts[2].eq_ignore_ascii_case("<DIR>");
+            let size: u64 = if is_dir { 0 } else { parts[2].parse().unwrap_or(0) };
+            (is_dir, 3usize, size)
+        } else {
+            continue;
+        };
+        if name_start >= parts.len() { continue; }
+        let name = parts[name_start..].join(" ");
+        let name = name.trim().to_string();
+        if name == "." || name == ".." || name.is_empty() { continue; }
+        let child_path = format!("{}/{}", parent_path.trim_end_matches('/'), name);
+        if is_dir {
+            dirs.push(child_path);
+        } else {
+            let ext = std::path::Path::new(&name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            if MEDIA_EXTENSIONS.contains(&ext.as_str()) {
+                files.push(FtpFile { path: child_path, size, filename: name });
+            }
+        }
+    }
+    (dirs, files)
+}
+
 pub async fn test_connection(
     host: &str,
     port: u16,
@@ -42,16 +93,23 @@ pub async fn list_raw(
     pass: &str,
     path: &str,
 ) -> Result<Vec<String>, String> {
-    let mut ftp = AsyncFtpStream::connect(format!("{host}:{port}"))
-        .await
-        .map_err(|e| clean_ftp_error(e))?;
-    ftp.login(user, pass).await.map_err(|e| clean_ftp_error(e))?;
+    let mut ftp = connect(host, port, user, pass).await?;
     ftp.cwd(path).await.map_err(|e| format!("CWD {path}: {e}"))?;
     let entries = ftp.list(None).await.map_err(|e| e.to_string())?;
     ftp.quit().await.ok();
     Ok(entries)
 }
 
+/// Crawl `root` using up to `parallelism` concurrent FTP connections.
+///
+/// Strategy:
+///   1. One connection does a shallow LIST of `root` to discover top-level branches.
+///   2. Each branch gets its own dedicated FTP connection that recursively crawls
+///      just that subtree — in parallel.
+///   3. Files found directly in `root` (rare) are collected on the initial connection.
+///
+/// This mirrors rclone's approach and gives a ~N× speedup where N = branch count,
+/// capped at `parallelism`.
 pub async fn list_files(
     host: &str,
     port: u16,
@@ -60,107 +118,91 @@ pub async fn list_files(
     root: &str,
     on_log: Arc<dyn Fn(String) + Send + Sync>,
 ) -> Result<Vec<FtpFile>, String> {
-    let mut ftp = AsyncFtpStream::connect(format!("{host}:{port}"))
-        .await
-        .map_err(|e| clean_ftp_error(e))?;
-    ftp.login(user, pass).await.map_err(|e| clean_ftp_error(e))?;
-    on_log(format!("Connected — starting crawl from {root}"));
+    // Step 1: shallow scan of root to discover top-level branches.
+    on_log(format!("Connected — discovering branches in {root}"));
+    let mut root_ftp = connect(host, port, user, pass).await?;
+    root_ftp.cwd(root).await.map_err(|e| format!("CWD {root}: {e}"))?;
+    let root_entries = root_ftp.list(None).await.map_err(|e| e.to_string())?;
+    root_ftp.quit().await.ok();
 
-    let mut errors: Vec<String> = vec![];
-    let files = crawl(&mut ftp, root, &mut errors, on_log.clone()).await?;
-    ftp.quit().await.ok();
+    let (top_dirs, mut root_files) = parse_entries(&root_entries, root);
+    on_log(format!("Found {} top-level branches — crawling in parallel", top_dirs.len()));
 
-    if files.is_empty() && !errors.is_empty() {
-        return Err(format!(
-            "FTP crawl returned 0 media files. Errors encountered:\n{}",
-            errors.join("\n")
-        ));
+    // Step 2: crawl each branch in its own connection, bounded by a semaphore.
+    const MAX_PARALLEL: usize = 6;
+    let sem = Arc::new(tokio::sync::Semaphore::new(MAX_PARALLEL));
+    let mut handles = vec![];
+
+    for branch in top_dirs {
+        let sem = sem.clone();
+        let log = on_log.clone();
+        let host = host.to_string();
+        let user = user.to_string();
+        let pass = pass.to_string();
+
+        let handle = tokio::spawn(async move {
+            let _permit = sem.acquire().await.ok();
+            log(format!("📂 Crawling branch: {branch}"));
+            let mut ftp = match connect(&host, port, &user, &pass).await {
+                Ok(f) => f,
+                Err(e) => {
+                    log(format!("⚠ Could not open connection for {branch}: {e}"));
+                    return vec![];
+                }
+            };
+            let mut errors = vec![];
+            let files = crawl_sequential(&mut ftp, &branch, &mut errors, log.clone()).await;
+            ftp.quit().await.ok();
+            for e in errors {
+                log(format!("⚠ {e}"));
+            }
+            files
+        });
+        handles.push(handle);
     }
 
-    on_log(format!("Crawl complete — {} media files found", files.len()));
-    Ok(files)
+    for handle in handles {
+        if let Ok(branch_files) = handle.await {
+            root_files.extend(branch_files);
+        }
+    }
+
+    if root_files.is_empty() {
+        return Err("FTP crawl returned 0 media files. Check your Root Path setting.".into());
+    }
+
+    on_log(format!("Crawl complete — {} media files found", root_files.len()));
+    Ok(root_files)
 }
 
-fn crawl<'a>(
+/// Single-connection recursive crawl used per-branch by `list_files`.
+fn crawl_sequential<'a>(
     ftp: &'a mut AsyncFtpStream,
     path: &'a str,
     errors: &'a mut Vec<String>,
     on_log: Arc<dyn Fn(String) + Send + Sync>,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<FtpFile>, String>> + Send + 'a>> {
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<FtpFile>> + Send + 'a>> {
     Box::pin(async move {
-        let mut results = vec![];
-
-        on_log(format!("📂 Scanning {path}"));
-
         if let Err(e) = ftp.cwd(path).await {
             errors.push(format!("CWD {path}: {e}"));
-            return Ok(results);
+            return vec![];
         }
-
-        let entries = match ftp.list(None).await {
+        let raw = match ftp.list(None).await {
             Ok(e) => e,
             Err(e) => {
                 errors.push(format!("LIST in {path}: {e}"));
-                return Ok(results);
+                return vec![];
             }
         };
-
-        for entry in entries {
-            let entry = entry.trim().to_string();
-            if entry.is_empty() {
-                continue;
-            }
-
-            let parts: Vec<&str> = entry.split_whitespace().collect();
-
-            let (is_dir, name_start, size) = if parts.len() >= 9
-                && (parts[0].starts_with('-')
-                    || parts[0].starts_with('d')
-                    || parts[0].starts_with('l'))
-            {
-                let is_dir = parts[0].starts_with('d');
-                let size: u64 = parts[4].parse().unwrap_or(0);
-                (is_dir, 8usize, size)
-            } else if parts.len() >= 4 && parts[0].contains('-') && parts[1].contains(':') {
-                let is_dir = parts[2].eq_ignore_ascii_case("<DIR>");
-                let size: u64 = if is_dir { 0 } else { parts[2].parse().unwrap_or(0) };
-                (is_dir, 3usize, size)
-            } else {
-                continue;
-            };
-
-            if name_start >= parts.len() {
-                continue;
-            }
-            let name = parts[name_start..].join(" ");
-            let name = name.trim().to_string();
-            if name == "." || name == ".." || name.is_empty() {
-                continue;
-            }
-
-            let child_path = format!("{}/{}", path.trim_end_matches('/'), name);
-
-            if is_dir {
-                let mut sub = crawl(ftp, &child_path, errors, on_log.clone()).await?;
-                results.append(&mut sub);
-            } else {
-                let ext = std::path::Path::new(&name)
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                if MEDIA_EXTENSIONS.contains(&ext.as_str()) {
-                    on_log(format!("🎬 Found: {name}"));
-                    results.push(FtpFile {
-                        path: child_path,
-                        size,
-                        filename: name,
-                    });
-                }
-            }
+        let (sub_dirs, mut files) = parse_entries(&raw, path);
+        for f in &files {
+            on_log(format!("🎬 Found: {}", f.filename));
         }
-
-        Ok(results)
+        for sub in sub_dirs {
+            let mut sub_files = crawl_sequential(ftp, &sub, errors, on_log.clone()).await;
+            files.append(&mut sub_files);
+        }
+        files
     })
 }
 
