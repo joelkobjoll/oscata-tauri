@@ -41,6 +41,11 @@ const MAX_LOG = 500;
 
 export function useIndexing() {
   const [items, setItems] = useState<MediaItem[]>([]);
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [crawlStats, setCrawlStats] = useState<{
+    scannedFolders: number;
+    foundFiles: number;
+  }>({ scannedFolders: 0, foundFiles: 0 });
   const [progress, setProgress] = useState<{
     current: number;
     total: number;
@@ -75,6 +80,7 @@ export function useIndexing() {
       "index:progress",
       ({ payload }) => {
         setIndexError(null);
+        setIsIndexing(true);
         setProgress({ current: payload.current, total: payload.total });
         setItems((prev) => {
           if (itemIndexRef.current.has(payload.id)) return prev;
@@ -84,6 +90,7 @@ export function useIndexing() {
         });
         if (payload.current === payload.total) {
           setProgress(null);
+          setIsIndexing(false);
           addLog(`✓ Done — ${payload.total} files indexed`);
         }
       },
@@ -107,16 +114,32 @@ export function useIndexing() {
       ({ payload }) => {
         setIndexError(payload.message);
         setProgress(null);
+        setIsIndexing(false);
+        setCrawlStats({ scannedFolders: 0, foundFiles: 0 });
         addLog(`⚠ Error: ${payload.message}`);
       },
     );
 
     const unStart = listen("index:start", () => {
       setIndexError(null);
+      setIsIndexing(true);
+      setProgress(null);
+      setCrawlStats({ scannedFolders: 0, foundFiles: 0 });
       addLog("▶ Indexing started");
     });
 
     const unLog = listen<{ msg: string }>("index:log", ({ payload }) => {
+      if (payload.msg.startsWith("📂 Scanning ")) {
+        setCrawlStats((prev) => ({
+          ...prev,
+          scannedFolders: prev.scannedFolders + 1,
+        }));
+      } else if (payload.msg.startsWith("🎬 Found: ")) {
+        setCrawlStats((prev) => ({
+          ...prev,
+          foundFiles: prev.foundFiles + 1,
+        }));
+      }
       addLog(payload.msg);
     });
 
@@ -131,6 +154,8 @@ export function useIndexing() {
 
   return {
     items,
+    isIndexing,
+    crawlStats,
     progress,
     indexError,
     clearIndexError: () => setIndexError(null),

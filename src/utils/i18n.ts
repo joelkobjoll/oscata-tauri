@@ -171,6 +171,18 @@ const messages = {
     es: "Indexando {current} / {total}",
     en: "Indexing {current} / {total}",
   },
+  "toast.starting": {
+    es: "Iniciando indexacion...",
+    en: "Starting indexing...",
+  },
+  "toast.scanning": {
+    es: "Escaneando carpetas FTP...",
+    en: "Scanning FTP folders...",
+  },
+  "toast.scanningDetail": {
+    es: "Carpetas: {folders} | Archivos encontrados: {files}",
+    en: "Folders: {folders} | Files found: {files}",
+  },
   "toast.subtitle": {
     es: "Buscando archivos nuevos en FTP y enriqueciendo solo los nuevos",
     en: "Checking FTP for new files and enriching only new items",

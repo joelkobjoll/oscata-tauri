@@ -816,7 +816,7 @@ impl Db {
                 languages=excluded.languages,
                 release_type=excluded.release_type, release_group=excluded.release_group,
                 media_type=COALESCE(excluded.media_type, media_items.media_type),
-                indexed_at=excluded.indexed_at",
+                     indexed_at=media_items.indexed_at",
             params![
                 path,
                 filename,

@@ -183,6 +183,8 @@ export default function Library({
 }) {
   const {
     items,
+    isIndexing,
+    crawlStats,
     progress,
     indexError,
     clearIndexError,
@@ -379,6 +381,12 @@ export default function Library({
   const useGroupedMovies = activeTab === "movie" && movieView === "grouped";
   const useEpisodeList = activeTab === "tv" && tvView === "episodes";
 
+  const getAddedTimestamp = (item: MediaItem): number => {
+    const indexed = item.indexed_at ? Date.parse(item.indexed_at) : NaN;
+    if (!Number.isNaN(indexed)) return indexed;
+    return item.id;
+  };
+
   const deduplicateByTitle = (entries: MediaItem[]): MediaItem[] => {
     const seen = new Map<string, MediaItem>();
     for (const entry of entries) {
@@ -386,9 +394,23 @@ export default function Library({
         entry.tmdb_id != null
           ? `tmdb:${entry.tmdb_id}`
           : `title:${entry.title ?? entry.filename}`;
+      const current = seen.get(key);
+      if (!current) {
+        seen.set(key, entry);
+        continue;
+      }
+
+      const entryAddedAt = getAddedTimestamp(entry);
+      const currentAddedAt = getAddedTimestamp(current);
+      if (entryAddedAt > currentAddedAt) {
+        seen.set(key, entry);
+        continue;
+      }
+
       if (
-        !seen.has(key) ||
-        (entry.tmdb_poster && !seen.get(key)!.tmdb_poster)
+        entryAddedAt === currentAddedAt &&
+        entry.tmdb_poster &&
+        !current.tmdb_poster
       ) {
         seen.set(key, entry);
       }
@@ -493,9 +515,9 @@ export default function Library({
           case "rating-desc":
             return (b.tmdb_rating ?? 0) - (a.tmdb_rating ?? 0);
           case "added-desc": {
-            const ta = a.indexed_at ?? "";
-            const tb = b.indexed_at ?? "";
-            return tb.localeCompare(ta) || b.id - a.id;
+            const ta = getAddedTimestamp(a);
+            const tb = getAddedTimestamp(b);
+            return tb - ta || b.id - a.id;
           }
           default:
             return titleA.localeCompare(titleB);
@@ -1243,6 +1265,7 @@ export default function Library({
                       <button
                         onClick={refreshLibrary}
                         disabled={
+                          isIndexing ||
                           refreshingLibrary ||
                           rematching ||
                           clearingAll ||
@@ -1257,6 +1280,7 @@ export default function Library({
                           color: "var(--color-text)",
                           textAlign: "left",
                           cursor:
+                            isIndexing ||
                             refreshingLibrary ||
                             rematching ||
                             clearingAll ||
@@ -1264,6 +1288,7 @@ export default function Library({
                               ? "default"
                               : "pointer",
                           opacity:
+                            isIndexing ||
                             refreshingLibrary ||
                             rematching ||
                             clearingAll ||
@@ -1274,7 +1299,7 @@ export default function Library({
                           fontWeight: 600,
                         }}
                       >
-                        {refreshingLibrary
+                        {isIndexing || refreshingLibrary
                           ? t(language, "library.refreshing")
                           : t(language, "library.refresh")}
                       </button>
@@ -1284,7 +1309,8 @@ export default function Library({
                           refreshingMetadata ||
                           rematching ||
                           clearingAll ||
-                          refreshingLibrary
+                          refreshingLibrary ||
+                          isIndexing
                         }
                         style={{
                           width: "100%",
@@ -1298,14 +1324,16 @@ export default function Library({
                             refreshingMetadata ||
                             rematching ||
                             clearingAll ||
-                            refreshingLibrary
+                            refreshingLibrary ||
+                            isIndexing
                               ? "default"
                               : "pointer",
                           opacity:
                             refreshingMetadata ||
                             rematching ||
                             clearingAll ||
-                            refreshingLibrary
+                            refreshingLibrary ||
+                            isIndexing
                               ? 0.5
                               : 1,
                           fontSize: 13,
@@ -1485,7 +1513,13 @@ export default function Library({
         </div>
       </div>
 
-      <IndexStatus progress={progress} language={language} />
+      <IndexStatus
+        progress={progress}
+        isIndexing={isIndexing}
+        crawlStats={crawlStats}
+        activityLogOpen={showLog}
+        language={language}
+      />
       <DownloadFeedbackToast language={language} />
       {indexError && (
         <IndexErrorToast
