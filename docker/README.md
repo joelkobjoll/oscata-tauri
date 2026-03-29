@@ -50,6 +50,20 @@ For a local persistent runtime with automatic restart:
 npm run docker:vnc:up
 ```
 
+You can persist your settings in a dotenv-style file instead of passing env vars every time:
+
+```bash
+cp .env.docker-vnc.example .env.docker-vnc
+```
+
+Then edit `.env.docker-vnc` and run:
+
+```bash
+npm run docker:vnc:up
+```
+
+The helper script auto-loads `.env.docker-vnc`. You can override with `ENV_FILE=/path/to/file`.
+
 This helper script:
 
 - builds the image if needed

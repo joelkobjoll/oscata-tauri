@@ -3,6 +3,35 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ENV_FILE="${ENV_FILE:-${REPO_ROOT}/.env.docker-vnc}"
+
+load_env_file() {
+  local env_file="$1"
+  local line key value
+
+  [[ -f "$env_file" ]] || return 0
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+
+    if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
+
+      # Remove optional surrounding single/double quotes in dotenv values.
+      if [[ "$value" =~ ^\".*\"$ || "$value" =~ ^\'.*\'$ ]]; then
+        value="${value:1:${#value}-2}"
+      fi
+
+      # Keep already-exported values (inline env) as highest priority.
+      if [[ -z "${!key+x}" ]]; then
+        export "$key=$value"
+      fi
+    fi
+  done < "$env_file"
+}
+
+load_env_file "$ENV_FILE"
 
 IMAGE_NAME="${IMAGE_NAME:-oscata-vnc:local}"
 CONTAINER_NAME="${CONTAINER_NAME:-oscata-vnc}"
@@ -29,7 +58,10 @@ Commands:
 Environment overrides:
   IMAGE_NAME, CONTAINER_NAME, CONFIG_DIR, DOWNLOADS_DIR,
   VNC_PORT, NOVNC_PORT, WEBGUI_PORT, VNC_RESOLUTION,
-  VNC_PASSWORD, OSCATA_BOOTSTRAP_WEBGUI
+  VNC_PASSWORD, OSCATA_BOOTSTRAP_WEBGUI, ENV_FILE
+
+Default env file:
+  ${REPO_ROOT}/.env.docker-vnc
 EOF
 }
 
