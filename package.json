@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "verify:seed-db": "node ./scripts/verify-seed-sanitized.mjs",
+    "build": "npm run verify:seed-db && tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "seed-db": "node ./scripts/update-starter-db.mjs",
