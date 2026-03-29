@@ -672,10 +672,12 @@ pub async fn start_indexing_internal(
 
         // Detect media_type from folder_types mapping (first path segment after root)
         let media_type = detect_media_type(&file.path, &root, &folder_types);
+        let looks_episode = parsed.season.is_some() || parsed.episode.is_some() || parsed.episode_end.is_some();
         let media_type = match media_type.as_deref() {
-            Some("mixed") => if parsed.season.is_some() { Some("tv".to_string()) } else { Some("movie".to_string()) },
+            Some("mixed") => if looks_episode { Some("tv".to_string()) } else { Some("movie".to_string()) },
+            Some("movie") if looks_episode => Some("tv".to_string()),
             Some(t) => Some(t.to_string()),
-            None => if parsed.season.is_some() { Some("tv".to_string()) } else { None },
+            None => if looks_episode { Some("tv".to_string()) } else { None },
         };
         let media_type_str = media_type.as_deref();
 

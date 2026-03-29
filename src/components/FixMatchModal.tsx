@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import AppIcon from "./AppIcon";
 import type { AppLanguage } from "../utils/mediaLanguage";
@@ -96,7 +97,7 @@ export default function FixMatchModal({
       ? t(language, "modal.applyMany", { count: itemIds.length })
       : t(language, "modal.applyOne");
 
-  return (
+  const modalContent = (
     <div
       className="modal-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -645,4 +646,10 @@ export default function FixMatchModal({
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") {
+    return modalContent;
+  }
+
+  return createPortal(modalContent, document.body);
 }
