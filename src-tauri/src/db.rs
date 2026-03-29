@@ -407,6 +407,20 @@ impl Db {
         Ok(count >= 6)
     }
 
+    pub fn clear_app_config(&self) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM app_config", [])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn count_media_items(&self) -> Result<i64, String> {
+        let conn = self.0.lock().unwrap();
+        conn
+            .query_row("SELECT COUNT(*) FROM media_items", [], |r| r.get(0))
+            .map_err(|e| e.to_string())
+    }
+
     pub fn upsert_media(
         &self,
         path: &str,

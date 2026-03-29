@@ -58,7 +58,7 @@ function SummaryCard({
   children: React.ReactNode;
 }) {
   return (
-    <section style={sectionCard}>
+    <section style={{ ...sectionCard, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
         <div
           style={{
@@ -94,12 +94,21 @@ export default function StepConfirm({
   onComplete: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const save = async () => {
     setSaving(true);
-    await invoke("save_config", { config });
-    invoke("start_indexing");
-    onComplete();
+    setErrorMsg("");
+    try {
+      await invoke<boolean>("seed_starter_library");
+      await invoke("save_config", { config });
+      await invoke("start_indexing");
+      onComplete();
+    } catch (error: unknown) {
+      setErrorMsg(String(error));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -113,10 +122,27 @@ export default function StepConfirm({
 
       <div style={responsiveSummaryGrid}>
         <SummaryCard icon="folder" title={t(language, "wizard.stepFtp")}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--color-text)",
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+              lineHeight: 1.35,
+            }}
+          >
             {config.ftp_user}@{config.ftp_host}:{config.ftp_port}
           </div>
-          <div style={subtextStyle}>{config.ftp_root}</div>
+          <div
+            style={{
+              ...subtextStyle,
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+            }}
+          >
+            {config.ftp_root}
+          </div>
         </SummaryCard>
 
         <SummaryCard icon="search" title={t(language, "wizard.stepTmdb")}>
@@ -129,7 +155,16 @@ export default function StepConfirm({
         </SummaryCard>
 
         <SummaryCard icon="download" title={t(language, "settings.downloadsTitle")}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--color-text)",
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+              lineHeight: 1.35,
+            }}
+          >
             {config.download_folder || t(language, "settings.downloadFolderPlaceholder")}
           </div>
           <div style={subtextStyle}>
@@ -144,6 +179,9 @@ export default function StepConfirm({
           {saving ? t(language, "common.saving") : t(language, "wizard.saveAndStart")}
         </button>
       </div>
+      {errorMsg && (
+        <div style={{ ...subtextStyle, color: "var(--color-danger)" }}>{errorMsg}</div>
+      )}
     </div>
   );
 }

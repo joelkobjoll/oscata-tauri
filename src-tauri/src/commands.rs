@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use tauri::Emitter;
+use tauri::Manager;
 use tauri::WebviewWindow;
 
 fn persist_download_state(
@@ -405,6 +406,53 @@ pub async fn save_config(
 #[tauri::command]
 pub async fn has_config(state: tauri::State<'_, crate::db::Db>) -> Result<bool, String> {
     state.has_config()
+}
+
+fn resolve_seed_db_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Ok(path) = app
+        .path()
+        .resolve("library.seed.db", tauri::path::BaseDirectory::Resource)
+    {
+        candidates.push(path);
+    }
+
+    if let Ok(path) = app
+        .path()
+        .resolve("resources/library.seed.db", tauri::path::BaseDirectory::Resource)
+    {
+        candidates.push(path);
+    }
+
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            candidates.push(exe_dir.join("resources").join("library.seed.db"));
+        }
+    }
+
+    candidates.into_iter().find(|candidate| candidate.exists())
+}
+
+#[tauri::command]
+pub async fn seed_starter_library(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::db::Db>,
+) -> Result<bool, String> {
+    if state.has_config()? {
+        return Ok(false);
+    }
+    if state.count_media_items()? > 0 {
+        return Ok(false);
+    }
+
+    let Some(seed_path) = resolve_seed_db_path(&app) else {
+        return Ok(false);
+    };
+
+    state.import_database_from(&seed_path.to_string_lossy())?;
+    state.clear_app_config()?;
+    Ok(true)
 }
 
 #[tauri::command]

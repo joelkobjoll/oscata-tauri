@@ -398,7 +398,7 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
           </div>
         ) : (
           <div style={responsiveWizardGrid}>
-            <aside style={{ display: "grid", gap: 16, alignSelf: "start" }}>
+            <aside style={{ display: "grid", gap: 16, alignSelf: "start", minWidth: 0 }}>
               <section style={{ ...shellCard, padding: "1rem" }}>
                 <div style={{ display: "grid", gap: 10 }}>
                   {steps.map((item, index) => {
@@ -481,16 +481,34 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
                   {t(language, "wizard.summaryTitle")}
                 </div>
                 <div style={{ display: "grid", gap: 10 }}>
-                  <div style={{ ...sectionCard, padding: "0.85rem" }}>
+                  <div style={{ ...sectionCard, padding: "0.85rem", minWidth: 0 }}>
                     <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 4 }}>
                       {t(language, "wizard.stepFtp")}
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "var(--color-text)",
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
+                        lineHeight: 1.35,
+                      }}
+                    >
                       {config.ftp_host ? `${config.ftp_user || "user"}@${config.ftp_host}:${config.ftp_port}` : "—"}
                     </div>
-                    <div style={{ ...subtextStyle, marginTop: 4 }}>{config.ftp_root || "/"}</div>
+                    <div
+                      style={{
+                        ...subtextStyle,
+                        marginTop: 4,
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {config.ftp_root || "/"}
+                    </div>
                   </div>
-                  <div style={{ ...sectionCard, padding: "0.85rem" }}>
+                  <div style={{ ...sectionCard, padding: "0.85rem", minWidth: 0 }}>
                     <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 4 }}>
                       {t(language, "wizard.stepTmdb")}
                     </div>
@@ -501,11 +519,20 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
                       {t(language, "settings.defaultLanguage")}: {config.default_language === "en" ? t(language, "common.languageEnglish") : t(language, "common.languageSpanish")}
                     </div>
                   </div>
-                  <div style={{ ...sectionCard, padding: "0.85rem" }}>
+                  <div style={{ ...sectionCard, padding: "0.85rem", minWidth: 0 }}>
                     <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 4 }}>
                       {t(language, "settings.downloadsTitle")}
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "var(--color-text)",
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
+                        lineHeight: 1.35,
+                      }}
+                    >
                       {config.download_folder || "—"}
                     </div>
                     <div style={{ ...subtextStyle, marginTop: 4 }}>
@@ -516,7 +543,7 @@ export default function Wizard({ onComplete }: { onComplete: () => void }) {
               </section>
             </aside>
 
-            <section style={{ ...shellCard, overflow: "hidden", alignSelf: "start" }}>
+            <section style={{ ...shellCard, overflow: "hidden", alignSelf: "start", minWidth: 0 }}>
               <div
                 style={{
                   padding: "1.2rem 1.35rem 1rem",
