@@ -1,12 +1,12 @@
-# Oscata
+# Oscata FTP Client
 
-Oscata is a desktop media-library browser built with Tauri, React, TypeScript, and Rust.
+Oscata FTP Client is a desktop media-library browser built with Tauri, React, TypeScript, and Rust.
 
 It connects to an FTP media source, indexes movie and TV files, enriches them with TMDB metadata, and presents everything in a polished desktop UI with downloads, badges, filters, bilingual metadata, and grouped browsing.
 
 ## What the app does
 
-Oscata is designed for people who keep a remote FTP-based media library and want a desktop app that feels closer to a modern streaming/browser experience instead of a raw file listing.
+Oscata FTP Client is designed for people who keep a remote FTP-based media library and want a desktop app that feels closer to a modern streaming/browser experience instead of a raw file listing.
 
 Today the app can:
 
@@ -30,7 +30,7 @@ The backend scans the configured FTP root, parses media filenames, and stores re
 
 ### Metadata enrichment
 
-Oscata uses TMDB to match titles and store posters, overviews, ratings, dates, genres, and localized metadata. Manual fixes are preserved and bulk refresh actions avoid overwriting manual matches.
+Oscata FTP Client uses TMDB to match titles and store posters, overviews, ratings, dates, genres, and localized metadata. Manual fixes are preserved and bulk refresh actions avoid overwriting manual matches.
 
 ### Downloads
 
@@ -124,7 +124,7 @@ Key settings include:
 
 ## Data storage
 
-Oscata stores its local database in the user data directory under:
+Oscata FTP Client stores its local database in the user data directory under:
 
 ```text
 oscata-tauri/library.db
@@ -154,7 +154,7 @@ npm run build
 
 ## Release / versioning workflow
 
-Oscata now uses `package.json` as the main app version source, and the local release script keeps Rust metadata in sync.
+Oscata FTP Client now uses `package.json` as the main app version source, and the local release script keeps Rust metadata in sync.
 
 Available commands:
 

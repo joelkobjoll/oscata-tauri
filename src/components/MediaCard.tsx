@@ -89,14 +89,27 @@ function OverlayBadge({
   tone = "neutral",
   releaseColor,
   iconOnly = false,
+  style,
+  title,
 }: {
   children: React.ReactNode;
   tone?: BadgeTone;
   releaseColor?: string;
   iconOnly?: boolean;
+  style?: React.CSSProperties;
+  title?: string;
 }) {
   return (
-    <span style={badgeSurface(tone, releaseColor, { iconOnly })}>
+    <span
+      title={title}
+      style={{
+        ...badgeSurface(tone, releaseColor, { iconOnly }),
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        ...style,
+      }}
+    >
       {children}
     </span>
   );
@@ -234,9 +247,12 @@ function MediaCard({
               top: "0.4rem",
               left: "0.4rem",
               zIndex: 4,
+              maxWidth: "calc(100% - 3.4rem)",
             }}
           >
-            <OverlayBadge>
+            <OverlayBadge
+              title={`S${String(item.season).padStart(2, "0")}${item.episode != null ? `E${String(item.episode).padStart(2, "0")}` : ""}${item.episode_end != null && item.episode_end !== item.episode ? `-E${String(item.episode_end).padStart(2, "0")}` : ""}`}
+            >
               {`S${String(item.season).padStart(2, "0")}${item.episode != null ? `E${String(item.episode).padStart(2, "0")}` : ""}${item.episode_end != null && item.episode_end !== item.episode ? `-E${String(item.episode_end).padStart(2, "0")}` : ""}`}
             </OverlayBadge>
           </div>
@@ -253,6 +269,7 @@ function MediaCard({
               gap: 4,
               alignItems: "flex-end",
               zIndex: 4,
+              maxWidth: "calc(40% - 0.4rem)",
             }}
           >
             {badges.downloaded && (
@@ -261,7 +278,9 @@ function MediaCard({
               </OverlayBadge>
             )}
             {badges.inEmby && (
-              <OverlayBadge tone="info">Emby</OverlayBadge>
+              <OverlayBadge tone="info" title="Emby">
+                Emby
+              </OverlayBadge>
             )}
           </div>
         )}
@@ -273,16 +292,20 @@ function MediaCard({
             bottom: "0.4rem",
             right: "0.4rem",
             display: "flex",
-            alignItems: "center",
+            flexDirection: "column",
+            alignItems: "flex-end",
             gap: "0.2rem",
             zIndex: 4,
+            maxWidth: "calc(42% - 0.4rem)",
           }}
         >
           {item.hdr && (
-            <OverlayBadge tone="violet">{item.hdr}</OverlayBadge>
+            <OverlayBadge tone="violet" title={item.hdr}>
+              {item.hdr}
+            </OverlayBadge>
           )}
           {item.resolution && (
-            <OverlayBadge>{item.resolution}</OverlayBadge>
+            <OverlayBadge title={item.resolution}>{item.resolution}</OverlayBadge>
           )}
         </div>
 
@@ -294,11 +317,13 @@ function MediaCard({
               bottom: "0.4rem",
               left: "0.4rem",
               zIndex: 4,
+              maxWidth: "calc(58% - 0.4rem)",
             }}
           >
             <OverlayBadge
               tone="release"
               releaseColor={RELEASE_TYPE_COLORS[item.release_type] || "#1e293b"}
+              title={item.release_type}
             >
               {item.release_type}
             </OverlayBadge>

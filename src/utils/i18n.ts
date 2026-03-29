@@ -428,7 +428,10 @@ const messages = {
     es: "TMDB API key: configurada ✓",
     en: "TMDB API key: configured ✓",
   },
-  "wizard.welcomeTitle": { es: "Bienvenido a Oscata", en: "Welcome to Oscata" },
+  "wizard.welcomeTitle": {
+    es: "Bienvenido a Oscata FTP Client",
+    en: "Welcome to Oscata FTP Client",
+  },
   "wizard.welcomeDescription": {
     es: "Configura una librería nueva o restaura una base de datos existente para no empezar desde cero.",
     en: "Set up a new library or restore an existing database so you do not have to start from scratch.",
@@ -437,8 +440,8 @@ const messages = {
   "wizard.restoreBackup": { es: "Restaurar copia de librería", en: "Restore library backup" },
   "wizard.restoringBackup": { es: "Restaurando copia…", en: "Restoring backup…" },
   "wizard.restoreHelp": {
-    es: "Selecciona un backup SQLite exportado desde otra instalación de Oscata.",
-    en: "Choose a SQLite backup exported from another Oscata installation.",
+    es: "Selecciona un backup SQLite exportado desde otra instalación de Oscata FTP Client.",
+    en: "Choose a SQLite backup exported from another Oscata FTP Client installation.",
   },
   "wizard.saveAndStart": {
     es: "Guardar e iniciar indexado",
