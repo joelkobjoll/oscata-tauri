@@ -750,6 +750,14 @@ export default function TVShowPanel({
   const [filterRelease, setFilterRelease] = useState("all");
   const [filterResolution, setFilterResolution] = useState("all");
   const [filterSeason, setFilterSeason] = useState("all");
+  const [openingUrl, setOpeningUrl] = useState<string | null>(null);
+
+  const handleOpenUrl = (url: string) => {
+    setOpeningUrl(url);
+    openUrl(url)
+      .catch((e) => console.error("[openUrl] failed to open", url, e))
+      .finally(() => setTimeout(() => setOpeningUrl(null), 2000));
+  };
   const showTitle = getLocalizedTitle(show, language);
   const showOverview = getLocalizedOverview(show, language);
   const searchTitle =
@@ -1108,18 +1116,24 @@ export default function TVShowPanel({
                     : t(language, "tv.fixVisible")}
                 </button>
                 <button
-                  onClick={() => void openUrl(tmdbUrl)}
-                  style={externalLinkBtn}
+                  onClick={() => handleOpenUrl(tmdbUrl)}
+                  style={{
+                    ...externalLinkBtn,
+                    ...(openingUrl === tmdbUrl && { opacity: 0.6 }),
+                  }}
                   title={tmdbUrl}
                 >
-                  {t(language, "detail.openTmdb")}
+                  {openingUrl === tmdbUrl ? "↗ …" : t(language, "detail.openTmdb")}
                 </button>
                 <button
-                  onClick={() => void openUrl(imdbUrl)}
-                  style={externalLinkBtn}
+                  onClick={() => handleOpenUrl(imdbUrl)}
+                  style={{
+                    ...externalLinkBtn,
+                    ...(openingUrl === imdbUrl && { opacity: 0.6 }),
+                  }}
                   title={imdbUrl}
                 >
-                  {t(language, "detail.openImdb")}
+                  {openingUrl === imdbUrl ? "↗ …" : t(language, "detail.openImdb")}
                 </button>
               </div>
 

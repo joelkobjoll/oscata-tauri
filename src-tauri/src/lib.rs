@@ -18,9 +18,20 @@ struct TrayState(Mutex<Option<TrayIcon>>);
 pub static INDEXING_RUNNING: std::sync::LazyLock<Arc<std::sync::atomic::AtomicBool>> =
     std::sync::LazyLock::new(|| Arc::new(std::sync::atomic::AtomicBool::new(false)));
 
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        window.unminimize().ok();
+        window.show().ok();
+        window.set_focus().ok();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(db::Db::new().expect("Failed to init SQLite"))
@@ -81,10 +92,7 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app_handle: &tauri::AppHandle, event| match event.id.as_ref() {
                     "tray_show" => {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            window.show().ok();
-                            window.set_focus().ok();
-                        }
+                        show_main_window(app_handle);
                     }
                     "tray_quit" => {
                         app_handle.exit(0);
@@ -103,8 +111,7 @@ pub fn run() {
                             if visible {
                                 window.hide().ok();
                             } else {
-                                window.show().ok();
-                                window.set_focus().ok();
+                                show_main_window(tray_icon.app_handle());
                             }
                         }
                     }
@@ -155,6 +162,9 @@ pub fn run() {
                 let queue = handle.state::<downloads::SharedQueue>().inner().clone();
                 if let Some(window) = handle.get_webview_window("main") {
                     commands::resume_pending_downloads(db.clone(), queue.clone(), window).await.ok();
+                }
+                if let Some(window) = handle.get_webview_window("main") {
+                    commands::refresh_all_metadata_internal(db.clone(), Some(window)).await.ok();
                 }
                 let last_indexed_at = db.load_last_indexed_at().ok().flatten();
                 let should_run_now = last_indexed_at

@@ -729,6 +729,8 @@ pub async fn start_indexing_internal(
     };
 
     let total = files.len();
+    let mut metadata_tasks = Vec::new();
+    let mut metadata_queued = 0usize;
 
     if total == 0 {
         if let Some(ref w) = window { w.emit("index:error", serde_json::json!({ "message": "FTP crawl returned 0 media files. Check your Root Path setting." })).ok(); }
@@ -789,6 +791,7 @@ pub async fn start_indexing_internal(
         }
 
         if upsert.needs_metadata {
+            metadata_queued += 1;
             let api_key = config.tmdb_api_key.clone();
             let window_clone = window.clone();
             let db_clone = db.clone();
@@ -798,7 +801,7 @@ pub async fn start_indexing_internal(
             let mtype = media_type.clone().unwrap_or_else(|| "movie".to_string());
             let tmdb_stype = tmdb_search_type.clone();
 
-            tokio::spawn(async move {
+            metadata_tasks.push(tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(250)).await;
                 let result = if tmdb_stype == "tv" {
                     crate::tmdb::search_tmdb_multi(&api_key, &title, "tv")
@@ -837,8 +840,30 @@ pub async fn start_indexing_internal(
                 } else {
                     on_log_clone(format!("⚠ TMDB: no match for \"{}\"", title));
                 }
-            });
+            }));
         }
+    }
+
+    for task in metadata_tasks {
+        if task.await.is_err() {
+            on_log("⚠ TMDB metadata task failed unexpectedly".to_string());
+        }
+    }
+
+    on_log(format!(
+        "✓ Indexing complete — {} files scanned, {} new items sent to TMDB",
+        total, metadata_queued
+    ));
+
+    if let Some(ref w) = window {
+        w.emit(
+            "index:complete",
+            serde_json::json!({
+                "total": total,
+                "metadata_queued": metadata_queued,
+            }),
+        )
+        .ok();
     }
 
     db.save_last_indexed_at(&chrono::Utc::now().to_rfc3339()).ok();
@@ -1104,7 +1129,7 @@ pub async fn refresh_all_metadata_internal(
 ) -> Result<(), String> {
     let config = db.load_config()?;
     let items = db.get_all_media()?;
-    let items: Vec<_> = items
+    let mut items: Vec<_> = items
         .into_iter()
         .filter(|item| {
             item.tmdb_id.is_some()
@@ -1122,6 +1147,15 @@ pub async fn refresh_all_metadata_internal(
                 )
         })
         .collect();
+
+    // Process newest entries first on boot/library refresh.
+    items.sort_by(|a, b| {
+        b.indexed_at
+            .as_deref()
+            .unwrap_or("")
+            .cmp(a.indexed_at.as_deref().unwrap_or(""))
+            .then_with(|| b.id.cmp(&a.id))
+    });
 
     let total = items.len();
     if let Some(ref w) = window {

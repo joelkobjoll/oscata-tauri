@@ -81,6 +81,14 @@ export default function DetailPanel({
   onRetry?: (id: number) => void;
 }) {
   const [showFix, setShowFix] = useState(false);
+  const [openingUrl, setOpeningUrl] = useState<string | null>(null);
+
+  const handleOpenUrl = (url: string) => {
+    setOpeningUrl(url);
+    openUrl(url)
+      .catch((e) => console.error("[openUrl] failed to open", url, e))
+      .finally(() => setTimeout(() => setOpeningUrl(null), 2000));
+  };
 
   const title = getLocalizedTitle(item, language);
   const overview = getLocalizedOverview(item, language);
@@ -586,18 +594,24 @@ export default function DetailPanel({
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <button
-              onClick={() => void openUrl(tmdbUrl)}
-              style={externalLinkBtn}
+              onClick={() => handleOpenUrl(tmdbUrl)}
+              style={{
+                ...externalLinkBtn,
+                ...(openingUrl === tmdbUrl && { opacity: 0.6 }),
+              }}
               title={tmdbUrl}
             >
-              {t(language, "detail.openTmdb")}
+              {openingUrl === tmdbUrl ? "↗ …" : t(language, "detail.openTmdb")}
             </button>
             <button
-              onClick={() => void openUrl(imdbUrl)}
-              style={externalLinkBtn}
+              onClick={() => handleOpenUrl(imdbUrl)}
+              style={{
+                ...externalLinkBtn,
+                ...(openingUrl === imdbUrl && { opacity: 0.6 }),
+              }}
               title={imdbUrl}
             >
-              {t(language, "detail.openImdb")}
+              {openingUrl === imdbUrl ? "↗ …" : t(language, "detail.openImdb")}
             </button>
           </div>
         </div>

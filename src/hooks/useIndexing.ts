@@ -88,11 +88,17 @@ export function useIndexing() {
           itemIndexRef.current.set(payload.id, next.length - 1);
           return next;
         });
-        if (payload.current === payload.total) {
-          setProgress(null);
-          setIsIndexing(false);
-          addLog(`✓ Done — ${payload.total} files indexed`);
-        }
+      },
+    );
+
+    const unComplete = listen<{ total: number; metadata_queued: number }>(
+      "index:complete",
+      ({ payload }) => {
+        setProgress(null);
+        setIsIndexing(false);
+        addLog(
+          `✓ Done — ${payload.total} files indexed, ${payload.metadata_queued} new items metadata-matched`,
+        );
       },
     );
 
@@ -148,6 +154,7 @@ export function useIndexing() {
       unUpdate.then((f) => f());
       unError.then((f) => f());
       unStart.then((f) => f());
+      unComplete.then((f) => f());
       unLog.then((f) => f());
     };
   }, []);
