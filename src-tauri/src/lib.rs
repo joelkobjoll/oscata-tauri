@@ -48,7 +48,7 @@ fn schedule_window_watchdog(app: &tauri::AppHandle, window: &tauri::WebviewWindo
     let app_handle = app.clone();
     let window_clone = window.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(1800)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
 
         let should_recover = {
             let watchdog = app_handle.state::<WatchdogState>();
@@ -143,11 +143,6 @@ pub fn run() {
         .on_window_event(|window, event| {
             if window.label() != "main" {
                 return;
-            }
-            if let tauri::WindowEvent::Focused(true) = event {
-                if let Some(main_window) = window.app_handle().get_webview_window("main") {
-                    schedule_window_watchdog(&window.app_handle(), &main_window);
-                }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();

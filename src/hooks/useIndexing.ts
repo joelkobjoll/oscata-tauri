@@ -102,6 +102,14 @@ export function useIndexing() {
         addLog(
           `✓ Done — ${payload.total} files indexed, ${payload.metadata_queued} new items metadata-matched`,
         );
+        // Re-fetch the full list so items added during a background index
+        // (when progress events were suppressed) are visible immediately.
+        call<MediaItem[]>("get_all_media")
+          .then((loaded) => {
+            rebuildIndex(loaded);
+            setItems(loaded);
+          })
+          .catch(console.error);
       },
     );
 
