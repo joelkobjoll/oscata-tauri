@@ -309,6 +309,7 @@ impl Db {
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN tmdb_overview_en TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN tmdb_poster_en TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN imdb_id TEXT;").ok();
+        conn.execute_batch("ALTER TABLE media_items ADD COLUMN ftp_relative_path TEXT;").ok();
         // Web GUI auth tables
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS web_users (
@@ -457,6 +458,35 @@ impl Db {
         Ok(())
     }
 
+    /// Compute the root-relative path: strips `ftp_root` prefix and leading slash.
+    /// Used as a stable, root-independent identity for deduplication across root changes.
+    /// e.g. root="/Compartida", path="/Compartida/Series/foo.mkv" → "Series/foo.mkv"
+    pub fn compute_relative_path(path: &str, ftp_root: &str) -> String {
+        let root = ftp_root.trim_end_matches('/');
+        path.strip_prefix(root)
+            .unwrap_or(path)
+            .trim_start_matches('/')
+            .to_string()
+    }
+
+    /// Backfill `ftp_relative_path` for all existing rows that match the current FTP root
+    /// and don't yet have a relative path set. Safe to call on every startup.
+    pub fn populate_ftp_relative_paths(&self, ftp_root: &str) -> Result<usize, String> {
+        let root = ftp_root.trim_end_matches('/').to_string();
+        // LENGTH(root) + 2 skips the root prefix AND the following slash.
+        let prefix_len = (root.len() + 2) as i64;
+        let like_pattern = format!("{}/%", root);
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE media_items
+             SET ftp_relative_path = SUBSTR(ftp_path, ?1)
+             WHERE ftp_relative_path IS NULL
+               AND ftp_path LIKE ?2",
+            params![prefix_len, like_pattern],
+        )
+        .map_err(|e| e.to_string())
+    }
+
     pub fn prepare_for_app_version(&self, current_version: &str) -> Result<Option<String>, String> {
         let previous_version = self.load_app_value("last_app_version")?;
         match previous_version.as_deref() {
@@ -480,6 +510,7 @@ impl Db {
         &self,
         seed_path: &std::path::Path,
         app_version: &str,
+        ftp_root: &str,
     ) -> Result<usize, String> {
         if !seed_path.exists() {
             return Ok(0);
@@ -516,12 +547,17 @@ impl Db {
                      SELECT src.imdb_id
                      FROM seed.media_items src
                      WHERE src.ftp_path = local.ftp_path
+                        OR (local.ftp_relative_path IS NOT NULL AND local.ftp_relative_path != ''
+                            AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = local.ftp_relative_path)
+                     LIMIT 1
                  )
                  WHERE (local.imdb_id IS NULL OR TRIM(local.imdb_id) = '')
                    AND EXISTS (
                        SELECT 1
                        FROM seed.media_items src
-                       WHERE src.ftp_path = local.ftp_path
+                       WHERE (src.ftp_path = local.ftp_path
+                          OR (local.ftp_relative_path IS NOT NULL AND local.ftp_relative_path != ''
+                              AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = local.ftp_relative_path))
                          AND src.imdb_id IS NOT NULL
                          AND TRIM(src.imdb_id) <> ''
                    )",
@@ -540,6 +576,7 @@ impl Db {
         &self,
         seed_path: &std::path::Path,
         app_version: &str,
+        ftp_root: &str,
     ) -> Result<(usize, usize), String> {
         if !seed_path.exists() {
             return Ok((0, 0));
@@ -606,7 +643,10 @@ impl Db {
                         src.tmdb_rating, src.tmdb_genres, src.indexed_at, src.metadata_at, COALESCE(src.manual_match, 0)
                     FROM seed.media_items src
                     WHERE NOT EXISTS (
-                        SELECT 1 FROM media_items local WHERE local.ftp_path = src.ftp_path
+                        SELECT 1 FROM media_items local
+                        WHERE local.ftp_path = src.ftp_path
+                           OR (local.ftp_relative_path IS NOT NULL AND local.ftp_relative_path != ''
+                               AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = local.ftp_relative_path)
                     )",
                     [],
                 )
@@ -620,79 +660,127 @@ impl Db {
                             SELECT NULLIF(TRIM(src.imdb_id), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         indexed_at = COALESCE(NULLIF(TRIM(indexed_at), ''), (
                             SELECT NULLIF(TRIM(src.indexed_at), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         media_type = COALESCE(NULLIF(TRIM(media_type), ''), (
                             SELECT NULLIF(TRIM(src.media_type), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         tmdb_type = COALESCE(NULLIF(TRIM(tmdb_type), ''), (
                             SELECT NULLIF(TRIM(src.tmdb_type), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         tmdb_id = COALESCE(tmdb_id, (
                             SELECT src.tmdb_id
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         tmdb_title = COALESCE(NULLIF(TRIM(tmdb_title), ''), (
                             SELECT NULLIF(TRIM(src.tmdb_title), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         tmdb_title_en = COALESCE(NULLIF(TRIM(tmdb_title_en), ''), (
                             SELECT NULLIF(TRIM(src.tmdb_title_en), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         tmdb_release_date = COALESCE(NULLIF(TRIM(tmdb_release_date), ''), (
                             SELECT NULLIF(TRIM(src.tmdb_release_date), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         tmdb_overview = COALESCE(NULLIF(TRIM(tmdb_overview), ''), (
                             SELECT NULLIF(TRIM(src.tmdb_overview), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         tmdb_overview_en = COALESCE(NULLIF(TRIM(tmdb_overview_en), ''), (
                             SELECT NULLIF(TRIM(src.tmdb_overview_en), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         tmdb_poster = COALESCE(NULLIF(TRIM(tmdb_poster), ''), (
                             SELECT NULLIF(TRIM(src.tmdb_poster), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         tmdb_poster_en = COALESCE(NULLIF(TRIM(tmdb_poster_en), ''), (
                             SELECT NULLIF(TRIM(src.tmdb_poster_en), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         tmdb_rating = COALESCE(tmdb_rating, (
                             SELECT src.tmdb_rating
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         tmdb_genres = COALESCE(NULLIF(TRIM(tmdb_genres), ''), (
                             SELECT NULLIF(TRIM(src.tmdb_genres), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         )),
                         metadata_at = COALESCE(NULLIF(TRIM(metadata_at), ''), (
                             SELECT NULLIF(TRIM(src.metadata_at), '')
                             FROM seed.media_items src
                             WHERE src.ftp_path = media_items.ftp_path
+                               OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                                   AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
+                            LIMIT 1
                         ))
                     WHERE EXISTS (
-                        SELECT 1 FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path
+                        SELECT 1 FROM seed.media_items src
+                        WHERE src.ftp_path = media_items.ftp_path
+                           OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                               AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
                     )",
                     [],
                 )
@@ -722,6 +810,7 @@ impl Db {
         &self,
         seed_path: &std::path::Path,
         app_version: &str,
+        _ftp_root: &str,
     ) -> Result<(usize, usize), String> {
         if !seed_path.exists() {
             return Ok((0, 0));
@@ -776,7 +865,10 @@ impl Db {
                         COALESCE(src.manual_match, 0)
                     FROM seed.media_items src
                     WHERE NOT EXISTS (
-                        SELECT 1 FROM media_items local WHERE local.ftp_path = src.ftp_path
+                        SELECT 1 FROM media_items local
+                        WHERE local.ftp_path = src.ftp_path
+                           OR (local.ftp_relative_path IS NOT NULL AND local.ftp_relative_path != ''
+                               AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = local.ftp_relative_path)
                     )",
                     [],
                 )
@@ -789,22 +881,25 @@ impl Db {
                 .execute(
                     "UPDATE media_items
                     SET
-                        imdb_id        = COALESCE((SELECT NULLIF(TRIM(src.imdb_id), '')        FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), imdb_id),
-                        media_type     = COALESCE((SELECT NULLIF(TRIM(src.media_type), '')     FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), media_type),
-                        tmdb_id        = COALESCE((SELECT src.tmdb_id                          FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path AND src.tmdb_id IS NOT NULL), tmdb_id),
-                        tmdb_type      = COALESCE((SELECT NULLIF(TRIM(src.tmdb_type), '')      FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_type),
-                        tmdb_title     = COALESCE((SELECT NULLIF(TRIM(src.tmdb_title), '')     FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_title),
-                        tmdb_title_en  = COALESCE((SELECT NULLIF(TRIM(src.tmdb_title_en), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_title_en),
-                        tmdb_release_date = COALESCE((SELECT NULLIF(TRIM(src.tmdb_release_date), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_release_date),
-                        tmdb_overview  = COALESCE((SELECT NULLIF(TRIM(src.tmdb_overview), '')  FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_overview),
-                        tmdb_overview_en = COALESCE((SELECT NULLIF(TRIM(src.tmdb_overview_en), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_overview_en),
-                        tmdb_poster    = COALESCE((SELECT NULLIF(TRIM(src.tmdb_poster), '')    FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_poster),
-                        tmdb_poster_en = COALESCE((SELECT NULLIF(TRIM(src.tmdb_poster_en), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_poster_en),
-                        tmdb_rating    = COALESCE((SELECT src.tmdb_rating                      FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path AND src.tmdb_rating IS NOT NULL), tmdb_rating),
-                        tmdb_genres    = COALESCE((SELECT NULLIF(TRIM(src.tmdb_genres), '')    FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_genres),
-                        metadata_at    = COALESCE((SELECT NULLIF(TRIM(src.metadata_at), '')    FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), metadata_at)
+                        imdb_id        = COALESCE((SELECT NULLIF(TRIM(src.imdb_id), '')        FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), imdb_id),
+                        media_type     = COALESCE((SELECT NULLIF(TRIM(src.media_type), '')     FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), media_type),
+                        tmdb_id        = COALESCE((SELECT src.tmdb_id                          FROM seed.media_items src WHERE (src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)) AND src.tmdb_id IS NOT NULL LIMIT 1), tmdb_id),
+                        tmdb_type      = COALESCE((SELECT NULLIF(TRIM(src.tmdb_type), '')      FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), tmdb_type),
+                        tmdb_title     = COALESCE((SELECT NULLIF(TRIM(src.tmdb_title), '')     FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), tmdb_title),
+                        tmdb_title_en  = COALESCE((SELECT NULLIF(TRIM(src.tmdb_title_en), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), tmdb_title_en),
+                        tmdb_release_date = COALESCE((SELECT NULLIF(TRIM(src.tmdb_release_date), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), tmdb_release_date),
+                        tmdb_overview  = COALESCE((SELECT NULLIF(TRIM(src.tmdb_overview), '')  FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), tmdb_overview),
+                        tmdb_overview_en = COALESCE((SELECT NULLIF(TRIM(src.tmdb_overview_en), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), tmdb_overview_en),
+                        tmdb_poster    = COALESCE((SELECT NULLIF(TRIM(src.tmdb_poster), '')    FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), tmdb_poster),
+                        tmdb_poster_en = COALESCE((SELECT NULLIF(TRIM(src.tmdb_poster_en), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), tmdb_poster_en),
+                        tmdb_rating    = COALESCE((SELECT src.tmdb_rating                      FROM seed.media_items src WHERE (src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)) AND src.tmdb_rating IS NOT NULL LIMIT 1), tmdb_rating),
+                        tmdb_genres    = COALESCE((SELECT NULLIF(TRIM(src.tmdb_genres), '')    FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), tmdb_genres),
+                        metadata_at    = COALESCE((SELECT NULLIF(TRIM(src.metadata_at), '')    FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != '' AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path) LIMIT 1), metadata_at)
                     WHERE EXISTS (
-                        SELECT 1 FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path
+                        SELECT 1 FROM seed.media_items src
+                        WHERE src.ftp_path = media_items.ftp_path
+                           OR (media_items.ftp_relative_path IS NOT NULL AND media_items.ftp_relative_path != ''
+                               AND SUBSTR(src.ftp_path, INSTR(SUBSTR(src.ftp_path, 2), '/') + 2) = media_items.ftp_relative_path)
                     )",
                     [],
                 )
@@ -885,6 +980,18 @@ impl Db {
     }
 
     pub fn save_config(&self, config: &AppConfig) -> Result<(), String> {
+        // Detect whether ftp_root is changing so we can rewrite stored paths.
+        let old_root = {
+            let conn = self.0.lock().unwrap();
+            conn.query_row(
+                "SELECT value FROM app_config WHERE key = 'ftp_root'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .unwrap_or(None)
+        };
+
         let conn = self.0.lock().unwrap();
         let pairs = [
             ("ftp_host", config.ftp_host.as_str()),
@@ -924,6 +1031,26 @@ impl Db {
             params![config.max_concurrent_downloads.to_string()],
         )
         .map_err(|e| e.to_string())?;
+
+        // If ftp_root changed, rewrite all stored ftp_path values in-place.
+        let new_root = config.ftp_root.trim_end_matches('/');
+        if let Some(ref old) = old_root {
+            let old = old.trim_end_matches('/');
+            if old != new_root && !old.is_empty() {
+                let prefix_len = (old.len() + 1) as i64; // +1 for the slash after root
+                let like_pattern = format!("{old}/%");
+                // Rewrite ftp_path by replacing old root prefix with new root.
+                conn.execute(
+                    "UPDATE media_items
+                     SET ftp_path = ?1 || '/' || SUBSTR(ftp_path, ?2),
+                         ftp_relative_path = SUBSTR(ftp_path, ?2)
+                     WHERE ftp_path LIKE ?3",
+                    params![new_root, prefix_len, like_pattern],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+
         Ok(())
     }
 
@@ -1350,9 +1477,11 @@ impl Db {
         parsed: &crate::parser::ParsedMedia,
         media_type: Option<&str>,
         ftp_indexed_at: Option<&str>,
+        ftp_root: &str,
     ) -> Result<UpsertMediaResult, String> {
         let conn = self.0.lock().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
+        let relative_path = Self::compute_relative_path(path, ftp_root);
 
         #[derive(Debug)]
         struct ExistingRow {
@@ -1368,7 +1497,8 @@ impl Db {
             manual_match: i64,
         }
 
-        let existing = conn
+        // Primary lookup: exact ftp_path match (fast path).
+        let mut existing = conn
             .query_row(
                 "SELECT title, year, season, episode, episode_end, media_type, metadata_at, tmdb_id, imdb_id, COALESCE(manual_match, 0)
                  FROM media_items WHERE ftp_path = ?1 LIMIT 1",
@@ -1391,13 +1521,64 @@ impl Db {
             .optional()
             .map_err(|e| e.to_string())?;
 
+        // Fallback: if no exact match, search for a row with the same relative path
+        // but a different ftp_path (happens when ftp_root changes or the FTP server
+        // exposes the same share under a different mount point).
+        // Re-key that row to the current path so all metadata is preserved.
+        if existing.is_none() && !relative_path.is_empty() {
+            let stale_id: Option<i64> = conn
+                .query_row(
+                    "SELECT id FROM media_items
+                     WHERE ftp_relative_path = ?1 AND ftp_path != ?2
+                     LIMIT 1",
+                    params![relative_path, path],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(|e| e.to_string())?;
+
+            if let Some(id) = stale_id {
+                // Update only the path fields; all metadata columns are preserved.
+                conn.execute(
+                    "UPDATE media_items SET ftp_path = ?1, ftp_relative_path = ?2 WHERE id = ?3",
+                    params![path, relative_path, id],
+                )
+                .map_err(|e| e.to_string())?;
+
+                // Now read it back as an existing row.
+                existing = conn
+                    .query_row(
+                        "SELECT title, year, season, episode, episode_end, media_type, metadata_at, tmdb_id, imdb_id, COALESCE(manual_match, 0)
+                         FROM media_items WHERE id = ?1",
+                        params![id],
+                        |r| {
+                            Ok(ExistingRow {
+                                title: r.get(0)?,
+                                year: r.get(1)?,
+                                season: r.get(2)?,
+                                episode: r.get(3)?,
+                                episode_end: r.get(4)?,
+                                media_type: r.get(5)?,
+                                metadata_at: r.get(6)?,
+                                tmdb_id: r.get(7)?,
+                                imdb_id: r.get(8)?,
+                                manual_match: r.get(9)?,
+                            })
+                        },
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
         conn.execute(
             "INSERT INTO media_items
-                (ftp_path, filename, size_bytes, title, year, season, episode, episode_end,
+                (ftp_path, ftp_relative_path, filename, size_bytes, title, year, season, episode, episode_end,
                  resolution, codec, audio_codec, hdr, languages, release_type, release_group,
                  media_type, indexed_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,COALESCE(?17, ?18))
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,COALESCE(?18, ?19))
              ON CONFLICT(ftp_path) DO UPDATE SET
+                ftp_relative_path=excluded.ftp_relative_path,
                 filename=excluded.filename, size_bytes=excluded.size_bytes,
                 title=excluded.title, year=excluded.year,
                 season=excluded.season, episode=excluded.episode, episode_end=excluded.episode_end,
@@ -1406,9 +1587,10 @@ impl Db {
                 languages=excluded.languages,
                 release_type=excluded.release_type, release_group=excluded.release_group,
                 media_type=COALESCE(excluded.media_type, media_items.media_type),
-                     indexed_at=CASE WHEN ?17 IS NOT NULL THEN ?17 ELSE media_items.indexed_at END",
+                indexed_at=CASE WHEN ?18 IS NOT NULL THEN ?18 ELSE media_items.indexed_at END",
             params![
                 path,
+                relative_path,
                 filename,
                 size_bytes.map(|s| s as i64),
                 parsed.title,

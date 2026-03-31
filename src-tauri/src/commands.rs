@@ -1216,6 +1216,7 @@ pub async fn start_indexing_internal(
             &parsed,
             media_type_str,
             file.modified_at.as_deref(),
+            &root,
         )?;
         let id = upsert.id;
 

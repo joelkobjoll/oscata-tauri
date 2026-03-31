@@ -202,6 +202,17 @@ pub fn run() {
             // Spawn WEBGUI HTTP server if enabled in config
             web::spawn_if_enabled(db.clone(), queue.clone(), app.handle().clone());
             let current_version = app.package_info().version.to_string();
+
+            // Load ftp_root for path normalization. Falls back to "/" if config unavailable.
+            let ftp_root = db.load_config()
+                .map(|c| c.ftp_root)
+                .unwrap_or_else(|_| "/".to_string());
+
+            // Backfill ftp_relative_path for existing rows whose path starts with current root.
+            if let Err(e) = db.populate_ftp_relative_paths(&ftp_root) {
+                eprintln!("ftp_relative_path backfill failed: {e}");
+            }
+
             if let Ok(Some(backup_path)) = db.prepare_for_app_version(&current_version) {
                 println!(
                     "App updated to v{}; preserved existing library cache backup at {}",
@@ -209,7 +220,7 @@ pub fn run() {
                 );
             }
             if let Some(seed_path) = commands::resolve_seed_db_path(&app.handle().clone()) {
-                match db.refresh_library_from_seed(&seed_path, &current_version) {
+                match db.refresh_library_from_seed(&seed_path, &current_version, &ftp_root) {
                     Ok((inserted, merged)) if inserted > 0 || merged > 0 => {
                         println!(
                             "Refreshed user library from bundled seed (inserted {}, merged {})",
@@ -222,7 +233,7 @@ pub fn run() {
                     }
                 }
 
-                match db.backfill_imdb_ids_from_seed(&seed_path, &current_version) {
+                match db.backfill_imdb_ids_from_seed(&seed_path, &current_version, &ftp_root) {
                     Ok(updated) if updated > 0 => {
                         println!(
                             "Backfilled imdb_id for {} library items from bundled seed database",
@@ -235,7 +246,7 @@ pub fn run() {
                     }
                 }
 
-                match db.override_library_from_seed(&seed_path, &current_version) {
+                match db.override_library_from_seed(&seed_path, &current_version, &ftp_root) {
                     Ok((inserted, overridden)) if inserted > 0 || overridden > 0 => {
                         println!(
                             "Seed override applied: inserted {}, overrode metadata for {} library items",
