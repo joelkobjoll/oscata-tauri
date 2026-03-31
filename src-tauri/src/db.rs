@@ -115,6 +115,12 @@ pub struct UpsertMediaResult {
     pub is_new: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppliedMigration {
+    pub id: String,
+    pub applied_at: String,
+}
+
 impl Db {
     fn default_folder_types() -> String {
         DEFAULT_FOLDER_TYPES.to_string()
@@ -251,6 +257,10 @@ impl Db {
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
              );
+                 CREATE TABLE IF NOT EXISTS schema_migrations (
+                     id         TEXT PRIMARY KEY,
+                     applied_at TEXT NOT NULL
+                 );
              CREATE TABLE IF NOT EXISTS media_items (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 ftp_path      TEXT UNIQUE NOT NULL,
@@ -388,6 +398,28 @@ impl Db {
         .map_err(|e| e.to_string())
     }
 
+    pub fn list_applied_migrations(&self) -> Result<Vec<AppliedMigration>, String> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT id, applied_at FROM schema_migrations ORDER BY applied_at ASC, id ASC")
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(AppliedMigration {
+                    id: row.get(0)?,
+                    applied_at: row.get(1)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
     fn sanitize_version_for_filename(version: &str) -> String {
         let sanitized = version
             .chars()
@@ -402,6 +434,27 @@ impl Db {
 
     fn escape_sqlite_path(path: &std::path::Path) -> String {
         path.to_string_lossy().replace('\'', "''")
+    }
+
+    fn migration_applied(conn: &Connection, migration_id: &str) -> Result<bool, String> {
+        conn.query_row(
+            "SELECT 1 FROM schema_migrations WHERE id = ?1 LIMIT 1",
+            params![migration_id],
+            |_row| Ok(()),
+        )
+        .optional()
+        .map(|row| row.is_some())
+        .map_err(|e| e.to_string())
+    }
+
+    fn mark_migration_applied(conn: &Connection, migration_id: &str) -> Result<(), String> {
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (id, applied_at) VALUES (?1, ?2)",
+            params![migration_id, now],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub fn prepare_for_app_version(&self, current_version: &str) -> Result<Option<String>, String> {
@@ -426,6 +479,7 @@ impl Db {
     pub fn backfill_imdb_ids_from_seed(
         &self,
         seed_path: &std::path::Path,
+        app_version: &str,
     ) -> Result<usize, String> {
         if !seed_path.exists() {
             return Ok(0);
@@ -433,6 +487,11 @@ impl Db {
 
         let escaped_seed_path = Self::escape_sqlite_path(seed_path);
         let conn = self.0.lock().unwrap();
+        let migration_id = format!("seed:backfill-imdb:{app_version}");
+
+        if Self::migration_applied(&conn, &migration_id)? {
+            return Ok(0);
+        }
 
         conn.execute_batch(&format!("ATTACH '{}' AS seed;", escaped_seed_path))
             .map_err(|e| e.to_string())?;
@@ -472,7 +531,9 @@ impl Db {
         })();
 
         conn.execute_batch("DETACH seed;").ok();
-        result
+        let updated = result?;
+        Self::mark_migration_applied(&conn, &migration_id)?;
+        Ok(updated)
     }
 
     pub fn refresh_library_from_seed(
@@ -485,12 +546,30 @@ impl Db {
         }
 
         let refresh_key = format!("seed_library_refreshed_for_{}", app_version);
-        if self.load_app_value(&refresh_key)?.as_deref() == Some("1") {
-            return Ok((0, 0));
-        }
+        let migration_id = format!("seed:refresh-library:{app_version}");
 
         let escaped_seed_path = Self::escape_sqlite_path(seed_path);
         let conn = self.0.lock().unwrap();
+
+        if Self::migration_applied(&conn, &migration_id)? {
+            return Ok((0, 0));
+        }
+        // Backward compatibility with older app_config-based gating.
+        let legacy_done = conn
+            .query_row(
+                "SELECT value FROM app_config WHERE key = ?1",
+                params![refresh_key],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .as_deref()
+            .map(|value| value == "1")
+            .unwrap_or(false);
+        if legacy_done {
+            Self::mark_migration_applied(&conn, &migration_id)?;
+            return Ok((0, 0));
+        }
 
         conn.execute_batch(&format!("ATTACH '{}' AS seed;", escaped_seed_path))
             .map_err(|e| e.to_string())?;
@@ -625,10 +704,119 @@ impl Db {
         conn.execute_batch("DETACH seed;").ok();
         let (inserted, merged) = result?;
 
-        drop(conn);
-        self.save_app_value(&refresh_key, "1")?;
+        Self::mark_migration_applied(&conn, &migration_id)?;
+        conn.execute(
+            "INSERT OR REPLACE INTO app_config (key, value) VALUES (?1, '1')",
+            params![refresh_key],
+        )
+        .map_err(|e| e.to_string())?;
 
         Ok((inserted, merged))
+    }
+
+    /// Override TMDB metadata for all matching items from the bundled seed database.
+    /// Unlike `refresh_library_from_seed`, this unconditionally replaces seed-sourced
+    /// fields even when the local row already has values. Runs once per app version,
+    /// tracked by the `schema_migrations` table.
+    pub fn override_library_from_seed(
+        &self,
+        seed_path: &std::path::Path,
+        app_version: &str,
+    ) -> Result<(usize, usize), String> {
+        if !seed_path.exists() {
+            return Ok((0, 0));
+        }
+
+        let migration_id = format!("seed:override-library:{app_version}");
+        let escaped_seed_path = Self::escape_sqlite_path(seed_path);
+        let conn = self.0.lock().unwrap();
+
+        if Self::migration_applied(&conn, &migration_id)? {
+            return Ok((0, 0));
+        }
+
+        conn.execute_batch(&format!("ATTACH '{}' AS seed;", escaped_seed_path))
+            .map_err(|e| e.to_string())?;
+
+        let result: Result<(usize, usize), String> = (|| {
+            let seed_has_media = conn
+                .query_row(
+                    "SELECT 1 FROM seed.sqlite_master WHERE type='table' AND name='media_items' LIMIT 1",
+                    [],
+                    |_row| Ok(()),
+                )
+                .optional()
+                .map_err(|e| e.to_string())?
+                .is_some();
+
+            if !seed_has_media {
+                return Ok((0, 0));
+            }
+
+            // Insert items from seed that are not yet in the local library.
+            let inserted = conn
+                .execute(
+                    "INSERT INTO media_items (
+                        ftp_path, filename, size_bytes, title, year, season, episode, episode_end,
+                        resolution, codec, audio_codec, languages, hdr, release_type, release_group,
+                        media_type, tmdb_id, imdb_id, tmdb_type, tmdb_title, tmdb_title_en, tmdb_year,
+                        tmdb_release_date, tmdb_overview, tmdb_overview_en, tmdb_poster, tmdb_poster_en,
+                        tmdb_rating, tmdb_genres, indexed_at, metadata_at, manual_match
+                    )
+                    SELECT
+                        src.ftp_path, src.filename, src.size_bytes, src.title, src.year,
+                        src.season, src.episode, src.episode_end,
+                        src.resolution, src.codec, src.audio_codec, src.languages, src.hdr,
+                        src.release_type, src.release_group,
+                        src.media_type, src.tmdb_id, src.imdb_id, src.tmdb_type,
+                        src.tmdb_title, src.tmdb_title_en, src.tmdb_year,
+                        src.tmdb_release_date, src.tmdb_overview, src.tmdb_overview_en,
+                        src.tmdb_poster, src.tmdb_poster_en,
+                        src.tmdb_rating, src.tmdb_genres, src.indexed_at, src.metadata_at,
+                        COALESCE(src.manual_match, 0)
+                    FROM seed.media_items src
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM media_items local WHERE local.ftp_path = src.ftp_path
+                    )",
+                    [],
+                )
+                .map_err(|e| e.to_string())?;
+
+            // Unconditionally override TMDB-sourced metadata for existing items.
+            // Preserves user data: ftp_path, filename, size_bytes, indexed_at, manual_match,
+            // and parsed fields (title, year, season, episode, resolution, codec, etc.).
+            let overridden = conn
+                .execute(
+                    "UPDATE media_items
+                    SET
+                        imdb_id        = COALESCE((SELECT NULLIF(TRIM(src.imdb_id), '')        FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), imdb_id),
+                        media_type     = COALESCE((SELECT NULLIF(TRIM(src.media_type), '')     FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), media_type),
+                        tmdb_id        = COALESCE((SELECT src.tmdb_id                          FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path AND src.tmdb_id IS NOT NULL), tmdb_id),
+                        tmdb_type      = COALESCE((SELECT NULLIF(TRIM(src.tmdb_type), '')      FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_type),
+                        tmdb_title     = COALESCE((SELECT NULLIF(TRIM(src.tmdb_title), '')     FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_title),
+                        tmdb_title_en  = COALESCE((SELECT NULLIF(TRIM(src.tmdb_title_en), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_title_en),
+                        tmdb_release_date = COALESCE((SELECT NULLIF(TRIM(src.tmdb_release_date), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_release_date),
+                        tmdb_overview  = COALESCE((SELECT NULLIF(TRIM(src.tmdb_overview), '')  FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_overview),
+                        tmdb_overview_en = COALESCE((SELECT NULLIF(TRIM(src.tmdb_overview_en), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_overview_en),
+                        tmdb_poster    = COALESCE((SELECT NULLIF(TRIM(src.tmdb_poster), '')    FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_poster),
+                        tmdb_poster_en = COALESCE((SELECT NULLIF(TRIM(src.tmdb_poster_en), '') FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_poster_en),
+                        tmdb_rating    = COALESCE((SELECT src.tmdb_rating                      FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path AND src.tmdb_rating IS NOT NULL), tmdb_rating),
+                        tmdb_genres    = COALESCE((SELECT NULLIF(TRIM(src.tmdb_genres), '')    FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), tmdb_genres),
+                        metadata_at    = COALESCE((SELECT NULLIF(TRIM(src.metadata_at), '')    FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path), metadata_at)
+                    WHERE EXISTS (
+                        SELECT 1 FROM seed.media_items src WHERE src.ftp_path = media_items.ftp_path
+                    )",
+                    [],
+                )
+                .map_err(|e| e.to_string())?;
+
+            Ok((inserted, overridden))
+        })();
+
+        conn.execute_batch("DETACH seed;").ok();
+        let (inserted, overridden) = result?;
+        Self::mark_migration_applied(&conn, &migration_id)?;
+        Ok((inserted, overridden))
     }
 
     pub fn backup_database_for_update(
@@ -1109,6 +1297,49 @@ impl Db {
         conn
             .query_row("SELECT COUNT(*) FROM media_items", [], |r| r.get(0))
             .map_err(|e| e.to_string())
+    }
+
+    pub fn delete_media_missing_from_scan(
+        &self,
+        current_paths: &[String],
+    ) -> Result<usize, String> {
+        let conn = self.0.lock().unwrap();
+
+        conn.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS current_scan_paths (
+                ftp_path TEXT PRIMARY KEY
+             );
+             DELETE FROM current_scan_paths;",
+        )
+        .map_err(|e| e.to_string())?;
+
+        {
+            let mut insert_stmt = conn
+                .prepare("INSERT OR IGNORE INTO current_scan_paths (ftp_path) VALUES (?1)")
+                .map_err(|e| e.to_string())?;
+
+            for path in current_paths {
+                insert_stmt
+                    .execute(params![path])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        let deleted = conn
+            .execute(
+                "DELETE FROM media_items
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM current_scan_paths scan
+                     WHERE scan.ftp_path = media_items.ftp_path
+                 )",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+
+        conn.execute("DELETE FROM current_scan_paths", [])
+            .map_err(|e| e.to_string())?;
+
+        Ok(deleted)
     }
 
     pub fn upsert_media(

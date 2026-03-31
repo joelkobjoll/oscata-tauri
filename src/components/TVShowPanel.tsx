@@ -391,6 +391,22 @@ function EpisodeRow({
         >
           {episode.filename}
         </div>
+        {import.meta.env.DEV && (
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--color-primary)",
+              fontFamily: "monospace",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              opacity: 0.7,
+            }}
+            title={episode.ftp_path}
+          >
+            {episode.ftp_path}
+          </div>
+        )}
       </div>
 
       <div
@@ -1235,6 +1251,8 @@ export default function TVShowPanel({
                   }}
                 >
                   <div>debug.item_id: {show.id}</div>
+                  <div>debug.ftp_path: {show.ftp_path}</div>
+                  <div>debug.filename: {show.filename}</div>
                   <div>debug.imdb_id: {show.imdb_id ?? "-"}</div>
                   <div>debug.tmdb_id: {show.tmdb_id ?? "-"}</div>
                   <div>

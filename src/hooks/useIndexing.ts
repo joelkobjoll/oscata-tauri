@@ -94,24 +94,25 @@ export function useIndexing() {
       },
     );
 
-    const unComplete = listen<{ total: number; metadata_queued: number }>(
-      "index:complete",
-      ({ payload }) => {
-        setProgress(null);
-        setIsIndexing(false);
-        addLog(
-          `✓ Done — ${payload.total} files indexed, ${payload.metadata_queued} new items metadata-matched`,
-        );
-        // Re-fetch the full list so items added during a background index
-        // (when progress events were suppressed) are visible immediately.
-        call<MediaItem[]>("get_all_media")
-          .then((loaded) => {
-            rebuildIndex(loaded);
-            setItems(loaded);
-          })
-          .catch(console.error);
-      },
-    );
+    const unComplete = listen<{
+      total: number;
+      metadata_queued: number;
+      removed?: number;
+    }>("index:complete", ({ payload }) => {
+      setProgress(null);
+      setIsIndexing(false);
+      addLog(
+        `✓ Done — ${payload.total} files indexed, ${payload.metadata_queued} new items metadata-matched, ${payload.removed ?? 0} stale items removed`,
+      );
+      // Re-fetch the full list so items added during a background index
+      // (when progress events were suppressed) are visible immediately.
+      call<MediaItem[]>("get_all_media")
+        .then((loaded) => {
+          rebuildIndex(loaded);
+          setItems(loaded);
+        })
+        .catch(console.error);
+    });
 
     const unUpdate = listen<Partial<MediaItem> & { id: number }>(
       "index:update",

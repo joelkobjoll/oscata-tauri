@@ -39,7 +39,7 @@ const defaultFilters = (): Filters => ({
   releaseType: "",
   resolution: "",
   hdr: "",
-  sort: "release-desc",
+  sort: "added-desc",
 });
 const ITEMS_PER_PAGE = 48;
 

@@ -115,6 +115,7 @@ pub fn run() {
             commands::save_webgui_config,
             commands::init_webgui_now,
             commands::has_config,
+            commands::get_applied_migrations,
             commands::seed_starter_library,
             commands::export_library_backup,
             commands::import_library_backup,
@@ -221,7 +222,7 @@ pub fn run() {
                     }
                 }
 
-                match db.backfill_imdb_ids_from_seed(&seed_path) {
+                match db.backfill_imdb_ids_from_seed(&seed_path, &current_version) {
                     Ok(updated) if updated > 0 => {
                         println!(
                             "Backfilled imdb_id for {} library items from bundled seed database",
@@ -231,6 +232,19 @@ pub fn run() {
                     Ok(_) => {}
                     Err(error) => {
                         eprintln!("IMDb seed backfill skipped: {error}");
+                    }
+                }
+
+                match db.override_library_from_seed(&seed_path, &current_version) {
+                    Ok((inserted, overridden)) if inserted > 0 || overridden > 0 => {
+                        println!(
+                            "Seed override applied: inserted {}, overrode metadata for {} library items",
+                            inserted, overridden
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        eprintln!("Seed override skipped: {error}");
                     }
                 }
             }

@@ -710,6 +710,8 @@ export default function DetailPanel({
               }}
             >
               <div>item_id: {item.id}</div>
+              <div>ftp_path: {item.ftp_path}</div>
+              <div>filename: {item.filename}</div>
               <div>imdb_id: {item.imdb_id ?? "-"}</div>
               <div>tmdb_id: {item.tmdb_id ?? "-"}</div>
               <div>badge.local: {devBadge?.downloaded ? "true" : "false"}</div>

@@ -953,6 +953,13 @@ pub async fn has_config(state: tauri::State<'_, crate::db::Db>) -> Result<bool, 
     state.has_config()
 }
 
+#[tauri::command]
+pub async fn get_applied_migrations(
+    state: tauri::State<'_, crate::db::Db>,
+) -> Result<Vec<crate::db::AppliedMigration>, String> {
+    state.list_applied_migrations()
+}
+
 pub(crate) fn resolve_seed_db_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     let mut candidates = Vec::new();
 
@@ -1172,6 +1179,7 @@ pub async fn start_indexing_internal(
     };
 
     let total = files.len();
+    let current_paths: Vec<String> = files.iter().map(|file| file.path.clone()).collect();
     let mut metadata_tasks = Vec::new();
     let mut metadata_queued = 0usize;
 
@@ -1337,9 +1345,21 @@ pub async fn start_indexing_internal(
         }
     }
 
+    let removed_stale = db.delete_media_missing_from_scan(&current_paths)?;
+    if removed_stale > 0 {
+        on_log(format!(
+            "🧹 Cleanup removed {} stale item{} no longer present on FTP",
+            removed_stale,
+            if removed_stale == 1 { "" } else { "s" }
+        ));
+    }
+
     on_log(format!(
-        "✓ Indexing complete — {} files scanned, {} items sent to TMDB",
-        total, metadata_queued
+        "✓ Indexing complete — {} files scanned, {} items sent to TMDB, {} stale item{} removed",
+        total,
+        metadata_queued,
+        removed_stale,
+        if removed_stale == 1 { "" } else { "s" }
     ));
 
     if let Some(ref w) = window {
@@ -1348,6 +1368,7 @@ pub async fn start_indexing_internal(
             serde_json::json!({
                 "total": total,
                 "metadata_queued": metadata_queued,
+                "removed": removed_stale,
             }),
         )
         .ok();
