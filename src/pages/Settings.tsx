@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
 import AppIcon from "../components/AppIcon";
 import type { AppLanguage } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
@@ -9,6 +7,7 @@ import {
   parseFolderTypes,
 } from "../utils/folderTypes";
 import { call, isTauri } from "../lib/transport";
+import { useTheme } from "../hooks/useTheme";
 
 interface Config {
   ftp_host: string;
@@ -222,6 +221,7 @@ export default function Settings({
   language: AppLanguage;
   onClose: () => void;
 }) {
+  const { theme, setTheme } = useTheme();
   const [form, setForm] = useState<Config | null>(null);
   const [ftpStatus, setFtpStatus] = useState<ConnectionState>("idle");
   const [ftpError, setFtpError] = useState("");
@@ -296,6 +296,7 @@ export default function Settings({
     try {
       await call("save_webgui_config", { config: webGuiConfig });
       if (!webMode) {
+        const { invoke } = await import("@tauri-apps/api/core");
         await invoke("init_webgui_now");
       }
       setWebGuiSaved(true);
@@ -368,14 +369,14 @@ export default function Settings({
     setFtpStatus("testing");
     setFtpError("");
     try {
-      await invoke("test_ftp_connection", {
+      await call("test_ftp_connection", {
         host: form.ftp_host,
         port: form.ftp_port,
         user: form.ftp_user,
         pass: form.ftp_pass,
       });
       setFtpStatus("ok");
-    } catch (error: any) {
+    } catch (error: unknown) {
       setFtpError(String(error));
       setFtpStatus("error");
     }
@@ -385,13 +386,13 @@ export default function Settings({
     setEmbyStatus("testing");
     setEmbyMsg("");
     try {
-      const name = await invoke<string>("test_emby_connection", {
+      const name = await call<string>("test_emby_connection", {
         url: form.emby_url,
         apiKey: form.emby_api_key,
       });
       setEmbyMsg(name);
       setEmbyStatus("ok");
-    } catch (error: any) {
+    } catch (error: unknown) {
       setEmbyMsg(String(error));
       setEmbyStatus("error");
     }
@@ -401,13 +402,13 @@ export default function Settings({
     setPlexStatus("testing");
     setPlexMsg("");
     try {
-      const name = await invoke<string>("test_plex_connection", {
+      const name = await call<string>("test_plex_connection", {
         url: form.plex_url,
         token: form.plex_token,
       });
       setPlexMsg(name);
       setPlexStatus("ok");
-    } catch (error: any) {
+    } catch (error: unknown) {
       setPlexMsg(String(error));
       setPlexStatus("error");
     }
@@ -434,13 +435,15 @@ export default function Settings({
   };
 
   const showRawList = async () => {
+    if (!isTauri()) return;
     setLoadingRaw(true);
     try {
+      const { invoke } = await import("@tauri-apps/api/core");
       await invoke("save_config", { config: form });
       const entries = await invoke<string[]>("ftp_list_raw");
       setRawList(entries);
-    } catch (error: any) {
-      setRawList([`Error: ${error}`]);
+    } catch (error: unknown) {
+      setRawList([`Error: ${String(error)}`]);
     } finally {
       setLoadingRaw(false);
     }
@@ -449,7 +452,7 @@ export default function Settings({
   const loadRootDirs = async () => {
     setLoadingDirs(true);
     try {
-      const dirs = await invoke<string[]>("ftp_list_root_dirs_preview", {
+      const dirs = await call<string[]>("ftp_list_root_dirs_preview", {
         host: form.ftp_host,
         port: form.ftp_port,
         user: form.ftp_user,
@@ -475,18 +478,14 @@ export default function Settings({
     }
   };
 
-  const ftpStatusText =
-    ftpStatus === "ok"
-      ? t(language, "common.connected")
-      : ftpStatus === "error"
-        ? ftpError || t(language, "common.connectionFailed")
-        : t(language, "common.testing");
-
   const exportBackup = async () => {
+    if (!isTauri()) return;
     setBackupBusy(true);
     setBackupError("");
     setBackupMessage("");
     try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const { invoke } = await import("@tauri-apps/api/core");
       const selectedFolder = await open({
         directory: true,
         multiple: false,
@@ -495,7 +494,7 @@ export default function Settings({
       const destination = `${selectedFolder.replace(/[\\/]$/, "")}/oscata-library-backup.db`;
       await invoke("export_library_backup", { destinationPath: destination });
       setBackupMessage(t(language, "settings.backupExportSuccess"));
-    } catch (error: any) {
+    } catch (error: unknown) {
       setBackupError(String(error));
     } finally {
       setBackupBusy(false);
@@ -503,10 +502,13 @@ export default function Settings({
   };
 
   const importBackup = async () => {
+    if (!isTauri()) return;
     setBackupBusy(true);
     setBackupError("");
     setBackupMessage("");
     try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const { invoke } = await import("@tauri-apps/api/core");
       const source = await open({
         multiple: false,
         filters: [
@@ -518,12 +520,33 @@ export default function Settings({
       await invoke("import_library_backup", { sourcePath: source });
       setBackupMessage(t(language, "settings.backupImportSuccess"));
       window.location.reload();
-    } catch (error: any) {
+    } catch (error: unknown) {
       setBackupError(String(error));
     } finally {
       setBackupBusy(false);
     }
   };
+
+  const browseDownloadFolder = async () => {
+    if (!isTauri()) return;
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const dir = await open({
+      directory: true,
+      multiple: false,
+    });
+    if (typeof dir === "string") {
+      setForm((current) =>
+        current ? { ...current, download_folder: dir } : current,
+      );
+    }
+  };
+
+  const ftpStatusText =
+    ftpStatus === "ok"
+      ? t(language, "common.connected")
+      : ftpStatus === "error"
+        ? ftpError || t(language, "common.connectionFailed")
+        : t(language, "common.testing");
 
   const folderDirs = rootDirs ?? Object.keys(folderTypes);
 
@@ -666,6 +689,62 @@ export default function Settings({
         >
           <div style={{ display: "grid", gap: 16 }}>
             <SectionCard
+              icon="settings"
+              title="Appearance"
+              description="Choose how Oscata looks. System follows your OS preference and updates live."
+            >
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {(["system", "dark", "light"] as const).map((option) => {
+                  const active = theme === option;
+                  const labels: Record<string, string> = {
+                    system: "System",
+                    dark: "Dark",
+                    light: "Light",
+                  };
+                  return (
+                    <button
+                      key={option}
+                      onClick={() => setTheme(option)}
+                      style={{
+                        padding: "9px 18px",
+                        borderRadius: "var(--radius-full)",
+                        border: active
+                          ? "1px solid var(--color-primary)"
+                          : "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                        background: active
+                          ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
+                          : "color-mix(in srgb, var(--color-surface-2) 84%, transparent)",
+                        color: active
+                          ? "var(--color-primary)"
+                          : "var(--color-text-muted)",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        fontWeight: active ? 700 : 600,
+                        transition: "background 0.15s ease, color 0.15s ease, border-color 0.15s ease",
+                      }}
+                    >
+                      {labels[option]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 12,
+                  color: "var(--color-text-muted)",
+                  lineHeight: 1.5,
+                }}
+              >
+                {theme === "system"
+                  ? "Automatically matches your operating system's dark/light setting."
+                  : theme === "dark"
+                    ? "Always use dark mode regardless of OS setting."
+                    : "Always use light mode regardless of OS setting."}
+              </div>
+            </SectionCard>
+
+            <SectionCard
               icon="folder"
               title={t(language, "settings.ftpTitle")}
               description={t(language, "settings.ftpDescription")}
@@ -763,16 +842,18 @@ export default function Settings({
                     ? t(language, "common.testing")
                     : t(language, "settings.testConnection")}
                 </button>
-                <button
-                  onClick={showRawList}
-                  disabled={loadingRaw}
-                  style={ghostBtn}
-                >
-                  <AppIcon name="folder" size={15} />
-                  {loadingRaw
-                    ? t(language, "settings.listing")
-                    : t(language, "settings.browseRoot")}
-                </button>
+                {isTauri() && (
+                  <button
+                    onClick={showRawList}
+                    disabled={loadingRaw}
+                    style={ghostBtn}
+                  >
+                    <AppIcon name="folder" size={15} />
+                    {loadingRaw
+                      ? t(language, "settings.listing")
+                      : t(language, "settings.browseRoot")}
+                  </button>
+                )}
                 <StatusPill state={ftpStatus} text={ftpStatusText} />
               </div>
 
@@ -917,25 +998,15 @@ export default function Settings({
                           "settings.downloadFolderPlaceholder",
                         )}
                       />
-                      <button
-                        onClick={async () => {
-                          const dir = await open({
-                            directory: true,
-                            multiple: false,
-                          });
-                          if (typeof dir === "string") {
-                            setForm((current) =>
-                              current
-                                ? { ...current, download_folder: dir }
-                                : current,
-                            );
-                          }
-                        }}
-                        style={{ ...ghostBtn, whiteSpace: "nowrap" }}
-                      >
-                        <AppIcon name="folder" size={15} />
-                        {t(language, "common.browse")}
-                      </button>
+                      {isTauri() && (
+                        <button
+                          onClick={browseDownloadFolder}
+                          style={{ ...ghostBtn, whiteSpace: "nowrap" }}
+                        >
+                          <AppIcon name="folder" size={15} />
+                          {t(language, "common.browse")}
+                        </button>
+                      )}
                     </div>
                     <span style={subtextStyle}>
                       {t(language, "settings.downloadFolderHelp")}
@@ -980,24 +1051,30 @@ export default function Settings({
               description={t(language, "settings.backupsDescription")}
             >
               <div style={{ display: "grid", gap: 12 }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                  <button
-                    onClick={exportBackup}
-                    disabled={backupBusy}
-                    style={ghostBtn}
-                  >
-                    <AppIcon name="download" size={15} />
-                    {t(language, "settings.exportBackup")}
-                  </button>
-                  <button
-                    onClick={importBackup}
-                    disabled={backupBusy}
-                    style={ghostBtn}
-                  >
-                    <AppIcon name="folder" size={15} />
-                    {t(language, "settings.importBackup")}
-                  </button>
-                </div>
+                {isTauri() ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    <button
+                      onClick={exportBackup}
+                      disabled={backupBusy}
+                      style={ghostBtn}
+                    >
+                      <AppIcon name="download" size={15} />
+                      {t(language, "settings.exportBackup")}
+                    </button>
+                    <button
+                      onClick={importBackup}
+                      disabled={backupBusy}
+                      style={ghostBtn}
+                    >
+                      <AppIcon name="folder" size={15} />
+                      {t(language, "settings.importBackup")}
+                    </button>
+                  </div>
+                ) : (
+                  <span style={subtextStyle}>
+                    Backup export and import are only available in the desktop app.
+                  </span>
+                )}
                 <span style={subtextStyle}>
                   {t(language, "settings.backupsHelp")}
                 </span>

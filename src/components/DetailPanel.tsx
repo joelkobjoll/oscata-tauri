@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { isTauri } from "../lib/transport";
 import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import type { DownloadItem } from "../hooks/useDownloads";
 import type { MediaItem } from "../hooks/useIndexing";
@@ -99,9 +99,15 @@ export default function DetailPanel({
 
   const handleOpenUrl = (url: string) => {
     setOpeningUrl(url);
-    openUrl(url)
-      .catch((e) => console.error("[openUrl] failed to open", url, e))
-      .finally(() => setTimeout(() => setOpeningUrl(null), 2000));
+    if (isTauri()) {
+      import("@tauri-apps/plugin-opener")
+        .then(({ openUrl }) => openUrl(url))
+        .catch((e) => console.error("[openUrl] failed to open", url, e))
+        .finally(() => setTimeout(() => setOpeningUrl(null), 2000));
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => setOpeningUrl(null), 2000);
+    }
   };
 
   const title = getLocalizedTitle(item, language);

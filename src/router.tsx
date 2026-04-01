@@ -12,6 +12,7 @@ import WebBootstrap from "./pages/WebBootstrap";
 import Settings from "./pages/Settings";
 import WebUsers from "./pages/WebUsers";
 import InviteAccept from "./pages/InviteAccept";
+import ThemeToggle from "./components/ThemeToggle";
 
 export default function Router() {
   if (!isTauri()) {
@@ -157,7 +158,10 @@ function WebRouter() {
             </button>
           )}
         </div>
-        <div style={{ color: "var(--color-text-muted)", fontSize: 12 }}>{user.email}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ThemeToggle />
+          <div style={{ color: "var(--color-text-muted)", fontSize: 12 }}>{user.email}</div>
+        </div>
       </div>
 
       {page === "library" && <Library startIndexingOnMount={false} />}
