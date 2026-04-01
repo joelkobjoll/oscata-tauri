@@ -20,6 +20,7 @@ import DownloadFeedbackToast from "../components/DownloadFeedbackToast";
 import IndexErrorToast from "../components/IndexErrorToast";
 import TVShowPanel from "../components/TVShowPanel";
 import VirtualMediaGrid from "../components/VirtualMediaGrid";
+import ThemeToggle from "../components/ThemeToggle";
 import { AppLanguage, getLocalizedTitle } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 
@@ -1310,6 +1311,7 @@ export default function Library({
               )}
             </button>
           )}
+          <ThemeToggle />
           {/* Settings button */}
           <button
             onClick={() => setShowSettings(true)}
