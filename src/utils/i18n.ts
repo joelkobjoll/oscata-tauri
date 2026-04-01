@@ -184,8 +184,8 @@ const messages = {
     en: "Scanning FTP folders...",
   },
   "toast.scanningDetail": {
-    es: "Carpetas: {folders} | Archivos encontrados: {files}",
-    en: "Folders: {folders} | Files found: {files}",
+    es: "Archivos encontrados: {files}",
+    en: "Files found: {files}",
   },
   "toast.subtitle": {
     es: "Buscando archivos nuevos en FTP y enriqueciendo solo los nuevos",

@@ -258,7 +258,6 @@ export default function IndexStatus({
           {progress
             ? t(language, "toast.subtitle")
             : t(language, "toast.scanningDetail", {
-                folders: crawlStats.scannedFolders,
                 files: crawlStats.foundFiles,
               })}
         </span>
