@@ -52,6 +52,10 @@ export function useIndexing() {
     total: number;
   } | null>(null);
   const [indexError, setIndexError] = useState<string | null>(null);
+  const [completionSummary, setCompletionSummary] = useState<{
+    newItems: number;
+    removed: number;
+  } | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const itemIndexRef = useRef<Map<number, number>>(new Map());
 
@@ -118,6 +122,10 @@ export function useIndexing() {
     }>("index:complete", ({ payload }) => {
       setProgress(null);
       setIsIndexing(false);
+      setCompletionSummary({
+        newItems: payload.metadata_queued,
+        removed: payload.removed ?? 0,
+      });
       addLog(
         `✓ Done — ${payload.total} files indexed, ${payload.metadata_queued} new items metadata-matched, ${payload.removed ?? 0} stale items removed`,
       );
@@ -159,6 +167,7 @@ export function useIndexing() {
       setIndexError(null);
       setIsIndexing(true);
       setProgress(null);
+      setCompletionSummary(null);
       setCrawlStats({ scannedFolders: 0, foundFiles: 0 });
       addLog("▶ Indexing started");
     });
@@ -185,6 +194,8 @@ export function useIndexing() {
     isIndexing,
     crawlStats,
     progress,
+    completionSummary,
+    dismissCompletion: () => setCompletionSummary(null),
     indexError,
     clearIndexError: () => setIndexError(null),
     retryIndexing: () => call("start_indexing").catch(console.error),

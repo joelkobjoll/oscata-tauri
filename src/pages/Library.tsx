@@ -186,6 +186,8 @@ export default function Library({
     items,
     isIndexing,
     progress,
+    completionSummary,
+    dismissCompletion,
     indexError,
     clearIndexError,
     retryIndexing,
@@ -1836,6 +1838,8 @@ export default function Library({
       <IndexStatus
         progress={progress}
         isIndexing={isIndexing}
+        completionSummary={completionSummary}
+        onDismissCompletion={dismissCompletion}
         activityLogOpen={showLog}
         language={language}
       />
