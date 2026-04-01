@@ -173,7 +173,27 @@ export function useIndexing() {
     };
   }, []);
 
-  return {
+  // In web mode there are no Tauri push events, so poll the library
+  // periodically to keep the UI in sync with background indexing on the server.
+  useEffect(() => {
+    if (isTauri()) return;
+
+    const POLL_INTERVAL_MS = 4000;
+
+    const poll = () => {
+      call<MediaItem[]>("get_all_media")
+        .then((loaded) => {
+          rebuildIndex(loaded);
+          setItems(loaded);
+        })
+        .catch(() => {});
+    };
+
+    const timerId = window.setInterval(poll, POLL_INTERVAL_MS);
+    return () => window.clearInterval(timerId);
+  }, []);
+
+    return {
     items,
     isIndexing,
     crawlStats,

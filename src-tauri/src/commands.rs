@@ -286,12 +286,12 @@ pub struct MediaBadgeResult {
 }
 
 #[derive(Debug, Clone)]
-struct MediaServerCheck {
-    hit: bool,
-    plex_hit: bool,
-    emby_hit: bool,
-    cache_state: String,
-    debug: String,
+pub(crate) struct MediaServerCheck {
+    pub(crate) hit: bool,
+    pub(crate) plex_hit: bool,
+    pub(crate) emby_hit: bool,
+    pub(crate) cache_state: String,
+    pub(crate) debug: String,
 }
 
 fn detect_media_type(
@@ -516,7 +516,7 @@ pub(crate) async fn exists_in_media_server(
     Ok(check_media_server_presence(config, query).await?.hit)
 }
 
-async fn check_media_server_presence(
+pub(crate) async fn check_media_server_presence(
     config: &crate::db::AppConfig,
     query: &MediaBadgeQuery,
 ) -> Result<MediaServerCheck, String> {

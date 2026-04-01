@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "webui:watch": "vite build --watch",
     "verify:seed-db": "node ./scripts/verify-seed-sanitized.mjs",
     "build": "npm run verify:seed-db && tsc && vite build",
     "preview": "vite preview",

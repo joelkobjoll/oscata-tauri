@@ -4,12 +4,12 @@ import { useIndexing, MediaItem } from "../hooks/useIndexing";
 import { useDownload } from "../hooks/useDownload";
 import { useDownloads } from "../hooks/useDownloads";
 import AppIcon from "../components/AppIcon";
-import FilterBar, {
-  Filters,
+import FilterBar, { type Filters } from "../components/FilterBar";
+import {
   normalizeHdr,
   normalizeReleaseType,
   normalizeResolution,
-} from "../components/FilterBar";
+} from "../utils/filterUtils";
 import IndexStatus from "../components/IndexStatus";
 import Settings from "./Settings";
 import ActivityLog from "../components/ActivityLog";

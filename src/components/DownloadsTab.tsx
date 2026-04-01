@@ -2,6 +2,7 @@ import AppIcon from "./AppIcon";
 import type { DownloadItem } from "../hooks/useDownloads";
 import type { AppLanguage } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
+import { isTauri } from "../lib/transport";
 
 function formatBytes(b: number): string {
   if (b >= 1024 ** 3) return `${(b / 1024 ** 3).toFixed(2)} GB`;
@@ -294,6 +295,7 @@ function DownloadRow({
   const isActive = item.status === "queued" || item.status === "downloading";
   const canRetry = item.status === "error" || item.status === "cancelled";
   const isDone = item.status === "done";
+  const canOpenFolder = isDone && isTauri();
 
   return (
     <article
@@ -399,7 +401,7 @@ function DownloadRow({
                 tone="primary"
               />
             )}
-            {isDone && (
+            {canOpenFolder && (
               <ActionButton
                 icon="folder"
                 label={t(language, "downloads.openFolder")}
