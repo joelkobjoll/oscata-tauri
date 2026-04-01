@@ -12,7 +12,9 @@ use axum::{
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tauri::Manager;
-use tower_http::{cors::CorsLayer, services::{ServeDir, ServeFile}};
+#[cfg(not(debug_assertions))]
+use tower_http::services::{ServeDir, ServeFile};
+use tower_http::cors::CorsLayer;
 
 static WEBGUI_RUNNING: std::sync::LazyLock<std::sync::atomic::AtomicBool> =
     std::sync::LazyLock::new(|| std::sync::atomic::AtomicBool::new(false));

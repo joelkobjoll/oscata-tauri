@@ -4,9 +4,7 @@ import { useIndexing, MediaItem } from "../hooks/useIndexing";
 import { useDownload } from "../hooks/useDownload";
 import { useDownloads } from "../hooks/useDownloads";
 import AppIcon from "../components/AppIcon";
-import FilterBar, {
-  type Filters,
-} from "../components/FilterBar";
+import FilterBar, { type Filters } from "../components/FilterBar";
 import {
   normalizeHdr,
   normalizeReleaseType,
