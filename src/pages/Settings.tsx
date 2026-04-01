@@ -9,6 +9,7 @@ import {
   parseFolderTypes,
 } from "../utils/folderTypes";
 import { call, isTauri } from "../lib/transport";
+import { useTheme } from "../hooks/useTheme";
 
 interface Config {
   ftp_host: string;
@@ -222,6 +223,7 @@ export default function Settings({
   language: AppLanguage;
   onClose: () => void;
 }) {
+  const { theme, setTheme } = useTheme();
   const [form, setForm] = useState<Config | null>(null);
   const [ftpStatus, setFtpStatus] = useState<ConnectionState>("idle");
   const [ftpError, setFtpError] = useState("");
@@ -665,6 +667,62 @@ export default function Settings({
           }}
         >
           <div style={{ display: "grid", gap: 16 }}>
+            <SectionCard
+              icon="settings"
+              title="Appearance"
+              description="Choose how Oscata looks. System follows your OS preference and updates live."
+            >
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {(["system", "dark", "light"] as const).map((option) => {
+                  const active = theme === option;
+                  const labels: Record<string, string> = {
+                    system: "System",
+                    dark: "Dark",
+                    light: "Light",
+                  };
+                  return (
+                    <button
+                      key={option}
+                      onClick={() => setTheme(option)}
+                      style={{
+                        padding: "9px 18px",
+                        borderRadius: "var(--radius-full)",
+                        border: active
+                          ? "1px solid var(--color-primary)"
+                          : "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                        background: active
+                          ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
+                          : "color-mix(in srgb, var(--color-surface-2) 84%, transparent)",
+                        color: active
+                          ? "var(--color-primary)"
+                          : "var(--color-text-muted)",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        fontWeight: active ? 700 : 600,
+                        transition: "background 0.15s ease, color 0.15s ease, border-color 0.15s ease",
+                      }}
+                    >
+                      {labels[option]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 12,
+                  color: "var(--color-text-muted)",
+                  lineHeight: 1.5,
+                }}
+              >
+                {theme === "system"
+                  ? "Automatically matches your operating system's dark/light setting."
+                  : theme === "dark"
+                    ? "Always use dark mode regardless of OS setting."
+                    : "Always use light mode regardless of OS setting."}
+              </div>
+            </SectionCard>
+
             <SectionCard
               icon="folder"
               title={t(language, "settings.ftpTitle")}
