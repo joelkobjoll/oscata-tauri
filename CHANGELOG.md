@@ -1,50 +1,25 @@
-# Historial de cambios
+# Novedades de Oscata
 
-## [0.3.0] - 2026-04-01
+## Versión 0.3.0 — 1 de abril de 2026
 
-### Sistema de temas
+### 🎨 Modo claro y modo oscuro
 
-- Añadido hook `useTheme` con soporte para tema oscuro, claro y predeterminado del sistema.
-- Nuevo componente `ThemeToggle` con iconos actualizados para alternar entre modos de color.
-- Introducidas variables CSS para el tema claro (`light theme`).
-- El selector de tema integrado en la barra de navegación del modo escritorio y del modo web.
-- Nueva sección de selección de tema en Ajustes, accesible desde ambas superficies (escritorio y web).
-- Añadido `ThemeProvider` como proveedor global compartido en `main.tsx`.
+Ya puedes elegir el tema que prefieras. En Ajustes encontrarás un selector con tres opciones: oscuro, claro o el predeterminado de tu sistema. El botón de cambio rápido también está disponible en la barra superior, tanto en la app de escritorio como en la versión web.
 
-### Paridad web / escritorio
+### 🚀 Indexación mucho más rápida
 
-- Corregidas todas las llamadas directas a `invoke()` en la pantalla de Ajustes; las características exclusivas del escritorio ahora se protegen correctamente con `isTauri()`.
-- El panel de detalle ahora utiliza una función de apertura de URL compatible con la plataforma en lugar de importar `openUrl` de forma estática (falla en modo web).
-- El botón "Abrir carpeta" en la pestaña de descargas se oculta en el modo web, ya que depende del sistema de archivos nativo.
-- Añadido polling periódico en `useIndexing` para el modo web, manteniendo la biblioteca sincronizada sin depender de eventos de Tauri.
+Hemos mejorado significativamente la velocidad al escanear tu servidor FTP. Las bibliotecas grandes se indexan en mucho menos tiempo. Al terminar, verás un resumen con el resultado del análisis que se cierra solo al cabo de unos segundos.
 
-### Mejoras de rendimiento (backend Rust)
+### 🌐 Mejor experiencia en la versión web
 
-- Las expresiones regulares del parser ahora se compilan una sola vez mediante `LazyLock`, eliminando la recompilación en cada llamada.
-- Las operaciones en lotes de la base de datos se envuelven en transacciones explícitas, reduciendo significativamente el tiempo de escritura.
-- Las peticiones HTTP a TMDB se paralelizan usando `tokio::join!`, acelerando el enriquecimiento de metadatos.
-- El enriquecimiento de TMDB se desacopla del bucle de indexación principal, permitiendo que el rastreo FTP continúe sin esperar respuestas de la API.
-- Los eventos de progreso IPC se agrupan en lotes de 50 archivos por emisión, reduciendo la carga de comunicación entre frontend y backend.
-- El rastreo FTP se optimiza con una cola compartida y workers concurrentes, mejorando drásticamente la velocidad de indexación en servidores grandes.
+La versión web ahora funciona de forma más completa y fiable. Se corrigieron varios fallos que podían aparecer al abrir enlaces, descargar archivos o navegar por los ajustes desde el navegador. La biblioteca además se mantiene actualizada automáticamente sin necesidad de recargar la página.
 
-### Mejoras de rendimiento (frontend / caché)
+### ✨ Mejoras generales de la interfaz
 
-- La caché de insignias (badges) se hace pública e invalida automáticamente al detectar cambios de configuración.
-
-### Experiencia de indexación
-
-- Mensaje de finalización con resumen automático y notificaciones tipo toast al completar la indexación.
-- El estado de progreso del wizard (StepFTP) incluye un estado de transición para gestionar correctamente la carga del botón.
-- Eliminado el recuento de carpetas del mensaje de detalle de escaneo para simplificar la interfaz.
-
-### Mejoras de UI y refactorización
-
-- Componentes de interfaz mejorados: estilos, espaciado y disposición general ajustados.
-- Utilidades de filtro (`filterUtils`) refactorizadas e integradas directamente en los componentes que las consumen.
-- Actualizada la visibilidad de la estructura `MediaServerCheck` y mejorada la lógica de caché de presencia en el servidor.
+Pequeños ajustes visuales en distintas partes de la app: mejor espaciado, filtros más coherentes y algunos elementos reorganizados para que todo luzca más limpio y sea más fácil de usar.
 
 ---
 
-## [0.2.6] - versión anterior
+## Versiones anteriores
 
-Para el historial completo de versiones anteriores, consulta el repositorio git.
+Para ver el historial completo de versiones anteriores, consulta el repositorio en GitHub.
