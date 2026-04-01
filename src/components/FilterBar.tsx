@@ -251,7 +251,7 @@ export default function FilterBar({
         flexDirection: "column",
         gap: 16,
         padding: "16px",
-        borderRadius: "calc(var(--radius-lg) + 4px)",
+        borderRadius: "var(--radius-lg)",
         border:
           "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
         background:

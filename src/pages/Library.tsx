@@ -1757,7 +1757,7 @@ export default function Library({
               style={{
                 width: 320,
                 flexShrink: 0,
-                padding: "1rem 0 1rem 1.5rem",
+                padding: "1.5rem 0 1.5rem 1.5rem",
                 borderRight:
                   "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
               }}

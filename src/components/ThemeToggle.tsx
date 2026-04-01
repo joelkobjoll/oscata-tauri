@@ -34,22 +34,28 @@ export default function ThemeToggle() {
       onMouseLeave={() => setHovered(false)}
       title={getTitle(theme)}
       style={{
-        width: 40,
-        height: 40,
+        width: 36,
+        height: 36,
         borderRadius: 999,
-        border: "1.5px solid var(--color-border)",
-        background: hovered ? "var(--color-surface-2)" : "var(--color-surface)",
-        color: hovered ? "var(--color-text)" : "var(--color-text-muted)",
+        border: hovered
+          ? "1.5px solid var(--color-primary)"
+          : "1.5px solid color-mix(in srgb, var(--color-primary) 55%, var(--color-border))",
+        background: hovered
+          ? "color-mix(in srgb, var(--color-primary) 20%, var(--color-surface-2))"
+          : "color-mix(in srgb, var(--color-primary) 10%, var(--color-surface))",
+        color: hovered
+          ? "var(--color-primary)"
+          : "color-mix(in srgb, var(--color-primary) 80%, var(--color-text-muted))",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow:
-          "0 1px 4px color-mix(in srgb, black 14%, transparent), inset 0 1px 0 color-mix(in srgb, white 6%, transparent)",
+        boxShadow: hovered
+          ? "0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent)"
+          : "0 1px 4px color-mix(in srgb, black 18%, transparent)",
         transition:
-          "background 0.15s ease, color 0.15s ease, border-color 0.15s ease",
+          "background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
         flexShrink: 0,
-        position: "relative",
       }}
     >
       <AppIcon name={getIcon(theme)} size={16} strokeWidth={2.2} />
