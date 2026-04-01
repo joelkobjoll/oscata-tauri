@@ -39,12 +39,12 @@ static PLEX_VIDEO_SEASON_EP_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
 const BADGE_CACHE_TTL_SECS: u64 = 300;
 
 #[derive(Debug, Clone)]
-struct BadgeCacheEntry {
+pub(crate) struct BadgeCacheEntry {
     checked_at: std::time::Instant,
     check: MediaServerCheck,
 }
 
-static BADGE_RESULT_CACHE: LazyLock<Mutex<std::collections::HashMap<String, BadgeCacheEntry>>> =
+pub(crate) static BADGE_RESULT_CACHE: LazyLock<Mutex<std::collections::HashMap<String, BadgeCacheEntry>>> =
     LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 fn emit_index_log(window: &Option<tauri::WebviewWindow>, msg: String) {
@@ -583,14 +583,19 @@ pub(crate) async fn check_media_server_presence(
         debug: traces.join(" | "),
     };
 
-    if let Some(cache_key) = plex_badge_cache_key(query) {
-        BADGE_RESULT_CACHE.lock().unwrap().insert(
-            cache_key,
-            BadgeCacheEntry {
-                checked_at: std::time::Instant::now(),
-                check: check.clone(),
-            },
-        );
+    // Only cache if at least one server was actually queried — don't cache
+    // "not-configured" results, which would become stale as soon as the user
+    // saves their Plex/Emby credentials.
+    if plex_configured || emby_configured {
+        if let Some(cache_key) = plex_badge_cache_key(query) {
+            BADGE_RESULT_CACHE.lock().unwrap().insert(
+                cache_key,
+                BadgeCacheEntry {
+                    checked_at: std::time::Instant::now(),
+                    check: check.clone(),
+                },
+            );
+        }
     }
 
     Ok(check)
@@ -945,7 +950,10 @@ pub async fn save_config(
     state: tauri::State<'_, crate::db::Db>,
     config: crate::db::AppConfig,
 ) -> Result<(), String> {
-    state.save_config(&config)
+    let result = state.save_config(&config);
+    // Invalidate badge cache so stale "not-configured" entries are evicted immediately.
+    BADGE_RESULT_CACHE.lock().unwrap().clear();
+    result
 }
 
 #[tauri::command]

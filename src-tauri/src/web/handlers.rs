@@ -548,6 +548,8 @@ pub async fn put_settings(
     Json(config): Json<crate::db::AppConfig>,
 ) -> ApiResult<Json<Value>> {
     state.db.save_config(&config).map_err(ApiError::from)?;
+    // Invalidate badge cache so stale "not-configured" entries are evicted on config changes.
+    crate::commands::BADGE_RESULT_CACHE.lock().unwrap().clear();
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
