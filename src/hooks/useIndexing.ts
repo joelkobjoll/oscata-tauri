@@ -79,16 +79,36 @@ export function useIndexing() {
   useEffect(() => {
     if (!isTauri()) return;
 
-    const unProgress = listen<MediaItem & { current: number; total: number }>(
+    const unProgress = listen<
+      Array<MediaItem & { current: number; total: number }>
+    >(
       "index:progress",
       ({ payload }) => {
+        // payload is now an array of up to 50 progress items (batched on Rust side).
+        // Process all items in a single state update to minimise re-renders.
+        if (!Array.isArray(payload) || payload.length === 0) return;
+
         setIndexError(null);
         setIsIndexing(true);
-        setProgress({ current: payload.current, total: payload.total });
+
+        // Use the last item in the batch for progress display (it has the highest current).
+        const last = payload[payload.length - 1];
+        setProgress({ current: last.current, total: last.total });
+
         setItems((prev) => {
-          if (itemIndexRef.current.has(payload.id)) return prev;
-          const next = [...prev, payload];
-          itemIndexRef.current.set(payload.id, next.length - 1);
+          // Only append items that are genuinely new (not already in the index map).
+          const additions: MediaItem[] = [];
+          for (const item of payload) {
+            if (!itemIndexRef.current.has(item.id)) {
+              additions.push(item);
+            }
+          }
+          if (additions.length === 0) return prev;
+          const next = [...prev, ...additions];
+          // Rebuild index for all newly added items.
+          for (let i = prev.length; i < next.length; i++) {
+            itemIndexRef.current.set(next[i].id, i);
+          }
           return next;
         });
       },
