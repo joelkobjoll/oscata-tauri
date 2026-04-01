@@ -202,69 +202,72 @@ pub fn run() {
             // Spawn WEBGUI HTTP server if enabled in config
             web::spawn_if_enabled(db.clone(), queue.clone(), app.handle().clone());
             let current_version = app.package_info().version.to_string();
+            let seed_path = commands::resolve_seed_db_path(&app.handle().clone());
 
-            // Load ftp_root for path normalization. Falls back to "/" if config unavailable.
-            let ftp_root = db.load_config()
-                .map(|c| c.ftp_root)
-                .unwrap_or_else(|_| "/".to_string());
-
-            // Backfill ftp_relative_path for existing rows whose path starts with current root.
-            if let Err(e) = db.populate_ftp_relative_paths(&ftp_root) {
-                eprintln!("ftp_relative_path backfill failed: {e}");
-            }
-
-            if let Ok(Some(backup_path)) = db.prepare_for_app_version(&current_version) {
-                println!(
-                    "App updated to v{}; preserved existing library cache backup at {}",
-                    current_version, backup_path
-                );
-            }
-            if let Some(seed_path) = commands::resolve_seed_db_path(&app.handle().clone()) {
-                match db.refresh_library_from_seed(&seed_path, &current_version, &ftp_root) {
-                    Ok((inserted, merged)) if inserted > 0 || merged > 0 => {
-                        println!(
-                            "Refreshed user library from bundled seed (inserted {}, merged {})",
-                            inserted, merged
-                        );
-                    }
-                    Ok(_) => {}
-                    Err(error) => {
-                        eprintln!("Seed library refresh skipped: {error}");
-                    }
-                }
-
-                match db.backfill_imdb_ids_from_seed(&seed_path, &current_version, &ftp_root) {
-                    Ok(updated) if updated > 0 => {
-                        println!(
-                            "Backfilled imdb_id for {} library items from bundled seed database",
-                            updated
-                        );
-                    }
-                    Ok(_) => {}
-                    Err(error) => {
-                        eprintln!("IMDb seed backfill skipped: {error}");
-                    }
-                }
-
-                match db.override_library_from_seed(&seed_path, &current_version, &ftp_root) {
-                    Ok((inserted, overridden)) if inserted > 0 || overridden > 0 => {
-                        println!(
-                            "Seed override applied: inserted {}, overrode metadata for {} library items",
-                            inserted, overridden
-                        );
-                    }
-                    Ok(_) => {}
-                    Err(error) => {
-                        eprintln!("Seed override skipped: {error}");
-                    }
-                }
-            }
-            commands::restore_download_queue(db.clone(), queue.clone());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let interval_secs = std::time::Duration::from_secs(15 * 60);
                 let db = handle.state::<db::Db>().inner().clone();
                 let queue = handle.state::<downloads::SharedQueue>().inner().clone();
+
+                // Load ftp_root for path normalization. Falls back to "/" if config unavailable.
+                let ftp_root = db.load_config()
+                    .map(|c| c.ftp_root)
+                    .unwrap_or_else(|_| "/".to_string());
+
+                // Backfill ftp_relative_path for existing rows whose path starts with current root.
+                if let Err(e) = db.populate_ftp_relative_paths(&ftp_root) {
+                    eprintln!("ftp_relative_path backfill failed: {e}");
+                }
+
+                if let Ok(Some(backup_path)) = db.prepare_for_app_version(&current_version) {
+                    println!(
+                        "App updated to v{}; preserved existing library cache backup at {}",
+                        current_version, backup_path
+                    );
+                }
+                if let Some(ref seed_path) = seed_path {
+                    match db.refresh_library_from_seed(seed_path, &current_version, &ftp_root) {
+                        Ok((inserted, merged)) if inserted > 0 || merged > 0 => {
+                            println!(
+                                "Refreshed user library from bundled seed (inserted {}, merged {})",
+                                inserted, merged
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            eprintln!("Seed library refresh skipped: {error}");
+                        }
+                    }
+
+                    match db.backfill_imdb_ids_from_seed(seed_path, &current_version, &ftp_root) {
+                        Ok(updated) if updated > 0 => {
+                            println!(
+                                "Backfilled imdb_id for {} library items from bundled seed database",
+                                updated
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            eprintln!("IMDb seed backfill skipped: {error}");
+                        }
+                    }
+
+                    match db.override_library_from_seed(seed_path, &current_version, &ftp_root) {
+                        Ok((inserted, overridden)) if inserted > 0 || overridden > 0 => {
+                            println!(
+                                "Seed override applied: inserted {}, overrode metadata for {} library items",
+                                inserted, overridden
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            eprintln!("Seed override skipped: {error}");
+                        }
+                    }
+                }
+                commands::restore_download_queue(db.clone(), queue.clone());
+
                 if let Some(window) = visible_main_window(&handle) {
                     commands::resume_pending_downloads(db.clone(), queue.clone(), window).await.ok();
                 }
