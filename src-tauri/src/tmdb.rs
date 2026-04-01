@@ -206,19 +206,44 @@ async fn fetch_search_results_lang(
         .collect())
 }
 
+/// Run the three sequential search requests (es-ES, en-US, and optionally a
+/// year-less retry pair) concurrently where possible.
+///
+/// # Parallelisation strategy
+///
+/// The two primary language requests (`es-ES` and `en-US`) are independent:
+/// they hit different TMDB endpoints and their responses can be merged after
+/// both complete. Running them with `tokio::join!` halves the wall-clock time
+/// for the common case where both requests are needed.
+///
+/// The TMDB rate-limit is enforced by `throttle_tmdb_request()` which is
+/// called inside `fetch_json_with_retry`. With `tokio::join!`, both calls
+/// enter the throttle concurrently — they each acquire the Mutex and sleep
+/// if needed, so they will stagger naturally by at least
+/// `TMDB_MIN_REQUEST_INTERVAL` (35 ms).
 async fn search_endpoint_results(
     api_key: &str,
     query: &str,
     year: Option<u16>,
     endpoint: &str,
 ) -> Result<Vec<TmdbMovie>, String> {
-    let mut spanish = fetch_search_results_lang(api_key, query, year, endpoint, "es-ES").await?;
-    let mut english = fetch_search_results_lang(api_key, query, year, endpoint, "en-US").await?;
+    // Fire both language requests concurrently.
+    let (spanish_result, english_result) = tokio::join!(
+        fetch_search_results_lang(api_key, query, year, endpoint, "es-ES"),
+        fetch_search_results_lang(api_key, query, year, endpoint, "en-US"),
+    );
+    let mut spanish = spanish_result?;
+    let mut english = english_result?;
 
     if spanish.is_empty() && english.is_empty() {
-        if let Some(_) = year {
-            spanish = fetch_search_results_lang(api_key, query, None, endpoint, "es-ES").await?;
-            english = fetch_search_results_lang(api_key, query, None, endpoint, "en-US").await?;
+        if year.is_some() {
+            // Retry without year — again in parallel.
+            let (es2, en2) = tokio::join!(
+                fetch_search_results_lang(api_key, query, None, endpoint, "es-ES"),
+                fetch_search_results_lang(api_key, query, None, endpoint, "en-US"),
+            );
+            spanish = es2?;
+            english = en2?;
         }
     }
 
@@ -455,11 +480,27 @@ async fn fetch_imdb_id(
     Ok(ids.imdb_id.filter(|value| !value.trim().is_empty()))
 }
 
+/// Fetch full movie/show details from TMDB by its internal ID.
+///
+/// # Parallelisation
+///
+/// Three HTTP requests are needed: Spanish detail, English detail, and
+/// external IDs (for the IMDB ID). All three are independent — they are
+/// fired concurrently with `tokio::join!`. The TMDB throttle mutex inside
+/// `fetch_json_with_retry` serialises the rate-limit bookkeeping so the
+/// three calls will stagger by at least `TMDB_MIN_REQUEST_INTERVAL` each
+/// even when launched together, providing correct spacing without artificial
+/// sequential delays.
 pub async fn fetch_movie_by_id(api_key: &str, tmdb_id: i64, media_type: &str) -> Result<TmdbMovie, String> {
     let endpoint = if media_type == "tv" { "tv" } else { "movie" };
-    let spanish = fetch_detail_lang(api_key, tmdb_id, endpoint, "es-ES").await?;
-    let english = fetch_detail_lang(api_key, tmdb_id, endpoint, "en-US").await?;
-    let imdb_id = fetch_imdb_id(api_key, tmdb_id, endpoint).await.ok().flatten();
+
+    let (spanish, english, imdb_id) = tokio::join!(
+        fetch_detail_lang(api_key, tmdb_id, endpoint, "es-ES"),
+        fetch_detail_lang(api_key, tmdb_id, endpoint, "en-US"),
+        async { fetch_imdb_id(api_key, tmdb_id, endpoint).await.ok().flatten() },
+    );
+    let spanish = spanish?;
+    let english = english?;
 
     Ok(TmdbMovie {
         id: spanish.id,
@@ -494,4 +535,124 @@ pub async fn validate_api_key(api_key: &str) -> bool {
         .await
         .map(|r| r.status().is_success())
         .unwrap_or(false)
+}
+
+// ── Fix 3: unit tests for pure helper functions ──────────────────────────────
+// TMDB HTTP functions call a live external service and are not unit-testable
+// without mocking. The pure scoring and similarity helpers are self-contained
+// and can be tested without any network I/O.
+//
+// What should be tested with a real TMDB API key (manual / CI integration):
+//   - fetch_movie_by_id returns both Spanish and English fields
+//   - search_endpoint_results parallelises correctly (verify via timing)
+//   - The throttle mutex serialises concurrent callers within rate limits
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_movie(title: &str, title_en: Option<&str>, release_date: Option<&str>, vote_average: Option<f64>) -> TmdbMovie {
+        TmdbMovie {
+            id: 1,
+            imdb_id: None,
+            title: title.to_string(),
+            title_en: title_en.map(str::to_string),
+            release_date: release_date.map(str::to_string),
+            overview: None,
+            overview_en: None,
+            poster_path: None,
+            poster_path_en: None,
+            vote_average,
+            genre_ids: vec![],
+        }
+    }
+
+    // ── title_similarity_score ─────────────────────────────────────────────
+
+    #[test]
+    fn exact_match_scores_100() {
+        let score = title_similarity_score("inception", "inception");
+        assert!((score - 100.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn case_insensitive_exact_match_scores_100() {
+        let score = title_similarity_score("Inception", "inception");
+        assert!((score - 100.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn substring_match_scores_50() {
+        let score = title_similarity_score("The Dark Knight Rises", "Dark Knight");
+        assert!((score - 50.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn no_overlap_scores_zero() {
+        let score = title_similarity_score("Inception", "Avengers");
+        assert!(score < 1.0, "Expected near-zero score, got {score}");
+    }
+
+    #[test]
+    fn empty_title_scores_zero() {
+        assert_eq!(title_similarity_score("", "query"), 0.0);
+        assert_eq!(title_similarity_score("title", ""), 0.0);
+    }
+
+    #[test]
+    fn partial_word_overlap_scores_proportionally() {
+        // "The Batman" vs "Batman" — one of two words overlaps → 50% of 40 = 20
+        let score = title_similarity_score("The Batman", "Batman");
+        // Substring match trumps word overlap: "the batman" contains "batman" → 50
+        assert!((score - 50.0).abs() < f64::EPSILON);
+    }
+
+    // ── score_result ───────────────────────────────────────────────────────
+
+    #[test]
+    fn exact_year_match_boosts_score_by_30() {
+        let movie = make_movie("Inception", None, Some("2010-07-16"), Some(8.0));
+        let score_with_year = score_result(&movie, "Inception", Some(2010));
+        let score_no_year = score_result(&movie, "Inception", None);
+        // Both have title score 100 + popularity 4; with year adds 30
+        assert!(score_with_year > score_no_year + 25.0);
+    }
+
+    #[test]
+    fn year_off_by_one_boosts_score_by_15() {
+        let movie = make_movie("Film", None, Some("2011-01-01"), Some(0.0));
+        let score = score_result(&movie, "Film", Some(2010));
+        // title 100 + year_boost 15
+        assert!(score >= 115.0 - 0.1);
+    }
+
+    #[test]
+    fn year_off_by_two_gives_no_boost() {
+        let movie = make_movie("Film", None, Some("2012-01-01"), Some(0.0));
+        let score_close = score_result(&movie, "Film", Some(2010)); // diff=2 → no boost
+        let score_far = score_result(&movie, "Film", Some(2000));   // diff=12 → no boost
+        // Both should have no year bonus
+        assert_eq!(score_close, score_far);
+    }
+
+    #[test]
+    fn popularity_contributes_half_vote_average() {
+        let movie_high = make_movie("X", None, None, Some(8.0));
+        let movie_low  = make_movie("X", None, None, Some(2.0));
+        let diff = score_result(&movie_high, "X", None) - score_result(&movie_low, "X", None);
+        assert!((diff - 3.0).abs() < 0.01, "Expected 3.0 difference, got {diff}");
+    }
+
+    // ── English title fallback in score_result ─────────────────────────────
+
+    #[test]
+    fn english_title_is_used_as_fallback_in_scoring() {
+        // Primary title is Spanish; query matches English title
+        let movie = make_movie("El Origen", Some("Inception"), Some("2010-07-16"), Some(8.0));
+        let score_es = score_result(&movie, "El Origen", None);
+        let score_en = score_result(&movie, "Inception", None);
+        // Both should score 100 for their respective exact-match title
+        assert!(score_en >= 100.0, "score_en={score_en}");
+        assert!(score_es >= 100.0, "score_es={score_es}");
+    }
 }
