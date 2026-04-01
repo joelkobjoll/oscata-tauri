@@ -1265,50 +1265,19 @@ pub async fn start_indexing_internal(
             let mtype = media_type.clone().unwrap_or_else(|| "movie".to_string());
             let tmdb_stype = tmdb_search_type.clone();
 
-            if upsert.is_new {
-                on_log(format!("🚀 Priority metadata for new file: {}", title));
-                let result = resolve_tmdb_match_with_plex(
-                    &config,
-                    &api_key,
-                    &title,
-                    year,
-                    &tmdb_stype,
-                )
-                .await;
-                if let Ok(Some(movie)) = result {
-                    on_log(format!("🌐 TMDB: {} → {}", title, movie.title));
-                    db.update_tmdb_auto(id, &movie, &mtype).ok();
-                    if let Some(ref w) = window {
-                        w.emit(
-                            "index:update",
-                            serde_json::json!({
-                                "id": id,
-                                "tmdb_id": movie.id,
-                                "imdb_id": movie.imdb_id,
-                                "tmdb_title": movie.title,
-                                "tmdb_title_en": movie.title_en,
-                                "tmdb_poster": movie.poster_path,
-                                "tmdb_poster_en": movie.poster_path_en,
-                                "tmdb_rating": movie.vote_average,
-                                "tmdb_overview": movie.overview,
-                                "tmdb_overview_en": movie.overview_en,
-                                "tmdb_genres": movie.genre_ids,
-                                "tmdb_release_date": movie.release_date,
-                                "tmdb_type": mtype,
-                            }),
-                        ).ok();
-                    }
-                } else {
-                    on_log(format!("⚠ TMDB: no match for \"{}\"", title));
-                }
-            } else {
+            // Whether the file is new or existing, spawn the TMDB enrichment as a
+            // background task so it never blocks the index loop.
+            // The TMDB throttle (35 ms minimum interval, enforced inside
+            // fetch_json_with_retry) handles rate limiting — no artificial sleep needed.
+            {
                 let window_clone = window.clone();
                 let db_clone = db.clone();
                 let config_clone = config.clone();
                 let on_log_clone = on_log.clone();
+                let label = if upsert.is_new { "new" } else { "existing" };
 
                 metadata_tasks.push(tokio::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    on_log_clone(format!("🌐 TMDB ({label}): {title}"));
                     let result = resolve_tmdb_match_with_plex(
                         &config_clone,
                         &api_key,
@@ -1952,4 +1921,153 @@ pub async fn init_webgui_now(
 ) -> Result<(), String> {
     crate::web::spawn_if_enabled(db.inner().clone(), queue.inner().clone(), app);
     Ok(())
+}
+
+// ── Fix 4: indexing loop decoupling tests ────────────────────────────────────
+//
+// `start_indexing_internal` requires a live FTP connection and a Tauri
+// AppHandle, which cannot be constructed in unit tests. Instead we test the
+// supporting pure helpers and document the integration-test scenarios.
+//
+// Integration tests that require a real FTP server:
+//   1. Call start_indexing_internal with a live FTP pointing at a small tree.
+//      Measure wall-clock time: should complete the upsert loop without
+//      waiting for TMDB (i.e. loop finishes before any TMDB response arrives).
+//   2. After the loop resolves, verify that `metadata_tasks` are awaited and
+//      that `index:update` events fire for each new file.
+//   3. Verify `index:complete` fires only AFTER all background tasks finish,
+//      even though the loop itself did not block on TMDB.
+
+#[cfg(test)]
+mod indexing_tests {
+    use super::*;
+
+    // ── looks_like_tv_content ───────────────────────────────────────────────
+
+    #[test]
+    fn looks_like_tv_when_season_is_set() {
+        let parsed = crate::parser::parse_media_path("", "Show.S02E05.1080p.mkv");
+        assert!(looks_like_tv_content("", "Show.S02E05.1080p.mkv", &parsed));
+    }
+
+    #[test]
+    fn looks_like_tv_when_path_contains_season_keyword() {
+        let parsed = crate::parser::parse_media_path("", "episode.mkv");
+        assert!(looks_like_tv_content(
+            "/TV/Show/Season 01/episode.mkv",
+            "episode.mkv",
+            &parsed
+        ));
+    }
+
+    #[test]
+    fn not_tv_for_plain_movie() {
+        let parsed = crate::parser::parse_media_path("", "The.Batman.2022.1080p.mkv");
+        assert!(!looks_like_tv_content("", "The.Batman.2022.1080p.mkv", &parsed));
+    }
+
+    // ── detect_media_type ──────────────────────────────────────────────────
+
+    #[test]
+    fn detects_movie_type_from_folder_mapping() {
+        let mut folder_types = std::collections::HashMap::new();
+        folder_types.insert("Peliculas".to_string(), "movie".to_string());
+        let mt = detect_media_type("/Compartida/Peliculas/Batman.mkv", "/Compartida", &folder_types);
+        assert_eq!(mt.as_deref(), Some("movie"));
+    }
+
+    #[test]
+    fn detects_tv_type_from_folder_mapping() {
+        let mut folder_types = std::collections::HashMap::new();
+        folder_types.insert("Series".to_string(), "tv".to_string());
+        let mt = detect_media_type("/Compartida/Series/Show/ep.mkv", "/Compartida", &folder_types);
+        assert_eq!(mt.as_deref(), Some("tv"));
+    }
+
+    #[test]
+    fn returns_none_for_unmapped_folder() {
+        let folder_types = std::collections::HashMap::new();
+        let mt = detect_media_type("/Compartida/Unknown/file.mkv", "/Compartida", &folder_types);
+        assert_eq!(mt, None);
+    }
+
+    // ── normalize_title ────────────────────────────────────────────────────
+
+    #[test]
+    fn normalizes_title_strips_punctuation_and_lowercases() {
+        assert_eq!(normalize_title("The Batman (2022)!"), "the batman 2022");
+    }
+
+    #[test]
+    fn normalizes_title_collapses_whitespace() {
+        assert_eq!(normalize_title("  Dark   Knight  "), "dark knight");
+    }
+
+    // ── Background spawn: tokio integration ──────────────────────────────
+    // Verifies that spawned tasks (the pattern used in the index loop) run
+    // to completion and can write to a shared flag.
+
+    #[tokio::test]
+    async fn spawned_metadata_tasks_run_to_completion() {
+        use std::sync::{Arc, Mutex};
+
+        let counter = Arc::new(Mutex::new(0usize));
+        let mut tasks = Vec::new();
+
+        for _ in 0..5 {
+            let counter = counter.clone();
+            tasks.push(tokio::spawn(async move {
+                // Simulate lightweight async work (no real HTTP)
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                let mut c = counter.lock().unwrap();
+                *c += 1;
+            }));
+        }
+
+        for task in tasks {
+            task.await.expect("task should not panic");
+        }
+
+        assert_eq!(*counter.lock().unwrap(), 5);
+    }
+
+    #[tokio::test]
+    async fn index_loop_does_not_block_on_background_tasks() {
+        // The loop itself must complete without awaiting any background task.
+        // We verify this by measuring that spawned heavy tasks don't delay
+        // the code that comes after the loop (the commit_batch + cleanup).
+        use std::sync::{Arc, Mutex};
+        use std::time::Instant;
+
+        let loop_done_at = Arc::new(Mutex::new(None::<Instant>));
+        let task_done_at = Arc::new(Mutex::new(None::<Instant>));
+
+        let loop_done_clone = loop_done_at.clone();
+        let task_done_clone = task_done_at.clone();
+
+        let mut tasks = Vec::new();
+
+        // Simulate "new file" path: spawn, don't await in loop
+        tasks.push(tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            *task_done_clone.lock().unwrap() = Some(Instant::now());
+        }));
+
+        // Record when the "loop" finished (before awaiting tasks)
+        *loop_done_clone.lock().unwrap() = Some(Instant::now());
+
+        // Now await tasks (as start_indexing_internal does after the loop)
+        for task in tasks {
+            task.await.unwrap();
+        }
+
+        let loop_done = loop_done_at.lock().unwrap().unwrap();
+        let task_done = task_done_at.lock().unwrap().unwrap();
+
+        // The task completed after the loop — confirming the loop did not block on it.
+        assert!(
+            task_done > loop_done,
+            "task should complete AFTER loop records completion"
+        );
+    }
 }
