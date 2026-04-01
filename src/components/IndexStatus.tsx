@@ -255,17 +255,19 @@ export default function IndexStatus({
         }}
       >
         <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
-          {progress
-            ? t(language, "toast.subtitle")
-            : t(language, "toast.scanningDetail", {
-                files: crawlStats.foundFiles,
-              })}
+          {t(language, progress ? "toast.subtitle" : "toast.scanning")}
         </span>
-        <span
-          style={{ fontSize: 12, fontWeight: 700, color: "var(--color-text)" }}
-        >
-          {progress ? `${percent}%` : `${crawlStats.foundFiles}`}
-        </span>
+        {progress && (
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: "var(--color-text)",
+            }}
+          >
+            {`${percent}%`}
+          </span>
+        )}
       </div>
     </div>
   );
