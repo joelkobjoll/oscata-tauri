@@ -1188,6 +1188,14 @@ pub async fn start_indexing_internal(
         return Ok(());
     }
 
+    // Wrap the entire upsert loop in a single explicit transaction.
+    // Without this, rusqlite commits a transaction per statement (autocommit),
+    // producing N WAL write round-trips instead of one.
+    db.begin_batch().map_err(|e| {
+        on_log(format!("⚠ Failed to begin index transaction: {e}"));
+        e
+    })?;
+
     for (i, file) in files.into_iter().enumerate() {
         let parsed = crate::parser::parse_media_path(&file.path, &file.filename);
 
@@ -1339,6 +1347,13 @@ pub async fn start_indexing_internal(
             }
         }
     }
+
+    // Commit the batch transaction opened before the upsert loop.
+    db.commit_batch().map_err(|e| {
+        on_log(format!("⚠ Failed to commit index transaction: {e}"));
+        db.rollback_batch().ok();
+        e
+    })?;
 
     for task in metadata_tasks {
         if task.await.is_err() {

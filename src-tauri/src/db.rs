@@ -1440,6 +1440,9 @@ impl Db {
         )
         .map_err(|e| e.to_string())?;
 
+        // Wrap the bulk-insert into the temp table in an explicit transaction so
+        // all N inserts are committed in a single fsync instead of N individual ones.
+        conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
         {
             let mut insert_stmt = conn
                 .prepare("INSERT OR IGNORE INTO current_scan_paths (ftp_path) VALUES (?1)")
@@ -1451,6 +1454,7 @@ impl Db {
                     .map_err(|e| e.to_string())?;
             }
         }
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
 
         let deleted = conn
             .execute(
@@ -1467,6 +1471,32 @@ impl Db {
             .map_err(|e| e.to_string())?;
 
         Ok(deleted)
+    }
+
+    /// Begin an explicit write transaction on the underlying connection.
+    /// Call this before a batch of `upsert_media` calls, then call
+    /// `commit_batch` when the batch is complete. This replaces N implicit
+    /// per-statement transactions with a single WAL write round-trip.
+    ///
+    /// # Safety
+    /// Only one batch may be open at a time. Calls are not re-entrant.
+    /// The caller MUST call `commit_batch` (or `rollback_batch`) before
+    /// initiating another batch or any other write.
+    pub fn begin_batch(&self) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute_batch("BEGIN").map_err(|e| e.to_string())
+    }
+
+    /// Commit the transaction opened by `begin_batch`.
+    pub fn commit_batch(&self) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())
+    }
+
+    /// Roll back the transaction opened by `begin_batch` (e.g. on error).
+    pub fn rollback_batch(&self) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute_batch("ROLLBACK").map_err(|e| e.to_string())
     }
 
     pub fn upsert_media(
@@ -1854,5 +1884,199 @@ impl Db {
         )
         .map_err(|e| e.to_string())?;
         Ok(count)
+    }
+}
+
+// ── Fix 2: SQLite transaction tests ─────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    /// Helper: open an in-memory Db for testing (bypasses file I/O).
+    fn in_memory_db() -> Db {
+        let conn = Connection::open_in_memory().expect("in-memory db");
+        Db::apply_migrations(&conn).expect("migrations");
+        Db(Arc::new(Mutex::new(conn)))
+    }
+
+    /// Minimal ParsedMedia for inserting test rows.
+    fn parsed(title: &str) -> crate::parser::ParsedMedia {
+        crate::parser::ParsedMedia {
+            title: title.to_string(),
+            year: None,
+            season: None,
+            episode: None,
+            episode_end: None,
+            resolution: None,
+            codec: None,
+            audio_codec: None,
+            hdr: None,
+            languages: vec![],
+            release_type: None,
+            release_group: None,
+        }
+    }
+
+    // ── begin/commit_batch ─────────────────────────────────────────────────
+
+    #[test]
+    fn batch_upsert_produces_same_results_as_individual_upserts() {
+        let db = in_memory_db();
+        let ftp_root = "/Compartida";
+
+        // Insert 3 items inside a transaction.
+        db.begin_batch().expect("begin_batch");
+        for i in 0..3u32 {
+            let path = format!("/Compartida/Movies/file{i}.mkv");
+            let filename = format!("file{i}.mkv");
+            db.upsert_media(
+                &path,
+                &filename,
+                Some(1024),
+                &parsed(&format!("Movie {i}")),
+                Some("movie"),
+                None,
+                ftp_root,
+            )
+            .expect("upsert");
+        }
+        db.commit_batch().expect("commit_batch");
+
+        let items = db.get_all_media().expect("get_all_media");
+        assert_eq!(items.len(), 3);
+        // Titles are stored; order is alphabetical by title
+        let titles: Vec<_> = items.iter().filter_map(|i| i.title.as_deref()).collect();
+        assert!(titles.contains(&"Movie 0"));
+        assert!(titles.contains(&"Movie 1"));
+        assert!(titles.contains(&"Movie 2"));
+    }
+
+    #[test]
+    fn batch_upsert_is_idempotent_for_duplicate_paths() {
+        let db = in_memory_db();
+        let ftp_root = "/Compartida";
+        let path = "/Compartida/Movies/dup.mkv";
+
+        db.begin_batch().expect("begin");
+        db.upsert_media(path, "dup.mkv", Some(100), &parsed("Original"), Some("movie"), None, ftp_root)
+            .expect("first upsert");
+        db.upsert_media(path, "dup.mkv", Some(200), &parsed("Updated"), Some("movie"), None, ftp_root)
+            .expect("second upsert");
+        db.commit_batch().expect("commit");
+
+        let items = db.get_all_media().expect("get_all_media");
+        // Must have exactly 1 row (upsert, not insert)
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title.as_deref(), Some("Updated"));
+        assert_eq!(items[0].size_bytes, Some(200));
+    }
+
+    #[test]
+    fn rollback_batch_leaves_db_unchanged() {
+        let db = in_memory_db();
+        let ftp_root = "/Compartida";
+
+        db.begin_batch().expect("begin");
+        db.upsert_media(
+            "/Compartida/Movies/abandoned.mkv",
+            "abandoned.mkv",
+            Some(999),
+            &parsed("Ghost"),
+            Some("movie"),
+            None,
+            ftp_root,
+        )
+        .expect("upsert");
+        // Simulate failure: rollback instead of commit
+        db.rollback_batch().expect("rollback");
+
+        let items = db.get_all_media().expect("get_all_media");
+        assert_eq!(items.len(), 0, "Rolled-back items must not persist");
+    }
+
+    // ── delete_media_missing_from_scan ────────────────────────────────────
+
+    #[test]
+    fn delete_missing_removes_stale_entries() {
+        let db = in_memory_db();
+        let ftp_root = "/Compartida";
+
+        // Seed 3 items
+        let paths = [
+            "/Compartida/Movies/keep1.mkv",
+            "/Compartida/Movies/keep2.mkv",
+            "/Compartida/Movies/stale.mkv",
+        ];
+        db.begin_batch().expect("begin");
+        for path in &paths {
+            let filename = path.rsplit('/').next().unwrap();
+            db.upsert_media(path, filename, Some(1), &parsed(filename), Some("movie"), None, ftp_root)
+                .expect("upsert");
+        }
+        db.commit_batch().expect("commit");
+
+        assert_eq!(db.get_all_media().expect("get_all_media").len(), 3);
+
+        // Simulate a new scan that no longer sees "stale.mkv"
+        let current = vec![
+            "/Compartida/Movies/keep1.mkv".to_string(),
+            "/Compartida/Movies/keep2.mkv".to_string(),
+        ];
+        let removed = db
+            .delete_media_missing_from_scan(&current)
+            .expect("delete_missing");
+
+        assert_eq!(removed, 1);
+        let remaining = db.get_all_media().expect("get_all_media");
+        assert_eq!(remaining.len(), 2);
+        let paths_left: Vec<_> = remaining.iter().map(|i| i.ftp_path.as_str()).collect();
+        assert!(paths_left.contains(&"/Compartida/Movies/keep1.mkv"));
+        assert!(paths_left.contains(&"/Compartida/Movies/keep2.mkv"));
+    }
+
+    #[test]
+    fn delete_missing_with_empty_scan_removes_all() {
+        let db = in_memory_db();
+        let ftp_root = "/Compartida";
+
+        db.begin_batch().expect("begin");
+        db.upsert_media(
+            "/Compartida/Movies/orphan.mkv",
+            "orphan.mkv",
+            Some(1),
+            &parsed("Orphan"),
+            Some("movie"),
+            None,
+            ftp_root,
+        )
+        .expect("upsert");
+        db.commit_batch().expect("commit");
+
+        let removed = db.delete_media_missing_from_scan(&[]).expect("delete_missing");
+        assert_eq!(removed, 1);
+        assert_eq!(db.get_all_media().expect("get_all_media").len(), 0);
+    }
+
+    #[test]
+    fn delete_missing_is_no_op_when_all_paths_present() {
+        let db = in_memory_db();
+        let ftp_root = "/Compartida";
+        let paths: Vec<String> = (0..5)
+            .map(|i| format!("/Compartida/Movies/file{i}.mkv"))
+            .collect();
+
+        db.begin_batch().expect("begin");
+        for path in &paths {
+            let filename = path.rsplit('/').next().unwrap();
+            db.upsert_media(path, filename, Some(1), &parsed(filename), Some("movie"), None, ftp_root)
+                .expect("upsert");
+        }
+        db.commit_batch().expect("commit");
+
+        let removed = db.delete_media_missing_from_scan(&paths).expect("delete_missing");
+        assert_eq!(removed, 0);
+        assert_eq!(db.get_all_media().expect("get_all_media").len(), 5);
     }
 }
