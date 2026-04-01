@@ -185,7 +185,6 @@ export default function Library({
   const {
     items,
     isIndexing,
-    crawlStats,
     progress,
     indexError,
     clearIndexError,
@@ -1837,7 +1836,6 @@ export default function Library({
       <IndexStatus
         progress={progress}
         isIndexing={isIndexing}
-        crawlStats={crawlStats}
         activityLogOpen={showLog}
         language={language}
       />

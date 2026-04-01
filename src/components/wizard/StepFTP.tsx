@@ -65,7 +65,9 @@ const ghostBtn = (disabled?: boolean): React.CSSProperties => ({
 const primaryBtn = (disabled?: boolean): React.CSSProperties => ({
   ...ghostBtn(disabled),
   border: "none",
-  background: disabled ? "color-mix(in srgb, var(--color-primary) 46%, transparent)" : "var(--color-primary)",
+  background: disabled
+    ? "color-mix(in srgb, var(--color-primary) 46%, transparent)"
+    : "var(--color-primary)",
   color: "#fff",
 });
 
@@ -79,10 +81,12 @@ export default function StepFTP({
   defaults,
   language,
   onNext,
+  transitioning = false,
 }: {
   defaults: any;
   language: AppLanguage;
   onNext: (p: any) => void;
+  transitioning?: boolean;
 }) {
   const [form, setForm] = useState(defaults);
   const [status, setStatus] = useState<"idle" | "testing" | "ok" | "error">(
@@ -90,12 +94,11 @@ export default function StepFTP({
   );
   const [errorMsg, setErrorMsg] = useState("");
 
-  const set =
-    (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
-      setForm((f: any) => ({
-        ...f,
-        [key]: key === "ftp_port" ? Number(e.target.value) : e.target.value,
-      }));
+  const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f: any) => ({
+      ...f,
+      [key]: key === "ftp_port" ? Number(e.target.value) : e.target.value,
+    }));
 
   const test = async () => {
     setStatus("testing");
@@ -124,25 +127,50 @@ export default function StepFTP({
     >
       <section style={sectionCard}>
         <div style={{ display: "grid", gap: 14 }}>
-          <div style={{ ...responsivePairGrid, gridTemplateColumns: "minmax(0, 1fr) minmax(120px, 180px)" }}>
+          <div
+            style={{
+              ...responsivePairGrid,
+              gridTemplateColumns: "minmax(0, 1fr) minmax(120px, 180px)",
+            }}
+          >
             <div style={fieldStyle}>
               <label style={labelStyle}>{t(language, "wizard.host")}</label>
-              <input style={inputStyle} value={form.ftp_host} onChange={set("ftp_host")} required />
+              <input
+                style={inputStyle}
+                value={form.ftp_host}
+                onChange={set("ftp_host")}
+                required
+              />
             </div>
             <div style={fieldStyle}>
               <label style={labelStyle}>{t(language, "wizard.port")}</label>
-              <input style={inputStyle} type="number" value={form.ftp_port} onChange={set("ftp_port")} />
+              <input
+                style={inputStyle}
+                type="number"
+                value={form.ftp_port}
+                onChange={set("ftp_port")}
+              />
             </div>
           </div>
 
           <div style={responsivePairGrid}>
             <div style={fieldStyle}>
               <label style={labelStyle}>{t(language, "wizard.username")}</label>
-              <input style={inputStyle} value={form.ftp_user} onChange={set("ftp_user")} required />
+              <input
+                style={inputStyle}
+                value={form.ftp_user}
+                onChange={set("ftp_user")}
+                required
+              />
             </div>
             <div style={fieldStyle}>
               <label style={labelStyle}>{t(language, "wizard.password")}</label>
-              <input style={inputStyle} type="password" value={form.ftp_pass} onChange={set("ftp_pass")} />
+              <input
+                style={inputStyle}
+                type="password"
+                value={form.ftp_pass}
+                onChange={set("ftp_pass")}
+              />
             </div>
           </div>
 
@@ -154,16 +182,40 @@ export default function StepFTP({
               onChange={set("ftp_root")}
               placeholder="/Compartida"
             />
-            <span style={subtextStyle}>{t(language, "settings.ftpDescription")}</span>
+            <span style={subtextStyle}>
+              {t(language, "settings.ftpDescription")}
+            </span>
           </div>
         </div>
       </section>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-          <button type="button" style={ghostBtn(status === "testing")} onClick={test} disabled={status === "testing"}>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 10,
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+            alignItems: "center",
+          }}
+        >
+          <button
+            type="button"
+            style={ghostBtn(status === "testing")}
+            onClick={test}
+            disabled={status === "testing"}
+          >
             <AppIcon name="activity" size={15} strokeWidth={2.1} />
-            {status === "testing" ? t(language, "common.testing") : t(language, "wizard.testConnection")}
+            {status === "testing"
+              ? t(language, "common.testing")
+              : t(language, "wizard.testConnection")}
           </button>
           {status === "ok" && (
             <span
@@ -172,7 +224,8 @@ export default function StepFTP({
                 cursor: "default",
                 opacity: 1,
                 border: "none",
-                background: "color-mix(in srgb, var(--color-success) 14%, transparent)",
+                background:
+                  "color-mix(in srgb, var(--color-success) 14%, transparent)",
                 color: "var(--color-success)",
               }}
             >
@@ -187,8 +240,19 @@ export default function StepFTP({
           )}
         </div>
 
-        <button type="submit" style={primaryBtn(status !== "ok")} disabled={status !== "ok"}>
-          {t(language, "wizard.next")}
+        <button
+          type="submit"
+          style={primaryBtn(status !== "ok" || transitioning)}
+          disabled={status !== "ok" || transitioning}
+        >
+          {transitioning ? (
+            <>
+              <AppIcon name="activity" size={14} strokeWidth={2.1} />
+              {t(language, "common.loading")}
+            </>
+          ) : (
+            t(language, "wizard.next")
+          )}
         </button>
       </div>
     </form>

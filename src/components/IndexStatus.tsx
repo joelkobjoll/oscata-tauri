@@ -6,13 +6,11 @@ import { t } from "../utils/i18n";
 export default function IndexStatus({
   progress,
   isIndexing,
-  crawlStats,
   activityLogOpen,
   language,
 }: {
   progress: { current: number; total: number } | null;
   isIndexing: boolean;
-  crawlStats: { scannedFolders: number; foundFiles: number };
   activityLogOpen: boolean;
   language: AppLanguage;
 }) {

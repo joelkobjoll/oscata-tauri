@@ -6,7 +6,10 @@ import StepFTP from "../components/wizard/StepFTP";
 import StepTMDB from "../components/wizard/StepTMDB";
 import StepConfirm from "../components/wizard/StepConfirm";
 import { t } from "../utils/i18n";
-import { DEFAULT_FOLDER_TYPES_STRING, mergeInferredFolderTypes } from "../utils/folderTypes";
+import {
+  DEFAULT_FOLDER_TYPES_STRING,
+  mergeInferredFolderTypes,
+} from "../utils/folderTypes";
 import type { AppLanguage } from "../utils/mediaLanguage";
 
 const DEFAULT_FTP_ROOT = "/Compartida";
@@ -160,6 +163,7 @@ export default function Wizard({
   const language: AppLanguage = "es";
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState("");
+  const [transitioning, setTransitioning] = useState(false);
   const [config, setConfig] = useState<Config>({
     ftp_host: "",
     ftp_port: 21,
@@ -181,9 +185,11 @@ export default function Wizard({
   });
 
   const next = async (partial: Partial<Config>) => {
+    if (transitioning) return;
     const merged = { ...config, ...partial };
 
     if (step === 1) {
+      setTransitioning(true);
       try {
         const dirs = await invoke<string[]>("ftp_list_root_dirs_preview", {
           host: merged.ftp_host,
@@ -192,9 +198,14 @@ export default function Wizard({
           pass: merged.ftp_pass,
           root: merged.ftp_root,
         });
-        merged.folder_types = mergeInferredFolderTypes(merged.folder_types, dirs);
+        merged.folder_types = mergeInferredFolderTypes(
+          merged.folder_types,
+          dirs,
+        );
       } catch {
         // Leave folder mapping empty if FTP root inference is unavailable.
+      } finally {
+        setTransitioning(false);
       }
     }
 
@@ -255,7 +266,9 @@ export default function Wizard({
           "radial-gradient(circle at top, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 42%), var(--color-bg)",
       }}
     >
-      <div style={{ maxWidth: 1120, margin: "0 auto", display: "grid", gap: 20 }}>
+      <div
+        style={{ maxWidth: 1120, margin: "0 auto", display: "grid", gap: 20 }}
+      >
         <section style={{ ...shellCard, padding: "1.35rem 1.5rem" }}>
           <div
             style={{
@@ -306,7 +319,12 @@ export default function Wizard({
                 onClick={() => setStep((current) => Math.max(0, current - 1))}
                 style={ghostBtn}
               >
-                <span style={{ transform: "rotate(180deg)", display: "inline-flex" }}>
+                <span
+                  style={{
+                    transform: "rotate(180deg)",
+                    display: "inline-flex",
+                  }}
+                >
                   <AppIcon name="chevron-right" size={14} strokeWidth={2.2} />
                 </span>
                 {t(language, "library.prev")}
@@ -346,7 +364,9 @@ export default function Wizard({
                     >
                       {t(language, "wizard.stepFtp")}
                     </div>
-                    <p style={subtextStyle}>{t(language, "settings.ftpDescription")}</p>
+                    <p style={subtextStyle}>
+                      {t(language, "settings.ftpDescription")}
+                    </p>
                   </div>
                   <div style={{ ...sectionCard, padding: "1rem" }}>
                     <div
@@ -360,7 +380,8 @@ export default function Wizard({
                       {t(language, "wizard.stepTmdb")}
                     </div>
                     <p style={subtextStyle}>
-                      {t(language, "settings.metaDescription")} {t(language, "settings.downloadsDescription")}
+                      {t(language, "settings.metaDescription")}{" "}
+                      {t(language, "settings.downloadsDescription")}
                     </p>
                   </div>
                   <div style={{ ...sectionCard, padding: "1rem" }}>
@@ -374,7 +395,9 @@ export default function Wizard({
                     >
                       {t(language, "wizard.stepConfirm")}
                     </div>
-                    <p style={subtextStyle}>{t(language, "wizard.confirmDescription")}</p>
+                    <p style={subtextStyle}>
+                      {t(language, "wizard.confirmDescription")}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -390,7 +413,11 @@ export default function Wizard({
               />
               <ChoiceCard
                 icon="download"
-                title={restoring ? t(language, "wizard.restoringBackup") : t(language, "wizard.restoreBackup")}
+                title={
+                  restoring
+                    ? t(language, "wizard.restoringBackup")
+                    : t(language, "wizard.restoreBackup")
+                }
                 description={t(language, "wizard.restoreHelp")}
                 disabled={restoring}
                 onClick={restoreBackup}
@@ -412,7 +439,14 @@ export default function Wizard({
           </div>
         ) : (
           <div style={responsiveWizardGrid}>
-            <aside style={{ display: "grid", gap: 16, alignSelf: "start", minWidth: 0 }}>
+            <aside
+              style={{
+                display: "grid",
+                gap: 16,
+                alignSelf: "start",
+                minWidth: 0,
+              }}
+            >
               <section style={{ ...shellCard, padding: "1rem" }}>
                 <div style={{ display: "grid", gap: 10 }}>
                   {steps.map((item, index) => {
@@ -433,7 +467,13 @@ export default function Wizard({
                           opacity: isDone || isActive ? 1 : 0.72,
                         }}
                       >
-                        <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 10,
+                            alignItems: "flex-start",
+                          }}
+                        >
                           <div
                             style={{
                               width: 34,
@@ -456,9 +496,17 @@ export default function Wizard({
                             }}
                           >
                             {isDone ? (
-                              <AppIcon name="check" size={16} strokeWidth={2.6} />
+                              <AppIcon
+                                name="check"
+                                size={16}
+                                strokeWidth={2.6}
+                              />
                             ) : (
-                              <AppIcon name={item.icon} size={16} strokeWidth={2.1} />
+                              <AppIcon
+                                name={item.icon}
+                                size={16}
+                                strokeWidth={2.1}
+                              />
                             )}
                           </div>
                           <div style={{ minWidth: 0 }}>
@@ -495,8 +543,16 @@ export default function Wizard({
                   {t(language, "wizard.summaryTitle")}
                 </div>
                 <div style={{ display: "grid", gap: 10 }}>
-                  <div style={{ ...sectionCard, padding: "0.85rem", minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 4 }}>
+                  <div
+                    style={{ ...sectionCard, padding: "0.85rem", minWidth: 0 }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--color-text-muted)",
+                        marginBottom: 4,
+                      }}
+                    >
                       {t(language, "wizard.stepFtp")}
                     </div>
                     <div
@@ -509,7 +565,9 @@ export default function Wizard({
                         lineHeight: 1.35,
                       }}
                     >
-                      {config.ftp_host ? `${config.ftp_user || "user"}@${config.ftp_host}:${config.ftp_port}` : "—"}
+                      {config.ftp_host
+                        ? `${config.ftp_user || "user"}@${config.ftp_host}:${config.ftp_port}`
+                        : "—"}
                     </div>
                     <div
                       style={{
@@ -522,19 +580,46 @@ export default function Wizard({
                       {config.ftp_root || "/"}
                     </div>
                   </div>
-                  <div style={{ ...sectionCard, padding: "0.85rem", minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 4 }}>
+                  <div
+                    style={{ ...sectionCard, padding: "0.85rem", minWidth: 0 }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--color-text-muted)",
+                        marginBottom: 4,
+                      }}
+                    >
                       {t(language, "wizard.stepTmdb")}
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}>
-                      {config.tmdb_api_key ? t(language, "wizard.tmdbConfigured") : "—"}
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      {config.tmdb_api_key
+                        ? t(language, "wizard.tmdbConfigured")
+                        : "—"}
                     </div>
                     <div style={{ ...subtextStyle, marginTop: 4 }}>
-                      {t(language, "settings.defaultLanguage")}: {config.default_language === "en" ? t(language, "common.languageEnglish") : t(language, "common.languageSpanish")}
+                      {t(language, "settings.defaultLanguage")}:{" "}
+                      {config.default_language === "en"
+                        ? t(language, "common.languageEnglish")
+                        : t(language, "common.languageSpanish")}
                     </div>
                   </div>
-                  <div style={{ ...sectionCard, padding: "0.85rem", minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 4 }}>
+                  <div
+                    style={{ ...sectionCard, padding: "0.85rem", minWidth: 0 }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--color-text-muted)",
+                        marginBottom: 4,
+                      }}
+                    >
                       {t(language, "settings.downloadsTitle")}
                     </div>
                     <div
@@ -550,14 +635,22 @@ export default function Wizard({
                       {config.download_folder || "—"}
                     </div>
                     <div style={{ ...subtextStyle, marginTop: 4 }}>
-                      {t(language, "settings.maxConcurrent")}: {config.max_concurrent_downloads}
+                      {t(language, "settings.maxConcurrent")}:{" "}
+                      {config.max_concurrent_downloads}
                     </div>
                   </div>
                 </div>
               </section>
             </aside>
 
-            <section style={{ ...shellCard, overflow: "hidden", alignSelf: "start", minWidth: 0 }}>
+            <section
+              style={{
+                ...shellCard,
+                overflow: "hidden",
+                alignSelf: "start",
+                minWidth: 0,
+              }}
+            >
               <div
                 style={{
                   padding: "1.2rem 1.35rem 1rem",
@@ -565,7 +658,9 @@ export default function Wizard({
                     "1px solid color-mix(in srgb, var(--color-border) 72%, transparent)",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div
+                  style={{ display: "flex", alignItems: "flex-start", gap: 12 }}
+                >
                   <div
                     style={{
                       width: 40,
@@ -580,7 +675,13 @@ export default function Wizard({
                       flexShrink: 0,
                     }}
                   >
-                    {currentStep && <AppIcon name={currentStep.icon} size={18} strokeWidth={2.1} />}
+                    {currentStep && (
+                      <AppIcon
+                        name={currentStep.icon}
+                        size={18}
+                        strokeWidth={2.1}
+                      />
+                    )}
                   </div>
                   <div>
                     <h2
@@ -594,16 +695,35 @@ export default function Wizard({
                     >
                       {currentStep?.label}
                     </h2>
-                    <p style={{ ...subtextStyle, marginTop: 6 }}>{currentStep?.description}</p>
+                    <p style={{ ...subtextStyle, marginTop: 6 }}>
+                      {currentStep?.description}
+                    </p>
                   </div>
                 </div>
               </div>
 
               <div style={{ padding: "1.25rem 1.35rem 1.35rem" }}>
-                {step === 1 && <StepFTP defaults={config} language={language} onNext={next} />}
-                {step === 2 && <StepTMDB defaults={config} language={language} onNext={next} />}
+                {step === 1 && (
+                  <StepFTP
+                    defaults={config}
+                    language={language}
+                    onNext={next}
+                    transitioning={transitioning}
+                  />
+                )}
+                {step === 2 && (
+                  <StepTMDB
+                    defaults={config}
+                    language={language}
+                    onNext={next}
+                  />
+                )}
                 {step === 3 && (
-                  <StepConfirm config={config} language={language} onComplete={onComplete} />
+                  <StepConfirm
+                    config={config}
+                    language={language}
+                    onComplete={onComplete}
+                  />
                 )}
               </div>
             </section>
