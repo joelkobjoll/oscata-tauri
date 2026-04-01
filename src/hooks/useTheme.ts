@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext, createContext } from "react";
 
-type ThemeMode = "dark" | "light" | "system";
+export type ThemeMode = "dark" | "light" | "system";
 type ResolvedTheme = "dark" | "light";
 const STORAGE_KEY = "oscata-theme";
 
@@ -21,13 +21,15 @@ function readStoredTheme(): ThemeMode {
   return "system";
 }
 
-interface UseThemeResult {
+interface ThemeContextValue {
   theme: ThemeMode;
   resolvedTheme: ResolvedTheme;
   setTheme: (theme: ThemeMode) => void;
 }
 
-export function useTheme(): UseThemeResult {
+export const ThemeContext = createContext<ThemeContextValue | null>(null);
+
+export function useThemeProvider(): ThemeContextValue {
   const [theme, setThemeState] = useState<ThemeMode>(() => readStoredTheme());
 
   const resolvedTheme: ResolvedTheme =
@@ -53,4 +55,10 @@ export function useTheme(): UseThemeResult {
   };
 
   return { theme, resolvedTheme, setTheme };
+}
+
+export function useTheme(): ThemeContextValue {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error("useTheme must be used inside ThemeProvider");
+  return ctx;
 }

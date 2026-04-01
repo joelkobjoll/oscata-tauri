@@ -29,7 +29,6 @@
   --z-modal: 140;
 }
 
-
 [data-theme="light"] {
   --color-bg: #f4f4f6;
   --color-surface: #ffffff;
@@ -75,7 +74,7 @@ body,
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2e2e38;
+  background: var(--color-border);
   border-radius: 9999px;
 }
 
@@ -163,6 +162,30 @@ select {
     );
 }
 
+[data-theme="light"] .app-shell-bg {
+  background:
+    radial-gradient(
+      circle at top left,
+      color-mix(in srgb, var(--color-info) 10%, transparent),
+      transparent 30%
+    ),
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--color-primary) 9%, transparent),
+      transparent 35%
+    ),
+    radial-gradient(
+      circle at 50% 110%,
+      color-mix(in srgb, var(--color-teal) 7%, transparent),
+      transparent 32%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-bg) 94%, var(--color-primary)),
+      var(--color-bg)
+    );
+}
+
 /* Grid Overlay */
 .grid-overlay {
   position: absolute;
@@ -183,6 +206,20 @@ select {
   mask-image: linear-gradient(to bottom, black 0%, transparent 82%);
   -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 82%);
   opacity: 0.22;
+}
+
+[data-theme="light"] .grid-overlay {
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--color-primary) 10%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-primary) 10%, transparent) 1px,
+      transparent 1px
+    );
+  opacity: 0.35;
 }
 
 /* Modal overlay */

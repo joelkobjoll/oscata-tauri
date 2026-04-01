@@ -20,7 +20,10 @@ type IconName =
   | "clock"
   | "check"
   | "refresh-cw"
-  | "wifi-off";
+  | "wifi-off"
+  | "moon"
+  | "sun"
+  | "monitor";
 
 export default function AppIcon({
   name,
@@ -200,6 +203,30 @@ export default function AppIcon({
             />
             <path d="M12 20h.01" {...common} />
             <path d="M3 3l18 18" {...common} />
+          </>
+        );
+      case "moon":
+        return (
+          <path
+            d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
+            {...common}
+          />
+        );
+      case "sun":
+        return (
+          <>
+            <circle cx="12" cy="12" r="4" {...common} />
+            <path
+              d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+              {...common}
+            />
+          </>
+        );
+      case "monitor":
+        return (
+          <>
+            <rect x="2" y="3" width="20" height="13" rx="2" {...common} />
+            <path d="M8 21h8M12 17v4" {...common} />
           </>
         );
       default:
