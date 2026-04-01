@@ -3,14 +3,18 @@ pub mod dto;
 pub mod handlers;
 
 use axum::{
-    response::Html,
+    body::Body,
+    extract::Request,
+    response::{Html, IntoResponse, Response},
     middleware,
     routing::{delete, get, post, put},
     Router,
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tauri::Manager;
-use tower_http::{cors::CorsLayer, services::{ServeDir, ServeFile}};
+#[cfg(not(debug_assertions))]
+use tower_http::services::{ServeDir, ServeFile};
+use tower_http::cors::CorsLayer;
 
 static WEBGUI_RUNNING: std::sync::LazyLock<std::sync::atomic::AtomicBool> =
     std::sync::LazyLock::new(|| std::sync::atomic::AtomicBool::new(false));
@@ -102,20 +106,77 @@ fn build_router(state: AppState) -> Router {
         .layer(auth_mw)
         .with_state(api_state);
 
-    // Serve built frontend from bundled resources first, then local dist fallbacks.
-    let dist = find_dist_dir(&state.app_handle);
+    // In debug builds, proxy all frontend requests to the Vite dev server (port 1420).
+    // In release builds, serve built frontend from bundled resources or local dist/.
     let mut root = Router::new().nest("/api", api);
-    if let Some(d) = dist {
-        let index = d.join("index.html");
-        root = root.fallback_service(
-            ServeDir::new(&d).not_found_service(ServeFile::new(index))
-        );
-    } else {
-        root = root
-            .route("/", get(dev_root_page))
-            .fallback(get(dev_root_page));
+
+    #[cfg(debug_assertions)]
+    {
+        root = root.fallback(vite_proxy);
     }
+
+    #[cfg(not(debug_assertions))]
+    {
+        let dist = find_dist_dir(&state.app_handle);
+        if let Some(d) = dist {
+            let index = d.join("index.html");
+            root = root.fallback_service(
+                ServeDir::new(&d).not_found_service(ServeFile::new(index))
+            );
+        } else {
+            root = root
+                .route("/", get(dev_root_page))
+                .fallback(get(dev_root_page));
+        }
+    }
+
     root.layer(cors)
+}
+
+/// In debug mode, proxy all non-API requests to the Vite dev server (HMR included).
+#[cfg(debug_assertions)]
+async fn vite_proxy(req: Request) -> Response {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let client = CLIENT.get_or_init(|| reqwest::Client::new());
+
+    let path_and_query = req
+        .uri()
+        .path_and_query()
+        .map(|pq| pq.as_str())
+        .unwrap_or("/");
+    let target = format!("http://localhost:1420{path_and_query}");
+
+    let method = reqwest::Method::from_bytes(req.method().as_str().as_bytes())
+        .unwrap_or(reqwest::Method::GET);
+
+    let body_bytes = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(_) => return (axum::http::StatusCode::BAD_GATEWAY, "body read error").into_response(),
+    };
+
+    let upstream = match client.request(method, &target).body(body_bytes).send().await {
+        Ok(r) => r,
+        Err(_) => {
+            return (
+                axum::http::StatusCode::BAD_GATEWAY,
+                format!("Vite dev server not reachable at {target}"),
+            )
+                .into_response()
+        }
+    };
+
+    let status = axum::http::StatusCode::from_u16(upstream.status().as_u16())
+        .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    let mut builder = Response::builder().status(status);
+    for (k, v) in upstream.headers() {
+        // Skip transfer-encoding to avoid chunked encoding conflicts
+        if k.as_str().eq_ignore_ascii_case("transfer-encoding") { continue; }
+        builder = builder.header(k, v);
+    }
+    let bytes = upstream.bytes().await.unwrap_or_default();
+    builder.body(Body::from(bytes)).unwrap_or_else(|_| {
+        (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "response build error").into_response()
+    })
 }
 
 async fn dev_root_page() -> Html<&'static str> {

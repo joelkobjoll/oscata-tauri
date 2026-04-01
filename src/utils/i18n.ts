@@ -175,6 +175,26 @@ const messages = {
     es: "Indexando {current} / {total}",
     en: "Indexing {current} / {total}",
   },
+  "toast.enriching": {
+    es: "Obteniendo metadatos {current} / {total}",
+    en: "Fetching metadata {current} / {total}",
+  },
+  "toast.indexComplete": {
+    es: "Indexación completa",
+    en: "Indexing complete",
+  },
+  "toast.newItemsAdded": {
+    es: "{count} nuevo(s) elemento(s) añadido(s)",
+    en: "{count} new item(s) added",
+  },
+  "toast.noNewItems": {
+    es: "Sin elementos nuevos",
+    en: "No new items",
+  },
+  "toast.itemsRemoved": {
+    es: "{count} elemento(s) eliminado(s) (no encontrado(s) en FTP)",
+    en: "{count} item(s) removed (no longer on FTP)",
+  },
   "toast.starting": {
     es: "Iniciando indexacion...",
     en: "Starting indexing...",
@@ -182,10 +202,6 @@ const messages = {
   "toast.scanning": {
     es: "Escaneando carpetas FTP...",
     en: "Scanning FTP folders...",
-  },
-  "toast.scanningDetail": {
-    es: "Carpetas: {folders} | Archivos encontrados: {files}",
-    en: "Folders: {folders} | Files found: {files}",
   },
   "toast.subtitle": {
     es: "Buscando archivos nuevos en FTP y enriqueciendo solo los nuevos",

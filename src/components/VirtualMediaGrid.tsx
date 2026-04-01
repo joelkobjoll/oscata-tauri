@@ -48,7 +48,11 @@ export default function VirtualMediaGrid({
   return (
     <div
       ref={scrollRef}
-      style={{ flex: 1, overflowY: "auto", padding: "1.5rem 1.5rem 6.5rem" }}
+      style={{
+        flex: 1,
+        overflowY: "auto",
+        padding: "1.5rem 1.5rem 6.5rem 1rem",
+      }}
     >
       <div
         style={{

@@ -52,6 +52,10 @@ export function useIndexing() {
     total: number;
   } | null>(null);
   const [indexError, setIndexError] = useState<string | null>(null);
+  const [completionSummary, setCompletionSummary] = useState<{
+    newItems: number;
+    removed: number;
+  } | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const itemIndexRef = useRef<Map<number, number>>(new Map());
 
@@ -79,20 +83,37 @@ export function useIndexing() {
   useEffect(() => {
     if (!isTauri()) return;
 
-    const unProgress = listen<MediaItem & { current: number; total: number }>(
-      "index:progress",
-      ({ payload }) => {
-        setIndexError(null);
-        setIsIndexing(true);
-        setProgress({ current: payload.current, total: payload.total });
-        setItems((prev) => {
-          if (itemIndexRef.current.has(payload.id)) return prev;
-          const next = [...prev, payload];
-          itemIndexRef.current.set(payload.id, next.length - 1);
-          return next;
-        });
-      },
-    );
+    const unProgress = listen<
+      Array<MediaItem & { current: number; total: number }>
+    >("index:progress", ({ payload }) => {
+      // payload is now an array of up to 50 progress items (batched on Rust side).
+      // Process all items in a single state update to minimise re-renders.
+      if (!Array.isArray(payload) || payload.length === 0) return;
+
+      setIndexError(null);
+      setIsIndexing(true);
+
+      // Use the last item in the batch for progress display (it has the highest current).
+      const last = payload[payload.length - 1];
+      setProgress({ current: last.current, total: last.total });
+
+      setItems((prev) => {
+        // Only append items that are genuinely new (not already in the index map).
+        const additions: MediaItem[] = [];
+        for (const item of payload) {
+          if (!itemIndexRef.current.has(item.id)) {
+            additions.push(item);
+          }
+        }
+        if (additions.length === 0) return prev;
+        const next = [...prev, ...additions];
+        // Rebuild index for all newly added items.
+        for (let i = prev.length; i < next.length; i++) {
+          itemIndexRef.current.set(next[i].id, i);
+        }
+        return next;
+      });
+    });
 
     const unComplete = listen<{
       total: number;
@@ -101,6 +122,10 @@ export function useIndexing() {
     }>("index:complete", ({ payload }) => {
       setProgress(null);
       setIsIndexing(false);
+      setCompletionSummary({
+        newItems: payload.metadata_queued,
+        removed: payload.removed ?? 0,
+      });
       addLog(
         `✓ Done — ${payload.total} files indexed, ${payload.metadata_queued} new items metadata-matched, ${payload.removed ?? 0} stale items removed`,
       );
@@ -142,23 +167,14 @@ export function useIndexing() {
       setIndexError(null);
       setIsIndexing(true);
       setProgress(null);
+      setCompletionSummary(null);
       setCrawlStats({ scannedFolders: 0, foundFiles: 0 });
       addLog("▶ Indexing started");
     });
 
     const unLog = ENABLE_ACTIVITY_LOG
       ? listen<{ msg: string }>("index:log", ({ payload }) => {
-          if (payload.msg.startsWith("📂 Scanning ")) {
-            setCrawlStats((prev) => ({
-              ...prev,
-              scannedFolders: prev.scannedFolders + 1,
-            }));
-          } else if (payload.msg.startsWith("🎬 Found: ")) {
-            setCrawlStats((prev) => ({
-              ...prev,
-              foundFiles: prev.foundFiles + 1,
-            }));
-          }
+          // crawl stat tracking removed
           addLog(payload.msg);
         })
       : Promise.resolve(() => {});
@@ -173,11 +189,33 @@ export function useIndexing() {
     };
   }, []);
 
-  return {
+  // In web mode there are no Tauri push events, so poll the library
+  // periodically to keep the UI in sync with background indexing on the server.
+  useEffect(() => {
+    if (isTauri()) return;
+
+    const POLL_INTERVAL_MS = 4000;
+
+    const poll = () => {
+      call<MediaItem[]>("get_all_media")
+        .then((loaded) => {
+          rebuildIndex(loaded);
+          setItems(loaded);
+        })
+        .catch(() => {});
+    };
+
+    const timerId = window.setInterval(poll, POLL_INTERVAL_MS);
+    return () => window.clearInterval(timerId);
+  }, []);
+
+    return {
     items,
     isIndexing,
     crawlStats,
     progress,
+    completionSummary,
+    dismissCompletion: () => setCompletionSummary(null),
     indexError,
     clearIndexError: () => setIndexError(null),
     retryIndexing: () => call("start_indexing").catch(console.error),

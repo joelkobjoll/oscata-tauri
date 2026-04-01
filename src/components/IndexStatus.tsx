@@ -6,19 +6,28 @@ import { t } from "../utils/i18n";
 export default function IndexStatus({
   progress,
   isIndexing,
-  crawlStats,
+  completionSummary,
+  onDismissCompletion,
   activityLogOpen,
   language,
 }: {
   progress: { current: number; total: number } | null;
   isIndexing: boolean;
-  crawlStats: { scannedFolders: number; foundFiles: number };
+  completionSummary: { newItems: number; removed: number } | null;
+  onDismissCompletion: () => void;
   activityLogOpen: boolean;
   language: AppLanguage;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [scanBarOffset, setScanBarOffset] = useState(-45);
   const bottomOffset = activityLogOpen ? 236 : 22;
+
+  // Auto-dismiss completion summary after 8 seconds
+  useEffect(() => {
+    if (!completionSummary) return;
+    const timer = window.setTimeout(onDismissCompletion, 8000);
+    return () => window.clearTimeout(timer);
+  }, [completionSummary, onDismissCompletion]);
 
   useEffect(() => {
     if (!isIndexing) return;
@@ -41,7 +50,117 @@ export default function IndexStatus({
     return () => window.clearInterval(timer);
   }, [isIndexing, progress]);
 
-  if (!isIndexing && !progress) return null;
+  if (!isIndexing && !progress && !completionSummary) return null;
+
+  // Completion summary toast — shown after indexing finishes
+  if (!isIndexing && !progress && completionSummary) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          right: 18,
+          bottom: bottomOffset,
+          width: "min(360px, calc(100vw - 36px))",
+          padding: "0.95rem 1rem",
+          borderRadius: "calc(var(--radius-lg) + 2px)",
+          border:
+            "1px solid color-mix(in srgb, var(--color-success) 36%, var(--color-border))",
+          background:
+            "linear-gradient(155deg, color-mix(in srgb, var(--color-surface) 94%, transparent), color-mix(in srgb, var(--color-surface-2) 84%, transparent))",
+          boxShadow: "0 18px 42px color-mix(in srgb, black 28%, transparent)",
+          backdropFilter: "blur(18px) saturate(150%)",
+          WebkitBackdropFilter: "blur(18px) saturate(150%)",
+          zIndex: 52,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 34,
+                height: 34,
+                borderRadius: 999,
+                background:
+                  "color-mix(in srgb, var(--color-success) 18%, transparent)",
+                color: "var(--color-success)",
+                flexShrink: 0,
+              }}
+            >
+              <AppIcon name="check" size={17} strokeWidth={2.4} />
+            </span>
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: "var(--color-success)",
+                  marginBottom: 4,
+                }}
+              >
+                {t(language, "toast.indexComplete")}
+              </div>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "var(--color-text)",
+                }}
+              >
+                {completionSummary.newItems > 0
+                  ? t(language, "toast.newItemsAdded", {
+                      count: completionSummary.newItems,
+                    })
+                  : t(language, "toast.noNewItems")}
+              </div>
+              {completionSummary.removed > 0 && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--color-text-muted)",
+                    marginTop: 3,
+                  }}
+                >
+                  {t(language, "toast.itemsRemoved", {
+                    count: completionSummary.removed,
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={onDismissCompletion}
+            style={{
+              width: 30,
+              height: 30,
+              border:
+                "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+              borderRadius: 999,
+              background:
+                "color-mix(in srgb, var(--color-surface) 96%, transparent)",
+              color: "var(--color-text-muted)",
+              cursor: "pointer",
+              fontSize: 16,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const percent =
     progress && progress.total > 0
@@ -182,7 +301,7 @@ export default function IndexStatus({
               }}
             >
               {progress
-                ? t(language, "toast.indexing", {
+                ? t(language, "toast.enriching", {
                     current: progress.current,
                     total: progress.total,
                   })
@@ -255,18 +374,19 @@ export default function IndexStatus({
         }}
       >
         <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
-          {progress
-            ? t(language, "toast.subtitle")
-            : t(language, "toast.scanningDetail", {
-                folders: crawlStats.scannedFolders,
-                files: crawlStats.foundFiles,
-              })}
+          {t(language, progress ? "toast.subtitle" : "toast.scanning")}
         </span>
-        <span
-          style={{ fontSize: 12, fontWeight: 700, color: "var(--color-text)" }}
-        >
-          {progress ? `${percent}%` : `${crawlStats.foundFiles}`}
-        </span>
+        {progress && (
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: "var(--color-text)",
+            }}
+          >
+            {`${percent}%`}
+          </span>
+        )}
       </div>
     </div>
   );

@@ -8,16 +8,20 @@
 ## Project Overview
 
 **Oscata** is a Tauri 2.x desktop application (React + Rust) that:
+
 - Connects to an FTP server and indexes media files
 - Enriches metadata via TMDB
 - Presents a dark media-library UI (movies, TV shows, documentaries)
 - Manages a download queue with concurrent transfer support
 
+**Oscata also ships as a web application** (Docker / self-hosted). The same React frontend runs in a browser via a Rust HTTP server. Both surfaces share the same codebase. Use `isTauri()` from `src/lib/transport.ts` to gate Tauri-only features (file pickers, `invoke`, native dialogs). All UI features that don't depend on native OS access **must work in both modes**.
+
 **Stack:**
+
 - Frontend: React 18, TypeScript, inline CSS (CSS custom properties via `src/index.css`)
 - Backend: Rust / Tauri 2.x (`src-tauri/src/`)
 - Database: SQLite via `rusqlite`
-- IPC: Tauri commands (`invoke`) + events (`listen`)
+- IPC: Tauri commands (`invoke`) + events (`listen`); falls back to HTTP fetch in web mode via `src/lib/transport.ts`
 
 ---
 
@@ -81,18 +85,29 @@ Each component does one thing. A component that manages state AND renders a comp
 // ❌ Bad — one component does everything
 export function LibraryPage() {
   const [items, setItems] = useState([]);
-  useEffect(() => { invoke("get_all_media").then(setItems); }, []);
-  return <div>{items.map(i => <div>...giant inline block...</div>)}</div>;
+  useEffect(() => {
+    invoke("get_all_media").then(setItems);
+  }, []);
+  return (
+    <div>
+      {items.map((i) => (
+        <div>...giant inline block...</div>
+      ))}
+    </div>
+  );
 }
 
 // ✅ Good — logic in hook, rendering in component
 export function LibraryPage() {
   const { items, filters, setFilters } = useLibrary();
-  return <MediaGrid items={items} filters={filters} onFilterChange={setFilters} />;
+  return (
+    <MediaGrid items={items} filters={filters} onFilterChange={setFilters} />
+  );
 }
 ```
 
 **2. Separate business logic from rendering**
+
 - Business logic belongs in **hooks** (`use*.ts` files), not in component bodies.
 - Hooks call `invoke()`, hold state, compute derived values, and expose a clean API.
 - Components only read from hooks and render. No `invoke()` calls in JSX files.
@@ -101,7 +116,9 @@ export function LibraryPage() {
 // ❌ Bad — invoke inside component
 function DownloadsTab() {
   const [items, setItems] = useState([]);
-  useEffect(() => { invoke("get_downloads").then(setItems); }, []);
+  useEffect(() => {
+    invoke("get_downloads").then(setItems);
+  }, []);
 }
 
 // ✅ Good — all Tauri access in the hook
@@ -145,24 +162,24 @@ If a value needs to go more than 2 levels deep, promote it to a hook or a React 
 
 **Full design token reference** (defined in `src/index.css`):
 
-| Token | Value | Use |
-|---|---|---|
-| `--color-bg` | `#0d0d0f` | Page background |
-| `--color-surface` | `#18181c` | Cards, panels |
-| `--color-surface-2` | `#222228` | Inputs, elevated surfaces |
-| `--color-border` | `#2e2e38` | All borders |
-| `--color-text` | `#e8e8f0` | Primary text |
-| `--color-text-muted` | `#8888a0` | Secondary/label text |
-| `--color-primary` | `#7c6ef7` | Buttons, active states, focus rings |
-| `--color-primary-hover` | `#9585ff` | Hover on primary elements |
-| `--color-danger` | `#e05555` | Errors, destructive actions |
-| `--color-success` | `#3db07e` | Success states |
-| `--color-warning` | `#c8932a` | Warnings, ratings |
-| `--color-teal` | `#14b8a6` | TV/browse actions |
-| `--radius` | `8px` | Default border-radius |
-| `--radius-lg` | `12px` | Cards, modals |
-| `--radius-full` | `9999px` | Pills, badges |
-| `--font-sans` | `"Inter", system-ui` | All text |
+| Token                   | Value                | Use                                 |
+| ----------------------- | -------------------- | ----------------------------------- |
+| `--color-bg`            | `#0d0d0f`            | Page background                     |
+| `--color-surface`       | `#18181c`            | Cards, panels                       |
+| `--color-surface-2`     | `#222228`            | Inputs, elevated surfaces           |
+| `--color-border`        | `#2e2e38`            | All borders                         |
+| `--color-text`          | `#e8e8f0`            | Primary text                        |
+| `--color-text-muted`    | `#8888a0`            | Secondary/label text                |
+| `--color-primary`       | `#7c6ef7`            | Buttons, active states, focus rings |
+| `--color-primary-hover` | `#9585ff`            | Hover on primary elements           |
+| `--color-danger`        | `#e05555`            | Errors, destructive actions         |
+| `--color-success`       | `#3db07e`            | Success states                      |
+| `--color-warning`       | `#c8932a`            | Warnings, ratings                   |
+| `--color-teal`          | `#14b8a6`            | TV/browse actions                   |
+| `--radius`              | `8px`                | Default border-radius               |
+| `--radius-lg`           | `12px`               | Cards, modals                       |
+| `--radius-full`         | `9999px`             | Pills, badges                       |
+| `--font-sans`           | `"Inter", system-ui` | All text                            |
 
 **Hover states** — use `useState<boolean>` for hover; do not use CSS classes unless in an actual `.css` file.
 
@@ -173,9 +190,12 @@ const [hovered, setHovered] = useState(false);
   onMouseLeave={() => setHovered(false)}
   style={{
     background: "var(--color-surface)",
-    ...(hovered && { borderColor: "var(--color-primary)", transform: "translateY(-2px)" }),
+    ...(hovered && {
+      borderColor: "var(--color-primary)",
+      transform: "translateY(-2px)",
+    }),
   }}
-/>
+/>;
 ```
 
 **Transitions:** always `transition: "property 0.15s ease"`. Never skip transitions on interactive elements.
@@ -194,15 +214,15 @@ const [hovered, setHovered] = useState(false);
 
 ### File & Naming Conventions
 
-| Thing | Convention | Example |
-|---|---|---|
-| React components | PascalCase `.tsx` | `MediaCard.tsx` |
-| Hooks | camelCase, `use` prefix, `.ts` | `useDownloads.ts` |
-| Pure utilities | camelCase `.ts` | `format.ts` |
-| Feature folders | kebab-case | `tv-browser/` |
-| CSS variables | `--color-*`, `--radius-*` | `--color-primary` |
-| Tauri commands | snake_case | `queue_download` |
-| IPC event names | `noun:verb` | `download:progress` |
+| Thing            | Convention                     | Example             |
+| ---------------- | ------------------------------ | ------------------- |
+| React components | PascalCase `.tsx`              | `MediaCard.tsx`     |
+| Hooks            | camelCase, `use` prefix, `.ts` | `useDownloads.ts`   |
+| Pure utilities   | camelCase `.ts`                | `format.ts`         |
+| Feature folders  | kebab-case                     | `tv-browser/`       |
+| CSS variables    | `--color-*`, `--radius-*`      | `--color-primary`   |
+| Tauri commands   | snake_case                     | `queue_download`    |
+| IPC event names  | `noun:verb`                    | `download:progress` |
 
 ---
 
@@ -279,11 +299,11 @@ return () => { unlisten.then(f => f()); };
 
 ### Event Naming
 
-| Pattern | Example |
-|---|---|
-| `noun:verb` for state changes | `download:update`, `index:progress` |
-| `noun:added` / `noun:removed` for collection changes | `download:added` |
-| Past tense for completed one-shots | `index:complete` |
+| Pattern                                              | Example                             |
+| ---------------------------------------------------- | ----------------------------------- |
+| `noun:verb` for state changes                        | `download:update`, `index:progress` |
+| `noun:added` / `noun:removed` for collection changes | `download:added`                    |
+| Past tense for completed one-shots                   | `index:complete`                    |
 
 ---
 
@@ -312,6 +332,27 @@ When adding a new feature, work through these in order:
 - ❌ Do not `unwrap()` or `expect()` in non-test Rust code
 - ❌ Do not leave `console.log` or `dbg!` in committed code
 - ❌ Do not create markdown planning files in the repo — use the session workspace
+- ❌ Do not add a UI feature to the Tauri desktop without also verifying it works (or is intentionally gated with `isTauri()`) in the web UI
+
+---
+
+## Web / Desktop Feature Parity
+
+Oscata runs as both a Tauri desktop app and a browser-based web app. **Every UI feature must work in both surfaces** unless it explicitly requires native OS access (file pickers, native dialogs, direct `invoke` calls).
+
+### Rules
+
+1. **Gate native-only code with `isTauri()`** from `src/lib/transport.ts`. Never call `invoke()` unconditionally in shared components.
+2. **Global React state (context) must wrap both render paths.** Providers live in `main.tsx` above `<Router />`, so they cover both the Tauri path and the web path automatically.
+3. **When adding a feature to the desktop nav/header, check the web nav** in `WebRouter` (inside `src/router.tsx`) and add it there too if it's surface-agnostic.
+4. **Settings sections that don't require native access must appear in both modes.** The Appearance (theme) section is an example: it lives in `Settings.tsx` unconditionally and is accessible from both the Tauri modal and the web nav's Settings page.
+5. **Shared context hooks** (`useTheme`, etc.) must always be consumed inside their Provider. If a hook throws "must be used inside Provider", the Provider is missing from a render path — fix by moving it higher in `main.tsx`.
+
+### Current shared global providers (in `main.tsx`)
+
+| Provider        | Hook         | Purpose                                                   |
+| --------------- | ------------ | --------------------------------------------------------- |
+| `ThemeProvider` | `useTheme()` | Dark / light / system theme, synced across all components |
 
 ---
 

@@ -4,12 +4,12 @@ import { useIndexing, MediaItem } from "../hooks/useIndexing";
 import { useDownload } from "../hooks/useDownload";
 import { useDownloads } from "../hooks/useDownloads";
 import AppIcon from "../components/AppIcon";
-import FilterBar, {
-  Filters,
+import FilterBar, { type Filters } from "../components/FilterBar";
+import {
   normalizeHdr,
   normalizeReleaseType,
   normalizeResolution,
-} from "../components/FilterBar";
+} from "../utils/filterUtils";
 import IndexStatus from "../components/IndexStatus";
 import Settings from "./Settings";
 import ActivityLog from "../components/ActivityLog";
@@ -20,6 +20,7 @@ import DownloadFeedbackToast from "../components/DownloadFeedbackToast";
 import IndexErrorToast from "../components/IndexErrorToast";
 import TVShowPanel from "../components/TVShowPanel";
 import VirtualMediaGrid from "../components/VirtualMediaGrid";
+import ThemeToggle from "../components/ThemeToggle";
 import { AppLanguage, getLocalizedTitle } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 
@@ -185,8 +186,9 @@ export default function Library({
   const {
     items,
     isIndexing,
-    crawlStats,
     progress,
+    completionSummary,
+    dismissCompletion,
     indexError,
     clearIndexError,
     retryIndexing,
@@ -1310,6 +1312,7 @@ export default function Library({
               )}
             </button>
           )}
+          <ThemeToggle />
           {/* Settings button */}
           <button
             onClick={() => setShowSettings(true)}
@@ -1755,7 +1758,7 @@ export default function Library({
               style={{
                 width: 320,
                 flexShrink: 0,
-                padding: "1rem 0 1rem 1.5rem",
+                padding: "1.5rem 0 1.5rem 1.5rem",
                 borderRight:
                   "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
               }}
@@ -1837,7 +1840,8 @@ export default function Library({
       <IndexStatus
         progress={progress}
         isIndexing={isIndexing}
-        crawlStats={crawlStats}
+        completionSummary={completionSummary}
+        onDismissCompletion={dismissCompletion}
         activityLogOpen={showLog}
         language={language}
       />

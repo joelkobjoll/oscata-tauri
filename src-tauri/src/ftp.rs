@@ -177,16 +177,13 @@ pub async fn list_raw(
     Ok(entries)
 }
 
-/// Crawl `root` using up to `parallelism` concurrent FTP connections.
+/// Crawl `root` using a pool of N concurrent FTP connections draining a shared
+/// work queue (breadth-first parallel scan).
 ///
-/// Strategy:
-///   1. One connection does a shallow LIST of `root` to discover top-level branches.
-///   2. Each branch gets its own dedicated FTP connection that recursively crawls
-///      just that subtree — in parallel.
-///   3. Files found directly in `root` (rare) are collected on the initial connection.
-///
-/// This mirrors rclone's approach and gives a ~N× speedup where N = branch count,
-/// capped at `parallelism`.
+/// Unlike the old approach (one connection per top-level branch, sequential
+/// within), every discovered sub-directory is pushed back to the shared queue,
+/// so all N workers stay busy at every depth level.  This gives an O(N× depth)
+/// speed-up on wide server libraries.
 pub async fn list_files(
     host: &str,
     port: u16,
@@ -195,105 +192,140 @@ pub async fn list_files(
     root: &str,
     on_log: Arc<dyn Fn(String) + Send + Sync>,
 ) -> Result<Vec<FtpFile>, String> {
-    // Step 1: shallow scan of root to discover top-level branches.
-    on_log(format!("Connected — discovering branches in {root}"));
+    const MAX_WORKERS: usize = 8;
+
+    // Seed: one shallow scan of root to populate the initial queue.
+    on_log(format!("Connected — discovering root entries in {root}"));
     let mut root_ftp = connect(host, port, user, pass).await?;
     root_ftp.cwd(root).await.map_err(|e| format!("CWD {root}: {e}"))?;
     let root_entries = root_ftp.list(None).await.map_err(|e| e.to_string())?;
     root_ftp.quit().await.ok();
 
-    let (top_dirs, mut root_files) = parse_entries(&root_entries, root);
-    on_log(format!("Found {} top-level branches — crawling in parallel", top_dirs.len()));
+    let (top_dirs, root_files) = parse_entries(&root_entries, root);
+    on_log(format!(
+        "Found {} top-level entries — launching {} workers",
+        top_dirs.len(),
+        MAX_WORKERS,
+    ));
 
-    // Step 2: crawl each branch in its own connection, bounded by a semaphore.
-    const MAX_PARALLEL: usize = 6;
-    let sem = Arc::new(tokio::sync::Semaphore::new(MAX_PARALLEL));
+    // Shared state across workers.
+    let queue: Arc<tokio::sync::Mutex<std::collections::VecDeque<String>>> =
+        Arc::new(tokio::sync::Mutex::new(top_dirs.into()));
+    let all_files: Arc<tokio::sync::Mutex<Vec<FtpFile>>> =
+        Arc::new(tokio::sync::Mutex::new(root_files));
+    // Number of workers currently holding an item from the queue.
+    // When queue is empty AND busy == 0, the crawl is complete.
+    let busy = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
     let mut handles = vec![];
 
-    for branch in top_dirs {
-        let sem = sem.clone();
+    for _ in 0..MAX_WORKERS {
+        let queue = queue.clone();
+        let all_files = all_files.clone();
+        let busy = busy.clone();
         let log = on_log.clone();
         let host = host.to_string();
         let user = user.to_string();
         let pass = pass.to_string();
 
-        let handle = tokio::spawn(async move {
-            let _permit = sem.acquire().await.ok();
-            log(format!("📂 Crawling branch: {branch}"));
+        handles.push(tokio::spawn(async move {
+            // Each worker opens and reuses its own FTP connection.
             let mut ftp = match connect(&host, port, &user, &pass).await {
                 Ok(f) => f,
                 Err(e) => {
-                    log(format!("⚠ Could not open connection for {branch}: {e}"));
-                    return vec![];
+                    log(format!("⚠ Worker failed to connect: {e}"));
+                    return;
                 }
             };
-            let mut errors = vec![];
-            let files = crawl_sequential(&mut ftp, &branch, &mut errors, log.clone()).await;
-            ftp.quit().await.ok();
-            for e in errors {
-                log(format!("⚠ {e}"));
+
+            loop {
+                // Pop a directory from the queue, incrementing busy *before*
+                // releasing the lock so the "done" check is race-free.
+                let dir = {
+                    let mut q = queue.lock().await;
+                    let item = q.pop_front();
+                    if item.is_some() {
+                        busy.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    item
+                };
+
+                let dir = match dir {
+                    Some(d) => d,
+                    None => {
+                        // Queue is empty. If no other worker is busy, all
+                        // directories have been processed — we're done.
+                        if busy.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+                            break;
+                        }
+                        // Another worker is still active and may push more dirs.
+                        tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+                        continue;
+                    }
+                };
+
+                // CWD + LIST this directory.
+                match list_one_dir(&mut ftp, &dir).await {
+                    Ok((sub_dirs, mut files)) => {
+                        // MDTM fallback for files whose date LIST couldn't parse.
+                        // We're still CWD'd in `dir` so filename-only MDTM works.
+                        for file in &mut files {
+                            if file.modified_at.is_none() {
+                                if let Ok(naive) = ftp.mdtm(&file.filename).await {
+                                    let dt = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
+                                    file.modified_at = Some(normalize_ftp_modified(dt).to_rfc3339());
+                                }
+                            }
+                        }
+
+                        if !files.is_empty() {
+                            log(format!("🎬 {} file(s) in {}", files.len(), dir));
+                        }
+
+                        // Push subdirectories back to the shared queue.
+                        if !sub_dirs.is_empty() {
+                            let mut q = queue.lock().await;
+                            for d in sub_dirs {
+                                q.push_back(d);
+                            }
+                        }
+
+                        all_files.lock().await.extend(files);
+                    }
+                    Err(e) => log(format!("⚠ {e}")),
+                }
+
+                busy.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
             }
-            files
-        });
-        handles.push(handle);
+
+            ftp.quit().await.ok();
+        }));
     }
 
     for handle in handles {
-        if let Ok(branch_files) = handle.await {
-            root_files.extend(branch_files);
-        }
+        handle.await.ok();
     }
 
-    if root_files.is_empty() {
+    let result = Arc::try_unwrap(all_files)
+        .map_err(|_| "Internal error: Arc still shared after crawl".to_string())?
+        .into_inner();
+
+    if result.is_empty() {
         return Err("FTP crawl returned 0 media files. Check your Root Path setting.".into());
     }
 
-    on_log(format!("Crawl complete — {} media files found", root_files.len()));
-    Ok(root_files)
+    on_log(format!("Crawl complete — {} media files found", result.len()));
+    Ok(result)
 }
 
-/// Single-connection recursive crawl used per-branch by `list_files`.
-fn crawl_sequential<'a>(
-    ftp: &'a mut AsyncFtpStream,
-    path: &'a str,
-    errors: &'a mut Vec<String>,
-    on_log: Arc<dyn Fn(String) + Send + Sync>,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<FtpFile>> + Send + 'a>> {
-    Box::pin(async move {
-        if let Err(e) = ftp.cwd(path).await {
-            errors.push(format!("CWD {path}: {e}"));
-            return vec![];
-        }
-        let raw = match ftp.list(None).await {
-            Ok(e) => e,
-            Err(e) => {
-                errors.push(format!("LIST in {path}: {e}"));
-                return vec![];
-            }
-        };
-        let (sub_dirs, mut files) = parse_entries(&raw, path);
-
-        // Fallback for FTP servers whose LIST format does not expose dates in a
-        // parseable way. Ask MDTM per file only when LIST parsing failed.
-        for file in &mut files {
-            if file.modified_at.is_some() {
-                continue;
-            }
-            if let Ok(naive) = ftp.mdtm(&file.filename).await {
-                let dt = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
-                file.modified_at = Some(normalize_ftp_modified(dt).to_rfc3339());
-            }
-        }
-
-        for f in &files {
-            on_log(format!("🎬 Found: {}", f.filename));
-        }
-        for sub in sub_dirs {
-            let mut sub_files = crawl_sequential(ftp, &sub, errors, on_log.clone()).await;
-            files.append(&mut sub_files);
-        }
-        files
-    })
+/// CWD into `path` then LIST it, returning (subdirectories, media files).
+async fn list_one_dir(
+    ftp: &mut AsyncFtpStream,
+    path: &str,
+) -> Result<(Vec<String>, Vec<FtpFile>), String> {
+    ftp.cwd(path).await.map_err(|e| format!("CWD {path}: {e}"))?;
+    let raw = ftp.list(None).await.map_err(|e| format!("LIST in {path}: {e}"))?;
+    Ok(parse_entries(&raw, path))
 }
 
 pub async fn download_file(

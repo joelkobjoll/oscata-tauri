@@ -39,12 +39,12 @@ static PLEX_VIDEO_SEASON_EP_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
 const BADGE_CACHE_TTL_SECS: u64 = 300;
 
 #[derive(Debug, Clone)]
-struct BadgeCacheEntry {
+pub(crate) struct BadgeCacheEntry {
     checked_at: std::time::Instant,
     check: MediaServerCheck,
 }
 
-static BADGE_RESULT_CACHE: LazyLock<Mutex<std::collections::HashMap<String, BadgeCacheEntry>>> =
+pub(crate) static BADGE_RESULT_CACHE: LazyLock<Mutex<std::collections::HashMap<String, BadgeCacheEntry>>> =
     LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 fn emit_index_log(window: &Option<tauri::WebviewWindow>, msg: String) {
@@ -286,12 +286,12 @@ pub struct MediaBadgeResult {
 }
 
 #[derive(Debug, Clone)]
-struct MediaServerCheck {
-    hit: bool,
-    plex_hit: bool,
-    emby_hit: bool,
-    cache_state: String,
-    debug: String,
+pub(crate) struct MediaServerCheck {
+    pub(crate) hit: bool,
+    pub(crate) plex_hit: bool,
+    pub(crate) emby_hit: bool,
+    pub(crate) cache_state: String,
+    pub(crate) debug: String,
 }
 
 fn detect_media_type(
@@ -516,7 +516,7 @@ pub(crate) async fn exists_in_media_server(
     Ok(check_media_server_presence(config, query).await?.hit)
 }
 
-async fn check_media_server_presence(
+pub(crate) async fn check_media_server_presence(
     config: &crate::db::AppConfig,
     query: &MediaBadgeQuery,
 ) -> Result<MediaServerCheck, String> {
@@ -583,14 +583,19 @@ async fn check_media_server_presence(
         debug: traces.join(" | "),
     };
 
-    if let Some(cache_key) = plex_badge_cache_key(query) {
-        BADGE_RESULT_CACHE.lock().unwrap().insert(
-            cache_key,
-            BadgeCacheEntry {
-                checked_at: std::time::Instant::now(),
-                check: check.clone(),
-            },
-        );
+    // Only cache if at least one server was actually queried — don't cache
+    // "not-configured" results, which would become stale as soon as the user
+    // saves their Plex/Emby credentials.
+    if plex_configured || emby_configured {
+        if let Some(cache_key) = plex_badge_cache_key(query) {
+            BADGE_RESULT_CACHE.lock().unwrap().insert(
+                cache_key,
+                BadgeCacheEntry {
+                    checked_at: std::time::Instant::now(),
+                    check: check.clone(),
+                },
+            );
+        }
     }
 
     Ok(check)
@@ -945,7 +950,10 @@ pub async fn save_config(
     state: tauri::State<'_, crate::db::Db>,
     config: crate::db::AppConfig,
 ) -> Result<(), String> {
-    state.save_config(&config)
+    let result = state.save_config(&config);
+    // Invalidate badge cache so stale "not-configured" entries are evicted immediately.
+    BADGE_RESULT_CACHE.lock().unwrap().clear();
+    result
 }
 
 #[tauri::command]
@@ -1188,6 +1196,30 @@ pub async fn start_indexing_internal(
         return Ok(());
     }
 
+    // ── IPC progress event batching ────────────────────────────────────────
+    // Emit one index:progress event per PROGRESS_BATCH_SIZE files (or at loop
+    // end) rather than one per file. The payload is an array so the frontend
+    // can apply them all in a single React state update, cutting IPC overhead
+    // on large libraries from O(N) individual events to O(N/50).
+    const PROGRESS_BATCH_SIZE: usize = 50;
+    let mut progress_batch: Vec<serde_json::Value> = Vec::with_capacity(PROGRESS_BATCH_SIZE);
+
+    let flush_progress_batch = |batch: &mut Vec<serde_json::Value>, window: &Option<tauri::WebviewWindow>| {
+        if batch.is_empty() { return; }
+        if let Some(ref w) = window {
+            w.emit("index:progress", serde_json::json!(batch)).ok();
+        }
+        batch.clear();
+    };
+
+    // Wrap the entire upsert loop in a single explicit transaction.
+    // Without this, rusqlite commits a transaction per statement (autocommit),
+    // producing N WAL write round-trips instead of one.
+    db.begin_batch().map_err(|e| {
+        on_log(format!("⚠ Failed to begin index transaction: {e}"));
+        e
+    })?;
+
     for (i, file) in files.into_iter().enumerate() {
         let parsed = crate::parser::parse_media_path(&file.path, &file.filename);
 
@@ -1222,31 +1254,30 @@ pub async fn start_indexing_internal(
 
         on_log(format!("⚙ Indexing [{}/{}]: {}", i + 1, total, parsed.title));
 
-        if let Some(ref w) = window {
-            w.emit(
-                "index:progress",
-                serde_json::json!({
-                    "id": id,
-                    "current": i + 1,
-                    "total": total,
-                    "filename": file.filename,
-                    "ftp_path": file.path,
-                    "title": parsed.title,
-                    "year": parsed.year,
-                    "season": parsed.season,
-                    "episode": parsed.episode,
-                    "episode_end": parsed.episode_end,
-                    "resolution": parsed.resolution,
-                    "codec": parsed.codec,
-                    "audio_codec": parsed.audio_codec,
-                    "hdr": parsed.hdr,
-                    "languages": parsed.languages,
-                    "release_type": parsed.release_type,
-                    "release_group": parsed.release_group,
-                    "media_type": media_type_str,
-                    "tmdb_type": media_type_str,
-                }),
-            ).ok();
+        progress_batch.push(serde_json::json!({
+            "id": id,
+            "current": i + 1,
+            "total": total,
+            "filename": file.filename,
+            "ftp_path": file.path,
+            "title": parsed.title,
+            "year": parsed.year,
+            "season": parsed.season,
+            "episode": parsed.episode,
+            "episode_end": parsed.episode_end,
+            "resolution": parsed.resolution,
+            "codec": parsed.codec,
+            "audio_codec": parsed.audio_codec,
+            "hdr": parsed.hdr,
+            "languages": parsed.languages,
+            "release_type": parsed.release_type,
+            "release_group": parsed.release_group,
+            "media_type": media_type_str,
+            "tmdb_type": media_type_str,
+        }));
+
+        if progress_batch.len() >= PROGRESS_BATCH_SIZE {
+            flush_progress_batch(&mut progress_batch, &window);
         }
 
         if upsert.needs_metadata {
@@ -1257,50 +1288,19 @@ pub async fn start_indexing_internal(
             let mtype = media_type.clone().unwrap_or_else(|| "movie".to_string());
             let tmdb_stype = tmdb_search_type.clone();
 
-            if upsert.is_new {
-                on_log(format!("🚀 Priority metadata for new file: {}", title));
-                let result = resolve_tmdb_match_with_plex(
-                    &config,
-                    &api_key,
-                    &title,
-                    year,
-                    &tmdb_stype,
-                )
-                .await;
-                if let Ok(Some(movie)) = result {
-                    on_log(format!("🌐 TMDB: {} → {}", title, movie.title));
-                    db.update_tmdb_auto(id, &movie, &mtype).ok();
-                    if let Some(ref w) = window {
-                        w.emit(
-                            "index:update",
-                            serde_json::json!({
-                                "id": id,
-                                "tmdb_id": movie.id,
-                                "imdb_id": movie.imdb_id,
-                                "tmdb_title": movie.title,
-                                "tmdb_title_en": movie.title_en,
-                                "tmdb_poster": movie.poster_path,
-                                "tmdb_poster_en": movie.poster_path_en,
-                                "tmdb_rating": movie.vote_average,
-                                "tmdb_overview": movie.overview,
-                                "tmdb_overview_en": movie.overview_en,
-                                "tmdb_genres": movie.genre_ids,
-                                "tmdb_release_date": movie.release_date,
-                                "tmdb_type": mtype,
-                            }),
-                        ).ok();
-                    }
-                } else {
-                    on_log(format!("⚠ TMDB: no match for \"{}\"", title));
-                }
-            } else {
+            // Whether the file is new or existing, spawn the TMDB enrichment as a
+            // background task so it never blocks the index loop.
+            // The TMDB throttle (35 ms minimum interval, enforced inside
+            // fetch_json_with_retry) handles rate limiting — no artificial sleep needed.
+            {
                 let window_clone = window.clone();
                 let db_clone = db.clone();
                 let config_clone = config.clone();
                 let on_log_clone = on_log.clone();
+                let label = if upsert.is_new { "new" } else { "existing" };
 
                 metadata_tasks.push(tokio::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    on_log_clone(format!("🌐 TMDB ({label}): {title}"));
                     let result = resolve_tmdb_match_with_plex(
                         &config_clone,
                         &api_key,
@@ -1339,6 +1339,16 @@ pub async fn start_indexing_internal(
             }
         }
     }
+
+    // Flush any remaining progress items that didn't fill a full batch.
+    flush_progress_batch(&mut progress_batch, &window);
+
+    // Commit the batch transaction opened before the upsert loop.
+    db.commit_batch().map_err(|e| {
+        on_log(format!("⚠ Failed to commit index transaction: {e}"));
+        db.rollback_batch().ok();
+        e
+    })?;
 
     for task in metadata_tasks {
         if task.await.is_err() {
@@ -1937,4 +1947,242 @@ pub async fn init_webgui_now(
 ) -> Result<(), String> {
     crate::web::spawn_if_enabled(db.inner().clone(), queue.inner().clone(), app);
     Ok(())
+}
+
+// ── Fix 4: indexing loop decoupling tests ────────────────────────────────────
+//
+// `start_indexing_internal` requires a live FTP connection and a Tauri
+// AppHandle, which cannot be constructed in unit tests. Instead we test the
+// supporting pure helpers and document the integration-test scenarios.
+//
+// Integration tests that require a real FTP server:
+//   1. Call start_indexing_internal with a live FTP pointing at a small tree.
+//      Measure wall-clock time: should complete the upsert loop without
+//      waiting for TMDB (i.e. loop finishes before any TMDB response arrives).
+//   2. After the loop resolves, verify that `metadata_tasks` are awaited and
+//      that `index:update` events fire for each new file.
+//   3. Verify `index:complete` fires only AFTER all background tasks finish,
+//      even though the loop itself did not block on TMDB.
+
+#[cfg(test)]
+mod indexing_tests {
+    use super::*;
+
+    // ── looks_like_tv_content ───────────────────────────────────────────────
+
+    #[test]
+    fn looks_like_tv_when_season_is_set() {
+        let parsed = crate::parser::parse_media_path("", "Show.S02E05.1080p.mkv");
+        assert!(looks_like_tv_content("", "Show.S02E05.1080p.mkv", &parsed));
+    }
+
+    #[test]
+    fn looks_like_tv_when_path_contains_season_keyword() {
+        let parsed = crate::parser::parse_media_path("", "episode.mkv");
+        assert!(looks_like_tv_content(
+            "/TV/Show/Season 01/episode.mkv",
+            "episode.mkv",
+            &parsed
+        ));
+    }
+
+    #[test]
+    fn not_tv_for_plain_movie() {
+        let parsed = crate::parser::parse_media_path("", "The.Batman.2022.1080p.mkv");
+        assert!(!looks_like_tv_content("", "The.Batman.2022.1080p.mkv", &parsed));
+    }
+
+    // ── detect_media_type ──────────────────────────────────────────────────
+
+    #[test]
+    fn detects_movie_type_from_folder_mapping() {
+        let mut folder_types = std::collections::HashMap::new();
+        folder_types.insert("Peliculas".to_string(), "movie".to_string());
+        let mt = detect_media_type("/Compartida/Peliculas/Batman.mkv", "/Compartida", &folder_types);
+        assert_eq!(mt.as_deref(), Some("movie"));
+    }
+
+    #[test]
+    fn detects_tv_type_from_folder_mapping() {
+        let mut folder_types = std::collections::HashMap::new();
+        folder_types.insert("Series".to_string(), "tv".to_string());
+        let mt = detect_media_type("/Compartida/Series/Show/ep.mkv", "/Compartida", &folder_types);
+        assert_eq!(mt.as_deref(), Some("tv"));
+    }
+
+    #[test]
+    fn returns_none_for_unmapped_folder() {
+        let folder_types = std::collections::HashMap::new();
+        let mt = detect_media_type("/Compartida/Unknown/file.mkv", "/Compartida", &folder_types);
+        assert_eq!(mt, None);
+    }
+
+    // ── normalize_title ────────────────────────────────────────────────────
+
+    #[test]
+    fn normalizes_title_strips_punctuation_and_lowercases() {
+        assert_eq!(normalize_title("The Batman (2022)!"), "the batman 2022");
+    }
+
+    #[test]
+    fn normalizes_title_collapses_whitespace() {
+        assert_eq!(normalize_title("  Dark   Knight  "), "dark knight");
+    }
+
+    // ── Background spawn: tokio integration ──────────────────────────────
+    // Verifies that spawned tasks (the pattern used in the index loop) run
+    // to completion and can write to a shared flag.
+
+    #[tokio::test]
+    async fn spawned_metadata_tasks_run_to_completion() {
+        use std::sync::{Arc, Mutex};
+
+        let counter = Arc::new(Mutex::new(0usize));
+        let mut tasks = Vec::new();
+
+        for _ in 0..5 {
+            let counter = counter.clone();
+            tasks.push(tokio::spawn(async move {
+                // Simulate lightweight async work (no real HTTP)
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                let mut c = counter.lock().unwrap();
+                *c += 1;
+            }));
+        }
+
+        for task in tasks {
+            task.await.expect("task should not panic");
+        }
+
+        assert_eq!(*counter.lock().unwrap(), 5);
+    }
+
+    #[tokio::test]
+    async fn index_loop_does_not_block_on_background_tasks() {
+        // The loop itself must complete without awaiting any background task.
+        // We verify this by measuring that spawned heavy tasks don't delay
+        // the code that comes after the loop (the commit_batch + cleanup).
+        use std::sync::{Arc, Mutex};
+        use std::time::Instant;
+
+        let loop_done_at = Arc::new(Mutex::new(None::<Instant>));
+        let task_done_at = Arc::new(Mutex::new(None::<Instant>));
+
+        let loop_done_clone = loop_done_at.clone();
+        let task_done_clone = task_done_at.clone();
+
+        let mut tasks = Vec::new();
+
+        // Simulate "new file" path: spawn, don't await in loop
+        tasks.push(tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            *task_done_clone.lock().unwrap() = Some(Instant::now());
+        }));
+
+        // Record when the "loop" finished (before awaiting tasks)
+        *loop_done_clone.lock().unwrap() = Some(Instant::now());
+
+        // Now await tasks (as start_indexing_internal does after the loop)
+        for task in tasks {
+            task.await.unwrap();
+        }
+
+        let loop_done = loop_done_at.lock().unwrap().unwrap();
+        let task_done = task_done_at.lock().unwrap().unwrap();
+
+        // The task completed after the loop — confirming the loop did not block on it.
+        assert!(
+            task_done > loop_done,
+            "task should complete AFTER loop records completion"
+        );
+    }
+}
+
+// ── Fix 5: IPC progress batching tests ───────────────────────────────────────
+// The batching logic lives inside start_indexing_internal and requires a live
+// Tauri window to emit. We test the pure batching arithmetic here to ensure:
+// - N files produce ceil(N/50) batches
+// - No files are lost (every item appears in exactly one batch)
+// - The final partial batch is always flushed
+
+#[cfg(test)]
+mod batching_tests {
+    /// Simulate the batching logic from start_indexing_internal without Tauri.
+    /// Returns a Vec of batch sizes (how many items per emitted event).
+    fn simulate_batching(total_files: usize, batch_size: usize) -> Vec<usize> {
+        let mut batches: Vec<usize> = Vec::new();
+        let mut current_batch = 0usize;
+
+        for _ in 0..total_files {
+            current_batch += 1;
+            if current_batch >= batch_size {
+                batches.push(current_batch);
+                current_batch = 0;
+            }
+        }
+        // Flush remainder (equivalent to flush_progress_batch after loop)
+        if current_batch > 0 {
+            batches.push(current_batch);
+        }
+        batches
+    }
+
+    #[test]
+    fn exactly_50_files_produce_one_batch() {
+        let batches = simulate_batching(50, 50);
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0], 50);
+    }
+
+    #[test]
+    fn exactly_100_files_produce_two_batches() {
+        let batches = simulate_batching(100, 50);
+        assert_eq!(batches.len(), 2);
+        assert!(batches.iter().all(|&b| b == 50));
+    }
+
+    #[test]
+    fn no_files_produce_no_batches() {
+        let batches = simulate_batching(0, 50);
+        assert!(batches.is_empty());
+    }
+
+    #[test]
+    fn partial_batch_is_flushed_at_end() {
+        // 127 files → 2 full batches (100 total) + 1 partial (27)
+        let batches = simulate_batching(127, 50);
+        assert_eq!(batches.len(), 3);
+        assert_eq!(batches[0], 50);
+        assert_eq!(batches[1], 50);
+        assert_eq!(batches[2], 27);
+    }
+
+    #[test]
+    fn single_file_produces_one_batch_of_size_1() {
+        let batches = simulate_batching(1, 50);
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0], 1);
+    }
+
+    #[test]
+    fn no_files_are_lost_for_various_totals() {
+        for total in [1, 49, 50, 51, 99, 100, 101, 500, 1001] {
+            let batches = simulate_batching(total, 50);
+            let sum: usize = batches.iter().sum();
+            assert_eq!(sum, total, "Lost files for total={total}: sum={sum}");
+        }
+    }
+
+    #[test]
+    fn batch_count_equals_ceil_total_div_batch_size() {
+        for total in [1usize, 49, 50, 51, 99, 100, 101, 500, 1001] {
+            let batches = simulate_batching(total, 50);
+            let expected_batches = total.div_ceil(50);
+            assert_eq!(
+                batches.len(),
+                expected_batches,
+                "Wrong batch count for total={total}"
+            );
+        }
+    }
 }

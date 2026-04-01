@@ -286,7 +286,7 @@ pub async fn check_media_badges_handler(
 ) -> ApiResult<Json<Vec<crate::commands::MediaBadgeResult>>> {
     let config = state.db.load_config().map_err(ApiError::from)?;
     let mut results = Vec::with_capacity(body.items.len());
-    let mut media_presence_cache: std::collections::HashMap<String, bool> =
+    let mut media_presence_cache: std::collections::HashMap<String, crate::commands::MediaServerCheck> =
         std::collections::HashMap::new();
 
     for item in body.items {
@@ -299,28 +299,40 @@ pub async fn check_media_badges_handler(
         .map(|path| path.exists())
         .unwrap_or(false);
 
-        let (in_emby, debug) = if let Some(cache_key) = crate::commands::plex_badge_cache_key(&item) {
-            if let Some(hit) = media_presence_cache.get(&cache_key).copied() {
-                (hit, Some(format!("cache-hit:{cache_key}")))
+        let check = if let Some(cache_key) = crate::commands::plex_badge_cache_key(&item) {
+            if let Some(cached) = media_presence_cache.get(&cache_key).cloned() {
+                cached
             } else {
-                let hit = crate::commands::exists_in_media_server(&config, &item)
+                let result = crate::commands::check_media_server_presence(&config, &item)
                     .await
-                    .unwrap_or(false);
-                media_presence_cache.insert(cache_key, hit);
-                (hit, None)
+                    .unwrap_or_else(|_| crate::commands::MediaServerCheck {
+                        hit: false,
+                        plex_hit: false,
+                        emby_hit: false,
+                        cache_state: "error".to_string(),
+                        debug: "media-server-check:error".to_string(),
+                    });
+                media_presence_cache.insert(cache_key, result.clone());
+                result
             }
         } else {
-            (false, Some("no-cache-key".to_string()))
+            crate::commands::MediaServerCheck {
+                hit: false,
+                plex_hit: false,
+                emby_hit: false,
+                cache_state: "no-cache-key".to_string(),
+                debug: "no-cache-key".to_string(),
+            }
         };
 
         results.push(crate::commands::MediaBadgeResult {
             id: item.id,
             downloaded,
-            in_emby,
-            plex_in_library: None,
-            emby_in_library: None,
-            cache: None,
-            debug,
+            in_emby: check.hit,
+            plex_in_library: Some(check.plex_hit),
+            emby_in_library: Some(check.emby_hit),
+            cache: Some(check.cache_state),
+            debug: Some(check.debug),
         });
     }
 
@@ -536,6 +548,8 @@ pub async fn put_settings(
     Json(config): Json<crate::db::AppConfig>,
 ) -> ApiResult<Json<Value>> {
     state.db.save_config(&config).map_err(ApiError::from)?;
+    // Invalidate badge cache so stale "not-configured" entries are evicted on config changes.
+    crate::commands::BADGE_RESULT_CACHE.lock().unwrap().clear();
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
