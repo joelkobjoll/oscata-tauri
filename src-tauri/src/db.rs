@@ -515,7 +515,7 @@ impl Db {
         &self,
         seed_path: &std::path::Path,
         app_version: &str,
-        ftp_root: &str,
+        _ftp_root: &str,
     ) -> Result<usize, String> {
         if !seed_path.exists() {
             return Ok(0);
@@ -581,7 +581,7 @@ impl Db {
         &self,
         seed_path: &std::path::Path,
         app_version: &str,
-        ftp_root: &str,
+        _ftp_root: &str,
     ) -> Result<(usize, usize), String> {
         if !seed_path.exists() {
             return Ok((0, 0));
@@ -1233,16 +1233,6 @@ impl Db {
     pub fn revoke_web_session(&self, token: &str) -> Result<(), String> {
         let conn = self.0.lock().unwrap();
         conn.execute("DELETE FROM web_sessions WHERE id=?1", params![token])
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    pub fn cleanup_expired_sessions(&self) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
-        let now = chrono::Utc::now().to_rfc3339();
-        conn.execute("DELETE FROM web_sessions WHERE expires_at <= ?1", params![now])
-            .map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM web_otp_challenges WHERE expires_at <= ?1", params![now])
             .map_err(|e| e.to_string())?;
         Ok(())
     }

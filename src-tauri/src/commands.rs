@@ -509,13 +509,6 @@ async fn exists_in_emby(
     Ok(false)
 }
 
-pub(crate) async fn exists_in_media_server(
-    config: &crate::db::AppConfig,
-    query: &MediaBadgeQuery,
-) -> Result<bool, String> {
-    Ok(check_media_server_presence(config, query).await?.hit)
-}
-
 pub(crate) async fn check_media_server_presence(
     config: &crate::db::AppConfig,
     query: &MediaBadgeQuery,

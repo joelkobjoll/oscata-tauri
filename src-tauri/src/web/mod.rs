@@ -3,14 +3,20 @@ pub mod dto;
 pub mod handlers;
 
 use axum::{
-    body::Body,
-    extract::Request,
-    response::{Html, IntoResponse, Response},
     middleware,
     routing::{delete, get, post, put},
     Router,
 };
+#[cfg(debug_assertions)]
+use axum::{
+    body::Body,
+    extract::Request,
+    response::{IntoResponse, Response},
+};
+#[cfg(not(debug_assertions))]
+use axum::response::Html;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+#[cfg(not(debug_assertions))]
 use tauri::Manager;
 #[cfg(not(debug_assertions))]
 use tower_http::services::{ServeDir, ServeFile};
@@ -180,6 +186,7 @@ async fn vite_proxy(req: Request) -> Response {
     })
 }
 
+#[cfg(not(debug_assertions))]
 async fn dev_root_page() -> Html<&'static str> {
     Html(
     r#"<!doctype html>
@@ -223,6 +230,7 @@ async fn dev_root_page() -> Html<&'static str> {
     )
 }
 
+#[cfg(not(debug_assertions))]
 fn find_dist_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     // 1. Bundled resource paths (production install)
     let resource_candidates = [

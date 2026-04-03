@@ -136,7 +136,4 @@ pub struct ApplyMatchRequest {
 
 // ── Media actions ────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-pub struct ClearShowMetadataRequest {
-    pub tmdb_id: i64,
-}
+

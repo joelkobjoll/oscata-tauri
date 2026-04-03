@@ -96,9 +96,6 @@ impl ApiError {
     pub fn unauthorized() -> Self {
         Self { status: StatusCode::UNAUTHORIZED, message: "Unauthorized".into() }
     }
-    pub fn forbidden() -> Self {
-        Self { status: StatusCode::FORBIDDEN, message: "Forbidden".into() }
-    }
     pub fn not_found(msg: impl Into<String>) -> Self {
         Self { status: StatusCode::NOT_FOUND, message: msg.into() }
     }

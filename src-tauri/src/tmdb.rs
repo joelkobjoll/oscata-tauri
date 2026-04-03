@@ -358,14 +358,6 @@ pub async fn smart_search(
     })
 }
 
-pub async fn search_movie(
-    api_key: &str,
-    title: &str,
-    year: Option<u16>,
-) -> Result<Option<TmdbMovie>, String> {
-    Ok(search_endpoint_results(api_key, title, year, "movie").await?.into_iter().next())
-}
-
 pub async fn search_tmdb_multi(api_key: &str, query: &str, media_type: &str) -> Result<Vec<TmdbMovie>, String> {
     let endpoint = if media_type == "tv" { "tv" } else { "movie" };
     let mut results = search_endpoint_results(api_key, query, None, endpoint).await?;
