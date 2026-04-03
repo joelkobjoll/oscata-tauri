@@ -1,5 +1,13 @@
 # Novedades de Oscata
 
+## Versión 0.5.3 — 4 de abril de 2026
+
+### 🔄 Metadatos de TMDB siempre visibles tras el indexado
+
+Se corrige un problema de sincronización que podía hacer que los metadatos de TMDB (póster, valoración, géneros…) desaparecieran justo al terminar el indexado. Cuando Oscata cargaba la lista actualizada desde la base de datos, en ocasiones llegaba antes de que los datos de TMDB se hubieran escrito en disco, borrando lo que ya había en pantalla. Ahora la lista se fusiona con los datos en memoria, de modo que la información enriquecida permanece visible desde el primer momento.
+
+---
+
 ## Versión 0.5.2 — 3 de abril de 2026
 
 ### 🎬 Filtro por códec de vídeo
