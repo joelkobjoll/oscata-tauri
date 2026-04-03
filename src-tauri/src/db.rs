@@ -43,11 +43,20 @@ pub struct AppConfig {
     pub auto_check_updates: bool,
     pub updater_endpoint: String,
     pub updater_pubkey: String,
+    #[serde(default)]
     pub movie_destination: String,       // "" = use download_folder/Movies
+    #[serde(default)]
     pub tv_destination: String,          // "" = use download_folder/TV Shows
+    #[serde(default)]
     pub documentary_destination: String, // "" = use download_folder/Documentaries
+    #[serde(default = "default_alphabetical_subfolders")]
     pub alphabetical_subfolders: bool,   // default true
+    #[serde(default)]
     pub genre_destinations: String,      // JSON: GenreDestRule[]
+}
+
+fn default_alphabetical_subfolders() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
