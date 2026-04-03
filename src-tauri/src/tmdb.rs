@@ -325,35 +325,41 @@ async fn search_endpoint_results(
     Ok(results)
 }
 
+/// Returns the best match alongside the TMDB endpoint type ("tv" or "movie")
+/// that actually found it. Callers must use the returned endpoint type when
+/// calling `fetch_movie_by_id` to avoid fetching the wrong item (e.g. a TV
+/// documentary matched via the tv endpoint must also be fetched via tv).
 pub async fn smart_search(
     api_key: &str,
     title: &str,
     year: Option<u16>,
     preferred_type: &str,
-) -> Result<Option<TmdbMovie>, String> {
-    let primary = search_endpoint_results(api_key, title, year, preferred_type).await?;
+) -> Result<Option<(TmdbMovie, &'static str)>, String> {
+    let primary_endpoint: &'static str = if preferred_type == "tv" { "tv" } else { "movie" };
+    let other_endpoint: &'static str = if preferred_type == "tv" { "movie" } else { "tv" };
+
+    let primary = search_endpoint_results(api_key, title, year, primary_endpoint).await?;
     let primary_best = primary.first().cloned();
 
     if let Some(ref movie) = primary_best {
         if score_result(movie, title, year) >= 50.0 {
-            return Ok(primary_best);
+            return Ok(primary_best.map(|m| (m, primary_endpoint)));
         }
     }
 
-    let other = if preferred_type == "tv" { "movie" } else { "tv" };
-    let secondary = search_endpoint_results(api_key, title, year, other).await?;
+    let secondary = search_endpoint_results(api_key, title, year, other_endpoint).await?;
     let secondary_best = secondary.first().cloned();
 
     Ok(match (primary_best, secondary_best) {
         (Some(p), Some(s)) => {
             if score_result(&s, title, year) > score_result(&p, title, year) {
-                Some(s)
+                Some((s, other_endpoint))
             } else {
-                Some(p)
+                Some((p, primary_endpoint))
             }
         }
-        (Some(p), None) => Some(p),
-        (None, Some(s)) => Some(s),
+        (Some(p), None) => Some((p, primary_endpoint)),
+        (None, Some(s)) => Some((s, other_endpoint)),
         (None, None) => None,
     })
 }

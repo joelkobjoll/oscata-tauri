@@ -16,6 +16,7 @@
     "docker:vnc:stop": "bash ./scripts/docker-vnc.sh stop",
     "docker:vnc:logs": "bash ./scripts/docker-vnc.sh logs",
     "tauri": "tauri",
+    "app:dev": "tauri dev",
     "seed-db": "node ./scripts/update-starter-db.mjs",
     "seed-sync": "node ./scripts/sync-local-db-from-seed.mjs",
     "release": "node ./scripts/publish.mjs",

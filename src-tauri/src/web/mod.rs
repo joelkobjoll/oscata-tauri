@@ -51,6 +51,11 @@ pub fn spawn_if_enabled(db: crate::db::Db, queue: crate::downloads::SharedQueue,
         return;
     }
 
+    // In debug builds always bind to localhost so dev machines don't try to
+    // bind to a production IP set in webgui_host.
+    #[cfg(debug_assertions)]
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), cfg.port);
+    #[cfg(not(debug_assertions))]
     let addr = SocketAddr::new(parse_bind_ip(&cfg.host), cfg.port);
     let state = AppState { db, queue, app_handle };
 
