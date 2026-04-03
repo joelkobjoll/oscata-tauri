@@ -1,5 +1,17 @@
 # Novedades de Oscata
 
+## Versión 0.5.2 — 3 de abril de 2026
+
+### 🎬 Filtro por códec de vídeo
+
+Los filtros de la biblioteca ahora incluyen una sección de códec. Puedes quedarte solo con los títulos en HEVC/H.265, AVC/H.264, AV1 o VP9. Oscata normaliza los valores que venían del parser para que sean consistentes, y los existentes en la base de datos se actualizan automáticamente al arrancar.
+
+### 📦 Tamaño de archivo visible
+
+El peso de cada archivo aparece ahora en la tarjeta, en el panel de detalle y en la vista de lista. Así puedes ver de un vistazo cuánto ocupa cada título antes de descargarlo.
+
+---
+
 ## Versión 0.5.1 — 3 de abril de 2026
 
 ### 🐛 Corrección: el asistente de configuración fallaba al guardar
