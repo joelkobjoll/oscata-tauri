@@ -11,6 +11,7 @@ import {
   getLocalizedTitle,
 } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
+import { GENRE_MAP } from "../utils/genres";
 
 function getGroupFolder(ftpPath: string): string {
   return ftpPath.split("/").slice(-2, -1)[0] ?? "";
@@ -815,6 +816,15 @@ export default function TVShowPanel({
   };
   const showTitle = getLocalizedTitle(show, language);
   const showOverview = getLocalizedOverview(show, language);
+  const showGenres = (() => {
+    const raw = show.tmdb_genres;
+    if (!raw) return [];
+    const ids: number[] = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return ids
+      .map((id) => GENRE_MAP[id])
+      .filter(Boolean)
+      .map((key) => t(language, key as never));
+  })();
   const searchTitle =
     show.tmdb_title_en ?? show.tmdb_title ?? show.title ?? showTitle;
   const searchQuery = [
@@ -1141,6 +1151,13 @@ export default function TVShowPanel({
                   )}
                 {show.media_type &&
                   miniBadge("var(--color-surface-2)", show.media_type)}
+                {showGenres.map((g) =>
+                  miniBadge(
+                    "color-mix(in srgb, var(--color-teal) 14%, transparent)",
+                    g,
+                    "var(--color-teal)",
+                  ),
+                )}
                 {showBadge?.plexInLibrary && (
                   <span
                     title="In Plex"

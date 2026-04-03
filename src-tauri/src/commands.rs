@@ -1190,6 +1190,7 @@ pub async fn start_indexing_internal(
     let current_paths: Vec<String> = files.iter().map(|file| file.path.clone()).collect();
     let mut metadata_tasks = Vec::new();
     let mut metadata_queued = 0usize;
+    let mut new_items = 0usize;
 
     if total == 0 {
         if let Some(ref w) = window { w.emit("index:error", serde_json::json!({ "message": "FTP crawl returned 0 media files. Check your Root Path setting." })).ok(); }
@@ -1280,6 +1281,10 @@ pub async fn start_indexing_internal(
             flush_progress_batch(&mut progress_batch, &window);
         }
 
+        if upsert.is_new {
+            new_items += 1;
+        }
+
         if upsert.needs_metadata {
             metadata_queued += 1;
             let api_key = config.tmdb_api_key.clone();
@@ -1366,8 +1371,9 @@ pub async fn start_indexing_internal(
     }
 
     on_log(format!(
-        "✓ Indexing complete — {} files scanned, {} items sent to TMDB, {} stale item{} removed",
+        "✓ Indexing complete — {} files scanned, {} new, {} sent to TMDB, {} stale item{} removed",
         total,
+        new_items,
         metadata_queued,
         removed_stale,
         if removed_stale == 1 { "" } else { "s" }
@@ -1378,6 +1384,7 @@ pub async fn start_indexing_internal(
             "index:complete",
             serde_json::json!({
                 "total": total,
+                "new_items": new_items,
                 "metadata_queued": metadata_queued,
                 "removed": removed_stale,
             }),
@@ -1394,33 +1401,91 @@ pub fn compute_local_path(
     ftp_path: &str,
     filename: &str,
     db_media_type: Option<&str>,
+    tmdb_genres: Option<&str>,
 ) -> Result<std::path::PathBuf, String> {
     let base = std::path::PathBuf::from(&config.download_folder);
     if base.as_os_str().is_empty() {
         return Err("Download folder not configured. Open Settings to set it.".into());
     }
     let parsed = crate::parser::parse_media_path(ftp_path, filename);
+
+    // Parse genre IDs from the stored JSON (e.g. "[28,16,878]")
+    let item_genre_ids: Vec<i64> = tmdb_genres
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .unwrap_or_default();
+
+    // Parse genre routing rules and check for a match
+    #[derive(serde::Deserialize)]
+    struct GenreDestRule {
+        genre_ids: Vec<i64>,
+        destination: String,
+        media_types: Vec<String>, // "movie", "tv", "documentary", "all"
+    }
+    let rules: Vec<GenreDestRule> = serde_json::from_str(&config.genre_destinations)
+        .unwrap_or_default();
+
+    let effective_media_type = db_media_type.unwrap_or("");
+    let genre_base: Option<std::path::PathBuf> = rules.into_iter().find(|rule| {
+        if rule.destination.is_empty() { return false; }
+        let type_match = rule.media_types.iter().any(|t| t == "all" || t == effective_media_type);
+        let genre_match = rule.genre_ids.iter().any(|id| item_genre_ids.contains(id));
+        type_match && genre_match
+    }).map(|rule| std::path::PathBuf::from(&rule.destination));
+
+    let use_alpha = config.alphabetical_subfolders;
+
+    let alpha_letter = |title: &str| -> String {
+        title.chars().find(|c| c.is_alphanumeric())
+            .map(|c| if c.is_ascii_digit() { "0-9".to_string() } else { c.to_uppercase().to_string() })
+            .unwrap_or_else(|| "#".to_string())
+    };
+
     let local_path = if let Some(season) = parsed.season {
+        // TV series (has season) → no alphabetical subfolder
         let season_dir = format!("Season {:02}", season);
         if db_media_type == Some("documentary") {
-            base.join("Documentaries").join(&parsed.title).join(season_dir).join(filename)
+            let dest = if !config.documentary_destination.is_empty() {
+                std::path::PathBuf::from(&config.documentary_destination)
+            } else {
+                base.join("Documentaries")
+            };
+            genre_base.unwrap_or(dest).join(&parsed.title).join(season_dir).join(filename)
         } else {
-            base.join("TV Shows").join(&parsed.title).join(season_dir).join(filename)
+            let dest = if !config.tv_destination.is_empty() {
+                std::path::PathBuf::from(&config.tv_destination)
+            } else {
+                base.join("TV Shows")
+            };
+            genre_base.unwrap_or(dest).join(&parsed.title).join(season_dir).join(filename)
         }
     } else if db_media_type == Some("documentary") {
         let title = &parsed.title;
-        let first = title.chars().find(|c| c.is_alphanumeric())
-            .map(|c| if c.is_ascii_digit() { "0-9".to_string() } else { c.to_uppercase().to_string() })
-            .unwrap_or_else(|| "#".to_string());
         let folder_name = if let Some(y) = parsed.year { format!("{} ({})", title, y) } else { title.clone() };
-        base.join("Documentaries").join(first).join(folder_name).join(filename)
+        let dest = if !config.documentary_destination.is_empty() {
+            std::path::PathBuf::from(&config.documentary_destination)
+        } else {
+            base.join("Documentaries")
+        };
+        let root = genre_base.unwrap_or(dest);
+        if use_alpha {
+            root.join(alpha_letter(title)).join(folder_name).join(filename)
+        } else {
+            root.join(folder_name).join(filename)
+        }
     } else {
         let title = &parsed.title;
-        let first = title.chars().find(|c| c.is_alphanumeric())
-            .map(|c| if c.is_ascii_digit() { "0-9".to_string() } else { c.to_uppercase().to_string() })
-            .unwrap_or_else(|| "#".to_string());
         let folder_name = if let Some(y) = parsed.year { format!("{} ({})", title, y) } else { title.clone() };
-        base.join("Movies").join(first).join(folder_name).join(filename)
+        let dest = if !config.movie_destination.is_empty() {
+            std::path::PathBuf::from(&config.movie_destination)
+        } else {
+            base.join("Movies")
+        };
+        let root = genre_base.unwrap_or(dest);
+        if use_alpha {
+            root.join(alpha_letter(title)).join(folder_name).join(filename)
+        } else {
+            root.join(folder_name).join(filename)
+        }
     };
     // suppress unused variable warning for ftp_path
     let _ = ftp_path;
@@ -1439,7 +1504,8 @@ pub async fn queue_download(
     let db = db_state.inner().clone();
     let config = db.load_config()?;
     let db_media_type: Option<String> = db_state.get_media_type_by_path(&ftp_path).ok().flatten();
-    let local_path = compute_local_path(&config, &ftp_path, &filename, db_media_type.as_deref())?;
+    let tmdb_genres: Option<String> = db_state.get_tmdb_genres_by_path(&ftp_path).ok().flatten();
+    let local_path = compute_local_path(&config, &ftp_path, &filename, db_media_type.as_deref(), tmdb_genres.as_deref())?;
 
     // Deduplicate: if this ftp_path is already Queued or Downloading, return the existing id.
     let existing_id = {
@@ -1763,7 +1829,7 @@ pub async fn check_media_badges(
         std::collections::HashMap::new();
 
     for item in items {
-        let downloaded = compute_local_path(&config, &item.ftp_path, &item.filename, item.media_type.as_deref())
+        let downloaded = compute_local_path(&config, &item.ftp_path, &item.filename, item.media_type.as_deref(), None)
             .map(|path| path.exists())
             .unwrap_or(false);
 

@@ -2,6 +2,7 @@ import type { MediaItem } from "../hooks/useIndexing";
 import AppIcon from "./AppIcon";
 import type { AppLanguage } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
+import { GENRE_LIST } from "../utils/genres";
 import {
   type Filters,
   normalizeResolution,
@@ -40,6 +41,22 @@ function countBy(items: MediaItem[], pick: (item: MediaItem) => string) {
     const value = pick(item);
     if (!value) continue;
     counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function countGenres(items: MediaItem[]): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const item of items) {
+    const gs = item.tmdb_genres;
+    const genres: number[] = gs
+      ? typeof gs === "string"
+        ? (JSON.parse(gs) as number[])
+        : gs
+      : [];
+    for (const id of genres) {
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
   }
   return counts;
 }
@@ -179,6 +196,7 @@ export default function FilterBar({
     filters.releaseType,
     filters.resolution,
     filters.hdr,
+    filters.genre,
   ].filter(Boolean).length;
 
   const releaseTypeFilterOptions = releaseTypeOptions.filter(
@@ -197,6 +215,16 @@ export default function FilterBar({
   const showResolutionSection =
     resolutionFilterOptions.length > 1 || !!filters.resolution;
   const showHdrSection = hdrFilterOptions.length > 1 || !!filters.hdr;
+
+  const genreCounts = countGenres(items);
+  const genreOptions = [...GENRE_LIST]
+    .filter((g) => genreCounts.has(g.id) || filters.genre === String(g.id))
+    .sort((a, b) =>
+      t(language, a.i18nKey as never).localeCompare(
+        t(language, b.i18nKey as never),
+      ),
+    );
+  const showGenreSection = genreOptions.length > 1 || !!filters.genre;
 
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
 
@@ -252,6 +280,7 @@ export default function FilterBar({
               releaseType: "",
               resolution: "",
               hdr: "",
+              genre: "",
             })
           }
           disabled={activeFilterCount === 0}
@@ -398,6 +427,32 @@ export default function FilterBar({
                 active={filters.hdr === option.value}
                 onClick={() =>
                   set({ hdr: filters.hdr === option.value ? "" : option.value })
+                }
+              />
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {showGenreSection && (
+        <Section label={t(language, "filter.genre")}>
+          <div style={{ display: "grid", gap: 8 }}>
+            <Chip
+              label={t(language, "filter.allGenres")}
+              count={items.length}
+              active={!filters.genre}
+              onClick={() => set({ genre: "" })}
+            />
+            {genreOptions.map((g) => (
+              <Chip
+                key={g.id}
+                label={t(language, g.i18nKey as never)}
+                count={genreCounts.get(g.id) ?? 0}
+                active={filters.genre === String(g.id)}
+                onClick={() =>
+                  set({
+                    genre: filters.genre === String(g.id) ? "" : String(g.id),
+                  })
                 }
               />
             ))}

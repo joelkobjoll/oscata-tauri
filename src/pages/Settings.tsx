@@ -8,6 +8,7 @@ import {
 } from "../utils/folderTypes";
 import { call, isTauri } from "../lib/transport";
 import { useTheme } from "../hooks/useTheme";
+import { GENRE_LIST } from "../utils/genres";
 
 interface Config {
   ftp_host: string;
@@ -27,6 +28,19 @@ interface Config {
   auto_check_updates: boolean;
   updater_endpoint: string;
   updater_pubkey: string;
+  movie_destination: string;
+  tv_destination: string;
+  documentary_destination: string;
+  alphabetical_subfolders: boolean;
+  genre_destinations: string; // JSON: GenreDestRule[]
+}
+
+interface GenreDestRule {
+  id: string;
+  label: string;
+  genre_ids: number[];
+  destination: string;
+  media_types: Array<"movie" | "tv" | "documentary" | "all">;
 }
 
 interface WebGuiConfig {
@@ -56,6 +70,16 @@ const inputStyle: React.CSSProperties = {
   fontSize: 14,
   outline: "none",
   boxShadow: "inset 0 1px 0 color-mix(in srgb, white 4%, transparent)",
+};
+
+const selectStyle: React.CSSProperties = {
+  ...inputStyle,
+  appearance: "none",
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238888a0' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 0.75rem center",
+  paddingRight: "2.2rem",
+  cursor: "pointer",
 };
 
 const fieldStyle: React.CSSProperties = {
@@ -252,7 +276,23 @@ export default function Settings({
   const webMode = !isTauri();
 
   useEffect(() => {
-    call<Config>("get_config").then(setForm).catch(console.error);
+    call<Config>("get_config")
+      .then((cfg) => {
+        const base = cfg.download_folder ?? "";
+        setForm({
+          ...cfg,
+          movie_destination:
+            cfg.movie_destination || (base ? `${base}/Movies` : ""),
+          tv_destination:
+            cfg.tv_destination || (base ? `${base}/TV Shows` : ""),
+          documentary_destination:
+            cfg.documentary_destination ||
+            (base ? `${base}/Documentaries` : ""),
+          alphabetical_subfolders: cfg.alphabetical_subfolders ?? true,
+          genre_destinations: cfg.genre_destinations ?? "[]",
+        });
+      })
+      .catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -276,12 +316,14 @@ export default function Settings({
     try {
       await call("save_webgui_config", { config: webGuiConfig });
       setWebGuiSaved(true);
-      setWebGuiMessage("Web interface settings saved.");
+      setWebGuiMessage(t(language, "settings.webInterfaceSaved"));
       if (webGuiSavedTimer.current) clearTimeout(webGuiSavedTimer.current);
       webGuiSavedTimer.current = setTimeout(() => setWebGuiSaved(false), 3000);
     } catch (e) {
       setWebGuiError(
-        e instanceof Error ? e.message : "Failed to save WebGUI settings",
+        e instanceof Error
+          ? e.message
+          : t(language, "settings.webInterfaceErrorSave"),
       );
       console.error("Failed to save WebGUI config:", e);
     } finally {
@@ -302,14 +344,16 @@ export default function Settings({
       setWebGuiSaved(true);
       setWebGuiMessage(
         webMode
-          ? "Web interface settings saved. They are already active in this web session."
-          : "Web interface initialized. Open http://localhost:47860 (or your configured host/port).",
+          ? t(language, "settings.webInterfaceSavedWeb")
+          : t(language, "settings.webInterfaceInitialized"),
       );
       if (webGuiSavedTimer.current) clearTimeout(webGuiSavedTimer.current);
       webGuiSavedTimer.current = setTimeout(() => setWebGuiSaved(false), 3000);
     } catch (e) {
       setWebGuiError(
-        e instanceof Error ? e.message : "Failed to initialize WebGUI",
+        e instanceof Error
+          ? e.message
+          : t(language, "settings.webInterfaceErrorInit"),
       );
       console.error("Failed to initialize WebGUI:", e);
     } finally {
@@ -530,15 +574,89 @@ export default function Settings({
   const browseDownloadFolder = async () => {
     if (!isTauri()) return;
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const dir = await open({
-      directory: true,
-      multiple: false,
-    });
+    const dir = await open({ directory: true, multiple: false });
     if (typeof dir === "string") {
       setForm((current) =>
         current ? { ...current, download_folder: dir } : current,
       );
     }
+  };
+
+  const browseDestination = async (
+    field: "movie_destination" | "tv_destination" | "documentary_destination",
+  ) => {
+    if (!isTauri()) return;
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const dir = await open({ directory: true, multiple: false });
+    if (typeof dir === "string") {
+      setForm((current) => (current ? { ...current, [field]: dir } : current));
+    }
+  };
+
+  const browseGenreRuleDestination = async (ruleId: string) => {
+    if (!isTauri()) return;
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const dir = await open({ directory: true, multiple: false });
+    if (typeof dir === "string") {
+      setForm((current) => {
+        if (!current) return current;
+        const rules: GenreDestRule[] = JSON.parse(
+          current.genre_destinations || "[]",
+        );
+        const updated = rules.map((r) =>
+          r.id === ruleId ? { ...r, destination: dir } : r,
+        );
+        return { ...current, genre_destinations: JSON.stringify(updated) };
+      });
+    }
+  };
+
+  const addGenreRule = () => {
+    setForm((current) => {
+      if (!current) return current;
+      const rules: GenreDestRule[] = JSON.parse(
+        current.genre_destinations || "[]",
+      );
+      const newRule: GenreDestRule = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        label: "",
+        genre_ids: [],
+        destination: "",
+        media_types: ["all"],
+      };
+      return {
+        ...current,
+        genre_destinations: JSON.stringify([...rules, newRule]),
+      };
+    });
+  };
+
+  const removeGenreRule = (ruleId: string) => {
+    setForm((current) => {
+      if (!current) return current;
+      const rules: GenreDestRule[] = JSON.parse(
+        current.genre_destinations || "[]",
+      );
+      return {
+        ...current,
+        genre_destinations: JSON.stringify(
+          rules.filter((r) => r.id !== ruleId),
+        ),
+      };
+    });
+  };
+
+  const updateGenreRule = (ruleId: string, patch: Partial<GenreDestRule>) => {
+    setForm((current) => {
+      if (!current) return current;
+      const rules: GenreDestRule[] = JSON.parse(
+        current.genre_destinations || "[]",
+      );
+      const updated = rules.map((r) =>
+        r.id === ruleId ? { ...r, ...patch } : r,
+      );
+      return { ...current, genre_destinations: JSON.stringify(updated) };
+    });
   };
 
   const ftpStatusText =
@@ -720,7 +838,8 @@ export default function Settings({
                         cursor: "pointer",
                         fontSize: 13,
                         fontWeight: active ? 700 : 600,
-                        transition: "background 0.15s ease, color 0.15s ease, border-color 0.15s ease",
+                        transition:
+                          "background 0.15s ease, color 0.15s ease, border-color 0.15s ease",
                       }}
                     >
                       {labels[option]}
@@ -960,7 +1079,7 @@ export default function Settings({
                       {t(language, "settings.defaultLanguage")}
                     </label>
                     <select
-                      style={inputStyle}
+                      style={selectStyle}
                       value={form.default_language ?? "es"}
                       onChange={set("default_language")}
                     >
@@ -1045,6 +1164,381 @@ export default function Settings({
               </SectionCard>
             </div>
 
+            {/* ─── Folder Routing ─────────────────────────────────────────── */}
+            <SectionCard
+              icon="download"
+              title={t(language, "settings.folderRoutingTitle")}
+              description={t(language, "settings.folderRoutingDescription")}
+            >
+              {/* ── Three fixed destinations ─────────────────────────────── */}
+              <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
+                {(
+                  [
+                    {
+                      labelKey: "settings.movies" as const,
+                      field: "movie_destination" as const,
+                      placeholder: "e.g. /mnt/media/Movies",
+                    },
+                    {
+                      labelKey: "settings.tvShows" as const,
+                      field: "tv_destination" as const,
+                      placeholder: "e.g. /mnt/media/TV Shows",
+                    },
+                    {
+                      labelKey: "settings.documentaries" as const,
+                      field: "documentary_destination" as const,
+                      placeholder: "e.g. /mnt/media/Documentaries",
+                    },
+                  ] as const
+                ).map(({ labelKey, field, placeholder }) => (
+                  <div key={field} style={fieldStyle}>
+                    <label style={labelStyle}>{t(language, labelKey)}</label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        style={{ ...inputStyle, flex: 1 }}
+                        value={form[field]}
+                        onChange={(e) =>
+                          setForm((c) =>
+                            c ? { ...c, [field]: e.target.value } : c,
+                          )
+                        }
+                        placeholder={placeholder}
+                      />
+                      {isTauri() && (
+                        <button
+                          onClick={() => browseDestination(field)}
+                          style={{ ...ghostBtn, whiteSpace: "nowrap" }}
+                        >
+                          <AppIcon name="folder" size={15} />
+                          {t(language, "common.browse")}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Alphabetical subfolders toggle ───────────────────────── */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 16,
+                  padding: "0.75rem 0.9rem",
+                  borderRadius: "var(--radius)",
+                  border:
+                    "1px solid color-mix(in srgb, var(--color-border) 72%, transparent)",
+                  background:
+                    "color-mix(in srgb, var(--color-surface-2) 70%, transparent)",
+                  marginBottom: 20,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: "var(--color-text)",
+                      marginBottom: 2,
+                    }}
+                  >
+                    {t(language, "settings.alphabeticalSubfolders")}
+                  </div>
+                  <div style={subtextStyle}>
+                    {t(language, "settings.alphabeticalSubfoldersHelp")}
+                  </div>
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={form.alphabetical_subfolders}
+                  onClick={() =>
+                    setForm((c) =>
+                      c
+                        ? {
+                            ...c,
+                            alphabetical_subfolders: !c.alphabetical_subfolders,
+                          }
+                        : c,
+                    )
+                  }
+                  style={{
+                    flexShrink: 0,
+                    width: 44,
+                    height: 24,
+                    borderRadius: 999,
+                    border: "none",
+                    cursor: "pointer",
+                    background: form.alphabetical_subfolders
+                      ? "var(--color-primary)"
+                      : "var(--color-border)",
+                    position: "relative",
+                    transition: "background 0.15s ease",
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 3,
+                      left: form.alphabetical_subfolders ? 23 : 3,
+                      width: 18,
+                      height: 18,
+                      borderRadius: 999,
+                      background: "#fff",
+                      transition: "left 0.15s ease",
+                    }}
+                  />
+                </button>
+              </div>
+
+              {/* ── Genre rules ──────────────────────────────────────────── */}
+              <div style={{ marginBottom: 10 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 10,
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      {t(language, "settings.genreRules")}
+                    </div>
+                    <div style={subtextStyle}>
+                      {t(language, "settings.genreRulesHelp")}
+                    </div>
+                  </div>
+                  <button
+                    onClick={addGenreRule}
+                    style={{ ...primaryBtn, whiteSpace: "nowrap" }}
+                  >
+                    <AppIcon name="activity" size={15} />
+                    {t(language, "settings.addRule")}
+                  </button>
+                </div>
+
+                {(() => {
+                  const rules: GenreDestRule[] = (() => {
+                    try {
+                      return JSON.parse(form.genre_destinations || "[]");
+                    } catch {
+                      return [];
+                    }
+                  })();
+                  if (rules.length === 0) {
+                    return (
+                      <div
+                        style={{
+                          borderRadius: "var(--radius)",
+                          border:
+                            "1px dashed color-mix(in srgb, var(--color-border) 76%, transparent)",
+                          padding: "1rem",
+                          color: "var(--color-text-muted)",
+                          fontSize: 13,
+                        }}
+                      >
+                        {t(language, "settings.noGenreRules")}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {rules.map((rule) => (
+                        <div
+                          key={rule.id}
+                          style={{
+                            borderRadius: "var(--radius)",
+                            border:
+                              "1px solid color-mix(in srgb, var(--color-border) 72%, transparent)",
+                            background:
+                              "color-mix(in srgb, var(--color-surface-2) 70%, transparent)",
+                            padding: "0.9rem",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns:
+                                "minmax(0,1fr) minmax(0,1fr)",
+                              gap: 10,
+                              marginBottom: 10,
+                            }}
+                          >
+                            <div style={fieldStyle}>
+                              <label style={labelStyle}>
+                                {t(language, "settings.ruleName")}
+                              </label>
+                              <input
+                                style={inputStyle}
+                                value={rule.label}
+                                placeholder="e.g. Animation"
+                                onChange={(e) =>
+                                  updateGenreRule(rule.id, {
+                                    label: e.target.value,
+                                  })
+                                }
+                              />
+                            </div>
+                            <div style={fieldStyle}>
+                              <label style={labelStyle}>
+                                {t(language, "settings.applyTo")}
+                              </label>
+                              <select
+                                style={selectStyle}
+                                value={rule.media_types[0] ?? "all"}
+                                onChange={(e) =>
+                                  updateGenreRule(rule.id, {
+                                    media_types: [
+                                      e.target
+                                        .value as GenreDestRule["media_types"][0],
+                                    ],
+                                  })
+                                }
+                              >
+                                <option value="all">
+                                  {t(language, "settings.allTypes")}
+                                </option>
+                                <option value="movie">
+                                  {t(language, "settings.movies")}
+                                </option>
+                                <option value="tv">
+                                  {t(language, "settings.tvShows")}
+                                </option>
+                                <option value="documentary">
+                                  {t(language, "settings.documentaries")}
+                                </option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div style={{ ...fieldStyle, marginBottom: 10 }}>
+                            <label style={labelStyle}>
+                              {t(language, "settings.genres")}
+                            </label>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 6,
+                                padding: "0.6rem",
+                                borderRadius: "var(--radius)",
+                                border:
+                                  "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+                                background:
+                                  "color-mix(in srgb, var(--color-surface-2) 84%, transparent)",
+                                minHeight: 44,
+                              }}
+                            >
+                              {[...GENRE_LIST]
+                                .sort((a, b) =>
+                                  t(language, a.i18nKey as never).localeCompare(
+                                    t(language, b.i18nKey as never),
+                                  ),
+                                )
+                                .map((g) => {
+                                  const active = rule.genre_ids.includes(g.id);
+                                  return (
+                                    <button
+                                      key={g.id}
+                                      onClick={() => {
+                                        const next = active
+                                          ? rule.genre_ids.filter(
+                                              (id) => id !== g.id,
+                                            )
+                                          : [...rule.genre_ids, g.id];
+                                        updateGenreRule(rule.id, {
+                                          genre_ids: next,
+                                        });
+                                      }}
+                                      style={{
+                                        padding: "4px 10px",
+                                        borderRadius: "var(--radius-full)",
+                                        border: active
+                                          ? "1px solid var(--color-primary)"
+                                          : "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                                        background: active
+                                          ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
+                                          : "transparent",
+                                        color: active
+                                          ? "var(--color-primary)"
+                                          : "var(--color-text-muted)",
+                                        cursor: "pointer",
+                                        fontSize: 12,
+                                        fontWeight: active ? 700 : 500,
+                                        transition:
+                                          "background 0.15s ease, color 0.15s ease, border-color 0.15s ease",
+                                      }}
+                                    >
+                                      {t(language, g.i18nKey as never)}
+                                    </button>
+                                  );
+                                })}
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              alignItems: "flex-end",
+                            }}
+                          >
+                            <div style={{ ...fieldStyle, flex: 1 }}>
+                              <label style={labelStyle}>
+                                {t(language, "settings.destination")}
+                              </label>
+                              <input
+                                style={inputStyle}
+                                value={rule.destination}
+                                placeholder="e.g. /mnt/media/Animation"
+                                onChange={(e) =>
+                                  updateGenreRule(rule.id, {
+                                    destination: e.target.value,
+                                  })
+                                }
+                              />
+                            </div>
+                            {isTauri() && (
+                              <button
+                                onClick={() =>
+                                  browseGenreRuleDestination(rule.id)
+                                }
+                                style={{ ...ghostBtn, whiteSpace: "nowrap" }}
+                              >
+                                <AppIcon name="folder" size={15} />
+                                {t(language, "common.browse")}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => removeGenreRule(rule.id)}
+                              style={{
+                                ...ghostBtn,
+                                border:
+                                  "1px solid color-mix(in srgb, var(--color-danger) 60%, transparent)",
+                                color: "var(--color-danger)",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              <AppIcon name="close" size={14} />
+                              {t(language, "common.remove")}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </SectionCard>
+            {/* ─── end Folder Routing ───────────────────────────────────── */}
+
             <SectionCard
               icon="folder"
               title={t(language, "settings.backupsTitle")}
@@ -1072,7 +1566,8 @@ export default function Settings({
                   </div>
                 ) : (
                   <span style={subtextStyle}>
-                    Backup export and import are only available in the desktop app.
+                    Backup export and import are only available in the desktop
+                    app.
                   </span>
                 )}
                 <span style={subtextStyle}>
@@ -1390,7 +1885,7 @@ export default function Settings({
                         onChange={(event) =>
                           setFolderType(dir, event.target.value)
                         }
-                        style={inputStyle}
+                        style={selectStyle}
                       >
                         <option value="">
                           {t(language, "settings.ignore")}
@@ -1430,8 +1925,8 @@ export default function Settings({
             {webGuiConfig && (
               <SectionCard
                 icon="settings"
-                title="Web Interface (LAN)"
-                description="Expose a browser-accessible web interface on your local network. Restart the app after changing settings."
+                title={t(language, "settings.webInterfaceTitle")}
+                description={t(language, "settings.webInterfaceDescription")}
               >
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 14 }}
@@ -1461,7 +1956,7 @@ export default function Settings({
                         color: "var(--color-text)",
                       }}
                     >
-                      Enable web interface
+                      {t(language, "settings.webInterfaceEnable")}
                     </span>
                   </label>
 
@@ -1481,7 +1976,9 @@ export default function Settings({
                         }}
                       >
                         <div style={fieldStyle}>
-                          <label style={labelStyle}>Bind host</label>
+                          <label style={labelStyle}>
+                            {t(language, "settings.webInterfaceBindHost")}
+                          </label>
                           <input
                             style={inputStyle}
                             value={webGuiConfig.host}
@@ -1494,7 +1991,9 @@ export default function Settings({
                           />
                         </div>
                         <div style={fieldStyle}>
-                          <label style={labelStyle}>Port</label>
+                          <label style={labelStyle}>
+                            {t(language, "settings.port")}
+                          </label>
                           <input
                             style={inputStyle}
                             type="number"
@@ -1523,14 +2022,19 @@ export default function Settings({
                         }}
                       >
                         <div style={fieldStyle}>
-                          <label style={labelStyle}>Exposed port</label>
+                          <label style={labelStyle}>
+                            {t(language, "settings.webInterfaceExposedPort")}
+                          </label>
                           <input
                             style={inputStyle}
                             type="number"
                             min={0}
                             max={65535}
                             value={webGuiConfig.exposed_port ?? ""}
-                            placeholder="Same as port"
+                            placeholder={t(
+                              language,
+                              "settings.webInterfaceSameAsPort",
+                            )}
                             onChange={(e) =>
                               setWebGuiConfig((c) =>
                                 c
@@ -1547,7 +2051,7 @@ export default function Settings({
                         </div>
                         <div style={fieldStyle}>
                           <label style={labelStyle}>
-                            App URL (optional, for email links)
+                            {t(language, "settings.webInterfaceAppUrl")}
                           </label>
                           <input
                             style={inputStyle}
@@ -1587,7 +2091,7 @@ export default function Settings({
                             color: "var(--color-text)",
                           }}
                         >
-                          Require email OTP on login
+                          {t(language, "settings.webInterfaceOtp")}
                         </span>
                       </label>
 
@@ -1612,7 +2116,7 @@ export default function Settings({
                               color: "var(--color-text-muted)",
                             }}
                           >
-                            SMTP settings
+                            {t(language, "settings.webInterfaceSmtpSettings")}
                           </div>
                           <div
                             style={{
@@ -1622,7 +2126,9 @@ export default function Settings({
                             }}
                           >
                             <div style={fieldStyle}>
-                              <label style={labelStyle}>SMTP host</label>
+                              <label style={labelStyle}>
+                                {t(language, "settings.webInterfaceSmtpHost")}
+                              </label>
                               <input
                                 style={inputStyle}
                                 value={webGuiConfig.smtp_host}
@@ -1635,7 +2141,9 @@ export default function Settings({
                               />
                             </div>
                             <div style={fieldStyle}>
-                              <label style={labelStyle}>Port</label>
+                              <label style={labelStyle}>
+                                {t(language, "settings.port")}
+                              </label>
                               <input
                                 style={inputStyle}
                                 type="number"
@@ -1663,7 +2171,9 @@ export default function Settings({
                             }}
                           >
                             <div style={fieldStyle}>
-                              <label style={labelStyle}>Username</label>
+                              <label style={labelStyle}>
+                                {t(language, "settings.username")}
+                              </label>
                               <input
                                 style={inputStyle}
                                 value={webGuiConfig.smtp_user}
@@ -1675,7 +2185,9 @@ export default function Settings({
                               />
                             </div>
                             <div style={fieldStyle}>
-                              <label style={labelStyle}>Password</label>
+                              <label style={labelStyle}>
+                                {t(language, "settings.password")}
+                              </label>
                               <input
                                 style={inputStyle}
                                 type="password"
@@ -1689,7 +2201,9 @@ export default function Settings({
                             </div>
                           </div>
                           <div style={fieldStyle}>
-                            <label style={labelStyle}>From address</label>
+                            <label style={labelStyle}>
+                              {t(language, "settings.webInterfaceFromAddress")}
+                            </label>
                             <input
                               style={inputStyle}
                               type="email"
@@ -1716,17 +2230,19 @@ export default function Settings({
                       onClick={saveWebGuiConfig}
                     >
                       {webGuiSaving
-                        ? "Saving…"
+                        ? t(language, "common.saving")
                         : webGuiSaved
-                          ? "✓ Saved"
-                          : "Save Web Interface Settings"}
+                          ? `✓ ${t(language, "common.saved")}`
+                          : t(language, "settings.webInterfaceSave")}
                     </button>
                     <button
                       style={ghostBtn}
                       disabled={webGuiInitBusy}
                       onClick={saveAndInitWebGui}
                     >
-                      {webGuiInitBusy ? "Starting…" : "Save + Initialize Now"}
+                      {webGuiInitBusy
+                        ? t(language, "settings.webInterfaceStarting")
+                        : t(language, "settings.webInterfaceInitNow")}
                     </button>
                   </div>
                   {webGuiMessage && (

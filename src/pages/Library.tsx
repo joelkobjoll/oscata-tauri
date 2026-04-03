@@ -40,6 +40,7 @@ const defaultFilters = (): Filters => ({
   releaseType: "",
   resolution: "",
   hdr: "",
+  genre: "",
   sort: "added-desc",
 });
 const ITEMS_PER_PAGE = 48;
@@ -572,13 +573,25 @@ export default function Library({
           (item.title ?? "").toLowerCase().includes(q) ||
           (item.release_group ?? "").toLowerCase().includes(q) ||
           item.filename.toLowerCase().includes(q);
+        const matchesGenre =
+          !filters.genre ||
+          (() => {
+            const gs = item.tmdb_genres;
+            const genres: number[] = gs
+              ? typeof gs === "string"
+                ? (JSON.parse(gs) as number[])
+                : gs
+              : [];
+            return genres.includes(Number(filters.genre));
+          })();
         return (
           matchesSearch &&
           (!filters.releaseType ||
             normalizeReleaseType(item.release_type) === filters.releaseType) &&
           (!filters.resolution ||
             normalizeResolution(item.resolution) === filters.resolution) &&
-          (!filters.hdr || normalizeHdr(item.hdr) === filters.hdr)
+          (!filters.hdr || normalizeHdr(item.hdr) === filters.hdr) &&
+          matchesGenre
         );
       })
       .sort((a, b) => {
@@ -624,7 +637,7 @@ export default function Library({
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const currentPage = Math.min(page, pageCount);
-  const viewResetKey = `${activeTab}:${filters.search}:${filters.releaseType}:${filters.resolution}:${filters.hdr}:${filters.sort}:${tvView}:${movieView}`;
+  const viewResetKey = `${activeTab}:${filters.search}:${filters.releaseType}:${filters.resolution}:${filters.hdr}:${filters.genre}:${filters.sort}:${tvView}:${movieView}`;
   const pageResetKey = `${viewResetKey}:${currentPage}`;
   const paginatedItems = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;

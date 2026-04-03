@@ -126,6 +126,8 @@ const messages = {
   "filter.allCodecs": { es: "Todos los codecs", en: "All codecs" },
   "filter.allHdr": { es: "Todo HDR", en: "All HDR" },
   "filter.hdr.dolbyVision": { es: "Dolby Vision", en: "Dolby Vision" },
+  "filter.genre": { es: "Género", en: "Genre" },
+  "filter.allGenres": { es: "Todos los géneros", en: "All genres" },
 
   "detail.details": { es: "Detalles", en: "Details" },
   "detail.fileInfo": { es: "Archivo", en: "File Info" },
@@ -754,6 +756,109 @@ const messages = {
   "settings.saveAndReindex": {
     es: "Guardar y reindexar",
     en: "Save & Re-index",
+  },
+
+  // ── Folder Routing ─────────────────────────────────────────────────────
+  "settings.folderRoutingTitle": {
+    es: "Enrutamiento de carpetas",
+    en: "Folder Routing",
+  },
+  "settings.folderRoutingDescription": {
+    es: "Configura carpetas destino por tipo de contenido, activa subcarpetas A-Z y añade reglas de enrutamiento por género.",
+    en: "Set destination folders for each media type, toggle A-Z subfolders, and add genre-based routing rules.",
+  },
+  "settings.alphabeticalSubfolders": {
+    es: "Subcarpetas alfabéticas",
+    en: "Alphabetical subfolders",
+  },
+  "settings.alphabeticalSubfoldersHelp": {
+    es: "Agrupa películas y documentales en subcarpetas A-Z (p.ej. Movies/A/Avatar (2009)/…)",
+    en: "Group movies and documentaries into A-Z subfolders (e.g. Movies/A/Avatar (2009)/…)",
+  },
+  "settings.genreRules": { es: "Reglas por género", en: "Genre Rules" },
+  "settings.genreRulesHelp": {
+    es: "Reemplaza el destino de ítems que coincidan con géneros específicos. Las reglas se evalúan en orden — gana la primera que coincida.",
+    en: "Override the destination for items matching specific genres. Rules are checked in order — first match wins.",
+  },
+  "settings.addRule": { es: "Añadir regla", en: "Add Rule" },
+  "settings.noGenreRules": {
+    es: "Sin reglas de género aún. Añade una para enrutar géneros específicos (p.ej. Animación) a una carpeta personalizada.",
+    en: "No genre rules yet. Add one to route specific genres (e.g. Animation) to a custom folder.",
+  },
+  "settings.ruleName": { es: "Nombre de regla", en: "Rule Name" },
+  "settings.applyTo": { es: "Aplicar a", en: "Apply to" },
+  "settings.allTypes": { es: "Todos los tipos", en: "All types" },
+  "settings.genres": { es: "Géneros", en: "Genres" },
+  "settings.destination": { es: "Destino", en: "Destination" },
+  "common.remove": { es: "Eliminar", en: "Remove" },
+
+  // ── Web Interface (LAN) ────────────────────────────────────────────────
+  "settings.webInterfaceTitle": {
+    es: "Interfaz web (LAN)",
+    en: "Web Interface (LAN)",
+  },
+  "settings.webInterfaceDescription": {
+    es: "Expone una interfaz web accesible desde el navegador en tu red local. Reinicia la app tras guardar cambios.",
+    en: "Expose a browser-accessible web interface on your local network. Restart the app after changing settings.",
+  },
+  "settings.webInterfaceEnable": {
+    es: "Activar interfaz web",
+    en: "Enable web interface",
+  },
+  "settings.webInterfaceBindHost": { es: "Host de escucha", en: "Bind host" },
+  "settings.webInterfaceExposedPort": {
+    es: "Puerto expuesto",
+    en: "Exposed port",
+  },
+  "settings.webInterfaceSameAsPort": {
+    es: "Mismo que puerto",
+    en: "Same as port",
+  },
+  "settings.webInterfaceAppUrl": {
+    es: "URL de la app (opcional, para links en emails)",
+    en: "App URL (optional, for email links)",
+  },
+  "settings.webInterfaceOtp": {
+    es: "Requerir OTP por email al iniciar sesión",
+    en: "Require email OTP on login",
+  },
+  "settings.webInterfaceSmtpSettings": {
+    es: "Configuración SMTP",
+    en: "SMTP settings",
+  },
+  "settings.webInterfaceSmtpHost": { es: "Host SMTP", en: "SMTP host" },
+  "settings.webInterfaceFromAddress": {
+    es: "Dirección remitente",
+    en: "From address",
+  },
+  "settings.webInterfaceSave": {
+    es: "Guardar ajustes de interfaz web",
+    en: "Save Web Interface Settings",
+  },
+  "settings.webInterfaceInitNow": {
+    es: "Guardar + Iniciar ahora",
+    en: "Save + Initialize Now",
+  },
+  "settings.webInterfaceStarting": { es: "Iniciando…", en: "Starting…" },
+  "settings.webInterfaceSaved": {
+    es: "Ajustes de interfaz web guardados.",
+    en: "Web interface settings saved.",
+  },
+  "settings.webInterfaceSavedWeb": {
+    es: "Ajustes guardados. Ya están activos en esta sesión web.",
+    en: "Web interface settings saved. They are already active in this web session.",
+  },
+  "settings.webInterfaceInitialized": {
+    es: "Interfaz web iniciada. Abre http://localhost:47860 (o el host/puerto configurado).",
+    en: "Web interface initialized. Open http://localhost:47860 (or your configured host/port).",
+  },
+  "settings.webInterfaceErrorSave": {
+    es: "No se pudo guardar la configuración de la interfaz web",
+    en: "Failed to save WebGUI settings",
+  },
+  "settings.webInterfaceErrorInit": {
+    es: "No se pudo inicializar la interfaz web",
+    en: "Failed to initialize WebGUI",
   },
 } as const;
 

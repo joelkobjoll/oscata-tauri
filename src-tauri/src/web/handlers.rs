@@ -295,6 +295,7 @@ pub async fn check_media_badges_handler(
             &item.ftp_path,
             &item.filename,
             item.media_type.as_deref(),
+            None,
         )
         .map(|path| path.exists())
         .unwrap_or(false);
@@ -386,8 +387,9 @@ pub async fn queue_download(
 ) -> ApiResult<Json<u64>> {
     let config = state.db.load_config().map_err(ApiError::from)?;
     let media_type = state.db.get_media_type_by_path(&body.ftp_path).ok().flatten();
+    let tmdb_genres = state.db.get_tmdb_genres_by_path(&body.ftp_path).ok().flatten();
     let local_path = crate::commands::compute_local_path(
-        &config, &body.ftp_path, &body.filename, media_type.as_deref(),
+        &config, &body.ftp_path, &body.filename, media_type.as_deref(), tmdb_genres.as_deref(),
     ).map_err(ApiError::from)?;
 
     // Deduplicate

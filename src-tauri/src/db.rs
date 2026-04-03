@@ -43,6 +43,11 @@ pub struct AppConfig {
     pub auto_check_updates: bool,
     pub updater_endpoint: String,
     pub updater_pubkey: String,
+    pub movie_destination: String,       // "" = use download_folder/Movies
+    pub tv_destination: String,          // "" = use download_folder/TV Shows
+    pub documentary_destination: String, // "" = use download_folder/Documentaries
+    pub alphabetical_subfolders: bool,   // default true
+    pub genre_destinations: String,      // JSON: GenreDestRule[]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1012,6 +1017,14 @@ impl Db {
             ),
             ("updater_endpoint", config.updater_endpoint.as_str()),
             ("updater_pubkey", config.updater_pubkey.as_str()),
+            ("movie_destination", config.movie_destination.as_str()),
+            ("tv_destination", config.tv_destination.as_str()),
+            ("documentary_destination", config.documentary_destination.as_str()),
+            (
+                "alphabetical_subfolders",
+                if config.alphabetical_subfolders { "1" } else { "0" },
+            ),
+            ("genre_destinations", config.genre_destinations.as_str()),
         ];
         let port_str = config.ftp_port.to_string();
         for (k, v) in &pairs {
@@ -1401,6 +1414,14 @@ impl Db {
                 .unwrap_or(false),
             updater_endpoint: get("updater_endpoint").unwrap_or_default(),
             updater_pubkey: get("updater_pubkey").unwrap_or_default(),
+            movie_destination: get("movie_destination").unwrap_or_default(),
+            tv_destination: get("tv_destination").unwrap_or_default(),
+            documentary_destination: get("documentary_destination").unwrap_or_default(),
+            alphabetical_subfolders: get("alphabetical_subfolders")
+                .ok()
+                .map(|v| !matches!(v.as_str(), "0" | "false" | "FALSE" | "False"))
+                .unwrap_or(true),
+            genre_destinations: get("genre_destinations").unwrap_or_else(|_| "[]".to_string()),
         })
     }
 
@@ -1838,6 +1859,15 @@ impl Db {
         let conn = self.0.lock().unwrap();
         conn.query_row(
             "SELECT media_type FROM media_items WHERE ftp_path = ?1 LIMIT 1",
+            params![ftp_path],
+            |row| row.get(0),
+        ).optional()
+    }
+
+    pub fn get_tmdb_genres_by_path(&self, ftp_path: &str) -> SqlResult<Option<String>> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT tmdb_genres FROM media_items WHERE ftp_path = ?1 LIMIT 1",
             params![ftp_path],
             |row| row.get(0),
         ).optional()

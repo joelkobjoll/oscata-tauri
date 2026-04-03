@@ -294,9 +294,39 @@ pub fn run() {
                     tokio::time::sleep(interval_secs.saturating_sub(value)).await;
                 }
 
-                let mut interval = tokio::time::interval(interval_secs);
                 loop {
-                    interval.tick().await;
+                    // Compute how long until 15 minutes after the last index run
+                    // (whether that was manual or automatic).
+                    let sleep_duration = db.load_last_indexed_at()
+                        .ok()
+                        .flatten()
+                        .and_then(|raw| chrono::DateTime::parse_from_rfc3339(&raw).ok())
+                        .and_then(|last| {
+                            let elapsed = (chrono::Utc::now() - last.with_timezone(&chrono::Utc))
+                                .to_std()
+                                .ok()?;
+                            interval_secs.checked_sub(elapsed)
+                        })
+                        .unwrap_or(interval_secs);
+
+                    tokio::time::sleep(sleep_duration).await;
+
+                    // Re-check after waking: a manual index that ran while we slept would
+                    // have updated last_indexed_at, so the 15 min window resets from there.
+                    let elapsed_since_last = db.load_last_indexed_at()
+                        .ok()
+                        .flatten()
+                        .and_then(|raw| chrono::DateTime::parse_from_rfc3339(&raw).ok())
+                        .and_then(|last| {
+                            (chrono::Utc::now() - last.with_timezone(&chrono::Utc))
+                                .to_std()
+                                .ok()
+                        });
+                    if elapsed_since_last.map(|e| e < interval_secs).unwrap_or(false) {
+                        // A recent index (likely manual) happened — skip this tick.
+                        continue;
+                    }
+
                     let window = visible_main_window(&handle);
                     commands::start_indexing_internal(db.clone(), window.clone()).await.ok();
                     commands::refresh_all_metadata_internal(db.clone(), window).await.ok();

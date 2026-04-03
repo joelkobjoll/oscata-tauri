@@ -3,6 +3,7 @@ export interface Filters {
   releaseType: string;
   resolution: string;
   hdr: string;
+  genre: string;
   sort: string;
 }
 

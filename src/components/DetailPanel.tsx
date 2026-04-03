@@ -12,30 +12,9 @@ import {
   getLocalizedTitle,
 } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
+import { GENRE_MAP } from "../utils/genres";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w342";
-
-const GENRE_MAP: Record<number, string> = {
-  28: "detail.genre.action",
-  12: "detail.genre.adventure",
-  16: "detail.genre.animation",
-  35: "detail.genre.comedy",
-  80: "detail.genre.crime",
-  99: "detail.genre.documentary",
-  18: "detail.genre.drama",
-  10751: "detail.genre.family",
-  14: "detail.genre.fantasy",
-  36: "detail.genre.history",
-  27: "detail.genre.horror",
-  10402: "detail.genre.music",
-  9648: "detail.genre.mystery",
-  10749: "detail.genre.romance",
-  878: "detail.genre.scifi",
-  10770: "detail.genre.tvmovie",
-  53: "detail.genre.thriller",
-  10752: "detail.genre.war",
-  37: "detail.genre.western",
-};
 
 const metaPill: React.CSSProperties = {
   display: "inline-flex",
@@ -321,7 +300,7 @@ export default function DetailPanel({
                   {rating}
                 </span>
               )}
-              {genres.slice(0, 3).map((g) => (
+              {genres.map((g) => (
                 <span key={g} style={metaPill}>
                   {g}
                 </span>

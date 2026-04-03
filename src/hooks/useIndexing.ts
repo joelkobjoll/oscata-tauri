@@ -117,17 +117,18 @@ export function useIndexing() {
 
     const unComplete = listen<{
       total: number;
+      new_items: number;
       metadata_queued: number;
       removed?: number;
     }>("index:complete", ({ payload }) => {
       setProgress(null);
       setIsIndexing(false);
       setCompletionSummary({
-        newItems: payload.metadata_queued,
+        newItems: payload.new_items,
         removed: payload.removed ?? 0,
       });
       addLog(
-        `✓ Done — ${payload.total} files indexed, ${payload.metadata_queued} new items metadata-matched, ${payload.removed ?? 0} stale items removed`,
+        `✓ Done — ${payload.total} files indexed, ${payload.new_items} new, ${payload.metadata_queued} sent to TMDB, ${payload.removed ?? 0} stale items removed`,
       );
       // Re-fetch the full list so items added during a background index
       // (when progress events were suppressed) are visible immediately.
@@ -209,7 +210,7 @@ export function useIndexing() {
     return () => window.clearInterval(timerId);
   }, []);
 
-    return {
+  return {
     items,
     isIndexing,
     crawlStats,
