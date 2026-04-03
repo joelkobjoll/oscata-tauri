@@ -1,5 +1,17 @@
 # Novedades de Oscata
 
+## Versión 0.5.4 — 4 de abril de 2026
+
+### 🎯 Tipo de contenido correcto tras el emparejamiento con TMDB
+
+Oscata ahora almacena el tipo de contenido real que devuelve TMDB (película o serie) en lugar del que deduce el parser del nombre de archivo. Esto corrige casos en los que un título quedaba mal categorizado —por ejemplo, indexado como película cuando TMDB lo reconoce como serie, o viceversa—. El emparejamiento automático y la opción «Emparejar de nuevo todo» se benefician de esta mejora.
+
+### 🔒 Modo desarrollo web limitado a localhost
+
+En compilaciones de depuración, el servidor web integrado ahora solo acepta conexiones desde el propio equipo. Esto evita exposiciones accidentales de la interfaz en la red local durante el desarrollo.
+
+---
+
 ## Versión 0.5.3 — 4 de abril de 2026
 
 ### 🔄 Metadatos de TMDB siempre visibles tras el indexado
