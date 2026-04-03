@@ -1,22 +1,38 @@
 # Novedades de Oscata
 
+## Versión 0.4.0 — 3 de abril de 2026
+
+### 🎭 Filtrado por géneros
+
+Ya puedes filtrar tu biblioteca por género desde la barra de filtros. Oscata lee los géneros de cada título y te deja quedarte solo con lo que te apetece ver en ese momento.
+
+### ⚙️ Reglas de enrutamiento por género
+
+En Ajustes hay una nueva sección para definir reglas de género. Úsala para que ciertos géneros vayan automáticamente a una biblioteca concreta —por ejemplo, enviar el cine de terror a una carpeta separada de las pelis de acción—. Puedes añadir, editar y eliminar las reglas que quieras.
+
+### 🔄 Refresco de biblioteca más estable
+
+Se ha reescrito la lógica que actualiza la biblioteca al arrancar. Ahora resuelve bien las rutas y no se queda colgado si algo falla durante la carga inicial.
+
+---
+
 ## Versión 0.3.0 — 1 de abril de 2026
 
 ### 🎨 Modo claro y modo oscuro
 
-Ya puedes elegir el tema que prefieras. En Ajustes encontrarás un selector con tres opciones: oscuro, claro o el predeterminado de tu sistema. El botón de cambio rápido también está disponible en la barra superior, tanto en la app de escritorio como en la versión web.
+En Ajustes encontrarás un selector con tres opciones: oscuro, claro o el predeterminado de tu sistema. El botón de cambio rápido también está disponible en la barra superior, tanto en la app de escritorio como en la versión web.
 
 ### 🚀 Indexación mucho más rápida
 
-Hemos mejorado significativamente la velocidad al escanear tu servidor FTP. Las bibliotecas grandes se indexan en mucho menos tiempo. Al terminar, verás un resumen con el resultado del análisis que se cierra solo al cabo de unos segundos.
+Hemos mejorado significativamente la velocidad al escanear tu servidor FTP. Las bibliotecas grandes se indexan en mucho menos tiempo. Al terminar, verás un resumen que se cierra automáticamente.
 
 ### 🌐 Mejor experiencia en la versión web
 
-La versión web ahora funciona de forma más completa y fiable. Se corrigieron varios fallos que podían aparecer al abrir enlaces, descargar archivos o navegar por los ajustes desde el navegador. La biblioteca además se mantiene actualizada automáticamente sin necesidad de recargar la página.
+La versión web ahora funciona de forma más completa y fiable. Se corrigieron fallos al abrir enlaces, descargar archivos o navegar por los ajustes desde el navegador. La biblioteca se mantiene actualizada automáticamente sin necesidad de recargar la página.
 
 ### ✨ Mejoras generales de la interfaz
 
-Pequeños ajustes visuales en distintas partes de la app: mejor espaciado, filtros más coherentes y algunos elementos reorganizados para que todo luzca más limpio y sea más fácil de usar.
+Pequeños ajustes en la interfaz: mejor espaciado, filtros más coherentes y elementos reorganizados para que todo luzca más limpio y fácil de usar.
 
 ---
 

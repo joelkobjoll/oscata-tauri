@@ -670,6 +670,7 @@ export default function Settings({
 
   return (
     <div
+      className="settings-overlay"
       style={{
         position: "fixed",
         inset: 0,
@@ -684,7 +685,7 @@ export default function Settings({
       onClick={(event) => event.target === event.currentTarget && onClose()}
     >
       <div
-        className="modal-panel-enter"
+        className="modal-panel-enter settings-panel"
         style={{
           width: 980,
           maxWidth: "calc(100vw - 3rem)",

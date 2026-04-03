@@ -23,7 +23,8 @@ type IconName =
   | "wifi-off"
   | "moon"
   | "sun"
-  | "monitor";
+  | "monitor"
+  | "filter";
 
 export default function AppIcon({
   name,
@@ -228,6 +229,10 @@ export default function AppIcon({
             <rect x="2" y="3" width="20" height="13" rx="2" {...common} />
             <path d="M8 21h8M12 17v4" {...common} />
           </>
+        );
+      case "filter":
+        return (
+          <path d="M4 6h16M7 12h10M10 18h4" {...common} />
         );
       default:
         return null;

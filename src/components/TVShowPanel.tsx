@@ -952,6 +952,7 @@ export default function TVShowPanel({
       />
 
       <aside
+        className="panel-slide-right"
         style={{
           position: "fixed",
           top: 0,

@@ -153,6 +153,7 @@ export default function DetailPanel({
 
       {/* Panel */}
       <div
+        className="panel-slide-right"
         style={{
           position: "fixed",
           top: 0,

@@ -140,6 +140,8 @@ function WebRouter() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          flexWrap: "wrap",
+          gap: "0.5rem",
           padding: "0.8rem 1rem",
           borderBottom: "1px solid var(--color-border)",
           background: "color-mix(in srgb, var(--color-bg) 88%, black)",
@@ -160,7 +162,7 @@ function WebRouter() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <ThemeToggle />
-          <div style={{ color: "var(--color-text-muted)", fontSize: 12 }}>{user.email}</div>
+          <div style={{ color: "var(--color-text-muted)", fontSize: 12, maxWidth: "30vw", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</div>
         </div>
       </div>
 

@@ -22,10 +22,13 @@
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
 
   --z-log: 50;
+  --z-bottom-tabs: 100;
   --z-detail-backdrop: 110;
   --z-detail-panel: 111;
   --z-tv-backdrop: 120;
   --z-tv-panel: 121;
+  --z-filter-drawer-backdrop: 130;
+  --z-filter-drawer: 131;
   --z-modal: 140;
 }
 
@@ -320,5 +323,36 @@ select {
 
   .media-card:hover .media-card-img.loaded {
     transform: scale(1.028);
+  }
+}
+
+/* ── Mobile (≤767px) ──────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  /* Bottom tab bar clears scrollable content */
+  .mobile-content-area {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Bottom tab bar itself gets safe-area padding */
+  .bottom-tabs {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Detail / TV panels take full viewport width on mobile */
+  .panel-slide-right {
+    width: 100vw !important;
+  }
+
+  /* Settings modal: full-width, anchored to top with reduced padding */
+  .settings-overlay {
+    padding: 0.5rem !important;
+    align-items: flex-start !important;
+    padding-top: 2rem !important;
+  }
+
+  .settings-panel {
+    width: 100% !important;
+    max-height: calc(100dvh - 2.5rem) !important;
+    border-radius: var(--radius-lg) !important;
   }
 }

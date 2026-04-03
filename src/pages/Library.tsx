@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { call } from "../lib/transport";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { useIndexing, MediaItem } from "../hooks/useIndexing";
 import { useDownload } from "../hooks/useDownload";
 import { useDownloads } from "../hooks/useDownloads";
@@ -211,6 +212,8 @@ export default function Library({
     [downloads],
   );
   const [activeTab, setActiveTab] = useState<TabId>("all");
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const isMobile = useIsMobile();
   const [filters, setFilters] = useState<Filters>(defaultFilters());
   const [showSettings, setShowSettings] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -362,6 +365,7 @@ export default function Library({
     setPage(1);
     setMovieView("grouped");
     setTvView("shows");
+    setFilterDrawerOpen(false);
   };
 
   const handleCardSelect = (item: MediaItem) => {
@@ -1200,58 +1204,61 @@ export default function Library({
           />
         </div>
 
-        {/* Nav pills */}
-        <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
-          {TABS.map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => switchTab(tab.id)}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: 999,
-                  cursor: "pointer",
-                  fontSize: "0.875rem",
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  border: "none",
-                  background: active
-                    ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
-                    : "transparent",
-                  color: active
-                    ? "var(--color-primary)"
-                    : "var(--color-text-muted)",
-                  minHeight: 36,
-                  transition: "color 0.18s ease, background 0.18s ease",
-                }}
-              >
-                <AppIcon name={tab.icon} size={16} strokeWidth={2.2} />
-                <span>{t(language, tab.labelKey as never)}</span>
-                {tabCounts[tab.id] > 0 && (
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      background: active
-                        ? "color-mix(in srgb, var(--color-primary) 25%, transparent)"
-                        : "var(--color-surface-2)",
-                      color: active
-                        ? "var(--color-primary)"
-                        : "var(--color-text-muted)",
-                      borderRadius: 999,
-                      padding: "1px 7px",
-                    }}
-                  >
-                    {tabCounts[tab.id]}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        {/* Nav pills — hidden on mobile (tabs move to bottom bar) */}
+        {!isMobile && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
+            {TABS.map((tab) => {
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => switchTab(tab.id)}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: 999,
+                    cursor: "pointer",
+                    fontSize: "0.875rem",
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    border: "none",
+                    background: active
+                      ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
+                      : "transparent",
+                    color: active
+                      ? "var(--color-primary)"
+                      : "var(--color-text-muted)",
+                    minHeight: 36,
+                    transition: "color 0.18s ease, background 0.18s ease",
+                  }}
+                >
+                  <AppIcon name={tab.icon} size={16} strokeWidth={2.2} />
+                  <span>{t(language, tab.labelKey as never)}</span>
+                  {tabCounts[tab.id] > 0 && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        background: active
+                          ? "color-mix(in srgb, var(--color-primary) 25%, transparent)"
+                          : "var(--color-surface-2)",
+                        color: active
+                          ? "var(--color-primary)"
+                          : "var(--color-text-muted)",
+                        borderRadius: 999,
+                        padding: "1px 7px",
+                      }}
+                    >
+                      {tabCounts[tab.id]}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {isMobile && <div style={{ flex: 1 }} />}
 
         {/* Right actions */}
         <div
@@ -1262,45 +1269,48 @@ export default function Library({
             marginLeft: "auto",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "0.18rem",
-              borderRadius: "var(--radius-full)",
-              border:
-                "1px solid color-mix(in srgb, var(--color-border) 82%, transparent)",
-              background:
-                "color-mix(in srgb, var(--color-surface) 94%, transparent)",
-            }}
-          >
-            {(["es", "en"] as const).map((value) => {
-              const active = language === value;
-              return (
-                <button
-                  key={value}
-                  onClick={() => setLanguage(value)}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: "var(--radius-full)",
-                    border: "none",
-                    background: active
-                      ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
-                      : "transparent",
-                    color: active
-                      ? "var(--color-primary)"
-                      : "var(--color-text-muted)",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  {value.toUpperCase()}
-                </button>
-              );
-            })}
-          </div>
+          {/* Lang switcher — hidden on mobile */}
+          {!isMobile && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "0.18rem",
+                borderRadius: "var(--radius-full)",
+                border:
+                  "1px solid color-mix(in srgb, var(--color-border) 82%, transparent)",
+                background:
+                  "color-mix(in srgb, var(--color-surface) 94%, transparent)",
+              }}
+            >
+              {(["es", "en"] as const).map((value) => {
+                const active = language === value;
+                return (
+                  <button
+                    key={value}
+                    onClick={() => setLanguage(value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "var(--radius-full)",
+                      border: "none",
+                      background: active
+                        ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
+                        : "transparent",
+                      color: active
+                        ? "var(--color-primary)"
+                        : "var(--color-text-muted)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {value.toUpperCase()}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {showDevLog && (
             <button
@@ -1336,6 +1346,167 @@ export default function Library({
           </button>
         </div>
       </nav>
+
+      {/* BOTTOM TAB BAR — mobile only */}
+      {isMobile && (
+        <nav
+          className="bottom-tabs"
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: "var(--z-bottom-tabs)" as never,
+            display: "flex",
+            background:
+              "color-mix(in srgb, var(--color-bg) 96%, black)",
+            borderTop:
+              "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+          }}
+        >
+          {TABS.map((tab) => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => switchTab(tab.id)}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "10px 4px 8px",
+                  gap: 3,
+                  border: "none",
+                  background: "transparent",
+                  color: active
+                    ? "var(--color-primary)"
+                    : "var(--color-text-muted)",
+                  cursor: "pointer",
+                  position: "relative",
+                  transition: "color 0.15s ease",
+                }}
+              >
+                <AppIcon name={tab.icon} size={22} strokeWidth={active ? 2.4 : 2.0} />
+                <span style={{ fontSize: 10, fontWeight: active ? 700 : 500 }}>
+                  {t(language, tab.labelKey as never)}
+                </span>
+                {tabCounts[tab.id] > 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 6,
+                      right: "calc(50% - 16px)",
+                      fontSize: 9,
+                      fontWeight: 700,
+                      background: active ? "var(--color-primary)" : "var(--color-surface-2)",
+                      color: active ? "#fff" : "var(--color-text-muted)",
+                      borderRadius: 999,
+                      padding: "1px 5px",
+                      minWidth: 16,
+                      textAlign: "center",
+                    }}
+                  >
+                    {tabCounts[tab.id]}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      )}
+
+      {/* FILTER DRAWER — mobile only */}
+      {isMobile && filterDrawerOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={() => setFilterDrawerOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "color-mix(in srgb, black 55%, transparent)",
+              zIndex: "var(--z-filter-drawer-backdrop)" as never,
+              backdropFilter: "blur(4px)",
+            }}
+          />
+          {/* Drawer */}
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: "min(320px, 90vw)",
+              background: "var(--color-bg)",
+              zIndex: "var(--z-filter-drawer)" as never,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              borderRight:
+                "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+              boxShadow: "4px 0 32px color-mix(in srgb, black 40%, transparent)",
+            }}
+          >
+            {/* Drawer header */}
+            <div
+              style={{
+                padding: "1rem 1.25rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                borderBottom:
+                  "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontWeight: 700, fontSize: 15, color: "var(--color-text)" }}>
+                {t(language, "filter.filters" as never)}
+              </span>
+              <button
+                onClick={() => setFilterDrawerOpen(false)}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--color-text-muted)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 18,
+                }}
+              >
+                ×
+              </button>
+            </div>
+            {/* Drawer content */}
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "1.25rem 1rem 1.25rem 1.25rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <FilterBar
+                filters={filters}
+                items={filterableItems}
+                language={language}
+                searchInputRef={searchInputRef}
+                onChange={setFilters}
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* MAIN CONTENT */}
       <div
@@ -1482,6 +1653,16 @@ export default function Library({
             )}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {/* Filter button — mobile only, opens the filter drawer */}
+            {isMobile && activeTab !== "downloads" && (
+              <button
+                onClick={() => setFilterDrawerOpen(true)}
+                title={t(language, "filter.filters" as never)}
+                style={ghostBtn}
+              >
+                <AppIcon name="filter" size={14} strokeWidth={2.2} />
+              </button>
+            )}
             {activeTab === "downloads" ? null : selecting ? (
               <>
                 <span
@@ -1765,8 +1946,8 @@ export default function Library({
           </div>
         </div>
 
-        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-          {activeTab !== "downloads" && (
+        <div className={isMobile ? "mobile-content-area" : undefined} style={{ flex: 1, display: "flex", minHeight: 0 }}>
+          {activeTab !== "downloads" && !isMobile && (
             <div
               style={{
                 width: 320,
