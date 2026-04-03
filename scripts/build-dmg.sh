@@ -24,6 +24,8 @@ fi
 
 cd "$(dirname "$0")/.."
 
+npm install
+
 npm run tauri build
 
 echo ""
