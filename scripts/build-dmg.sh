@@ -10,14 +10,16 @@ source ~/.nvm/nvm.sh
 nvm install 22 --no-progress
 nvm use 22
 
-# Ensure Rust/Cargo is on PATH
+# Ensure Rust/Cargo is on PATH, install via rustup if missing
+if [ ! -f "$HOME/.cargo/env" ] && ! command -v cargo &>/dev/null; then
+  echo "Installing Rust via rustup..."
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
+fi
+
 if [ -f "$HOME/.cargo/env" ]; then
   source "$HOME/.cargo/env"
-elif [ -d "$HOME/.cargo/bin" ]; then
-  export PATH="$HOME/.cargo/bin:$PATH"
 else
-  echo "Error: Cargo not found. Install Rust from https://rustup.rs/" >&2
-  exit 1
+  export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
 cd "$(dirname "$0")/.."
