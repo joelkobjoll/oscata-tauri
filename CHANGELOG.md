@@ -1,5 +1,13 @@
 # Novedades de Oscata
 
+## Versión 0.5.0 — 3 de abril de 2026
+
+### 📱 Interfaz adaptada a móvil
+
+La versión web de Oscata ahora funciona bien en el móvil. La barra de navegación se convierte en una barra de pestañas fija en la parte inferior, los filtros se abren en un panel deslizante al tocar el botón de embudo, y la barra lateral desaparece para dejar todo el espacio al contenido. Los paneles de detalle y de series ocupan la pantalla completa en pantallas pequeñas.
+
+---
+
 ## Versión 0.4.0 — 3 de abril de 2026
 
 ### 🎭 Filtrado por géneros
