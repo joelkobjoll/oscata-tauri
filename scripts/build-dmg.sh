@@ -10,6 +10,16 @@ source ~/.nvm/nvm.sh
 nvm install 22 --no-progress
 nvm use 22
 
+# Ensure Rust/Cargo is on PATH
+if [ -f "$HOME/.cargo/env" ]; then
+  source "$HOME/.cargo/env"
+elif [ -d "$HOME/.cargo/bin" ]; then
+  export PATH="$HOME/.cargo/bin:$PATH"
+else
+  echo "Error: Cargo not found. Install Rust from https://rustup.rs/" >&2
+  exit 1
+fi
+
 cd "$(dirname "$0")/.."
 
 npm run tauri build
