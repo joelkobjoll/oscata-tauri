@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Wizard from "./pages/Wizard";
 import Library from "./pages/Library";
-import { t } from "./utils/i18n";
 import type { AppLanguage } from "./utils/mediaLanguage";
 import { isTauri } from "./lib/transport";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
@@ -23,18 +22,16 @@ export default function Router() {
     );
   }
   const [ready, setReady] = useState<boolean | null>(null);
-  const [startIndexingAfterWizard, setStartIndexingAfterWizard] = useState(false);
-  const language: AppLanguage = "es";
+  const [startIndexingAfterWizard, setStartIndexingAfterWizard] =
+    useState(false);
 
   useEffect(() => {
-    invoke<boolean>("has_config").then(setReady).catch(() => setReady(false));
+    invoke<boolean>("has_config")
+      .then(setReady)
+      .catch(() => setReady(false));
   }, []);
 
-  if (ready === null) return (
-    <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--color-bg)" }}>
-      <div style={{ color: "var(--color-text-muted)", fontSize: 14 }}>{t(language, "router.loading")}</div>
-    </div>
-  );
+  if (ready === null) return <LoadingScreen />;
   return ready ? (
     <Library startIndexingOnMount={startIndexingAfterWizard} />
   ) : (
@@ -50,7 +47,9 @@ export default function Router() {
 function WebRouter() {
   const language: AppLanguage = "es";
   const { user } = useAuth();
-  const [bootstrapRequired, setBootstrapRequired] = useState<boolean | null>(null);
+  const [bootstrapRequired, setBootstrapRequired] = useState<boolean | null>(
+    null,
+  );
   const [page, setPage] = useState<"library" | "settings" | "users">("library");
   const inviteToken = new URLSearchParams(window.location.search).get("invite");
 
@@ -60,7 +59,9 @@ function WebRouter() {
 
     const loadBootstrapStatus = async () => {
       try {
-        const response = await fetch(`${apiBase}/server-info`, { cache: "no-store" });
+        const response = await fetch(`${apiBase}/server-info`, {
+          cache: "no-store",
+        });
         if (!response.ok) throw new Error(`server-info ${response.status}`);
         const info = await response.json();
         if (!cancelled) {
@@ -84,11 +85,7 @@ function WebRouter() {
   }, []);
 
   if (user === null || bootstrapRequired === null) {
-    return (
-      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--color-bg)" }}>
-        <div style={{ color: "var(--color-text-muted)", fontSize: 14 }}>{t(language, "router.loading")}</div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (bootstrapRequired && user === false) {
@@ -122,8 +119,12 @@ function WebRouter() {
   const navBtn = (active: boolean): React.CSSProperties => ({
     padding: "0.5rem 0.8rem",
     borderRadius: "var(--radius)",
-    border: active ? "1px solid color-mix(in srgb, var(--color-primary) 45%, transparent)" : "1px solid var(--color-border)",
-    background: active ? "color-mix(in srgb, var(--color-primary) 20%, var(--color-surface))" : "var(--color-surface)",
+    border: active
+      ? "1px solid color-mix(in srgb, var(--color-primary) 45%, transparent)"
+      : "1px solid var(--color-border)",
+    background: active
+      ? "color-mix(in srgb, var(--color-primary) 20%, var(--color-surface))"
+      : "var(--color-surface)",
     color: active ? "var(--color-text)" : "var(--color-text-muted)",
     cursor: "pointer",
     fontSize: 13,
@@ -148,27 +149,103 @@ function WebRouter() {
         }}
       >
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button style={navBtn(page === "library")} onClick={() => setPage("library")}>
+          <button
+            style={navBtn(page === "library")}
+            onClick={() => setPage("library")}
+          >
             Library
           </button>
-          <button style={navBtn(page === "settings")} onClick={() => setPage("settings")}>
+          <button
+            style={navBtn(page === "settings")}
+            onClick={() => setPage("settings")}
+          >
             Settings
           </button>
           {isAdmin && (
-            <button style={navBtn(page === "users")} onClick={() => setPage("users")}>
+            <button
+              style={navBtn(page === "users")}
+              onClick={() => setPage("users")}
+            >
               Users
             </button>
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <ThemeToggle />
-          <div style={{ color: "var(--color-text-muted)", fontSize: 12, maxWidth: "30vw", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</div>
+          <div
+            style={{
+              color: "var(--color-text-muted)",
+              fontSize: 12,
+              maxWidth: "30vw",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {user.email}
+          </div>
         </div>
       </div>
 
       {page === "library" && <Library startIndexingOnMount={false} />}
-      {page === "settings" && <Settings language={language} onClose={() => setPage("library")} />}
+      {page === "settings" && (
+        <Settings language={language} onClose={() => setPage("library")} />
+      )}
       {page === "users" && isAdmin && <WebUsers />}
+    </div>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <div
+      style={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 28,
+        background: "var(--color-bg)",
+      }}
+    >
+      {/* Wordmark */}
+      <div
+        style={{
+          fontSize: 28,
+          fontWeight: 800,
+          letterSpacing: "-0.03em",
+          color: "var(--color-text)",
+          fontFamily: "var(--font-sans)",
+          userSelect: "none",
+        }}
+      >
+        osc
+        <span style={{ color: "var(--color-primary)" }}>ata</span>
+      </div>
+
+      {/* Spinner ring */}
+      <svg
+        width="36"
+        height="36"
+        viewBox="0 0 36 36"
+        fill="none"
+        style={{ animation: "spin 0.9s linear infinite" }}
+      >
+        <circle
+          cx="18"
+          cy="18"
+          r="15"
+          stroke="var(--color-border)"
+          strokeWidth="3"
+        />
+        <path
+          d="M18 3 A15 15 0 0 1 33 18"
+          stroke="var(--color-primary)"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+      </svg>
     </div>
   );
 }

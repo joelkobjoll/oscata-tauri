@@ -8,10 +8,23 @@ import {
   normalizeResolution,
   normalizeReleaseType,
   normalizeHdr,
+  normalizeCodec,
 } from "../utils/filterUtils";
 
 export type { Filters };
-export { normalizeResolution, normalizeReleaseType, normalizeHdr };
+export {
+  normalizeResolution,
+  normalizeReleaseType,
+  normalizeHdr,
+  normalizeCodec,
+};
+
+const CODEC_OPTIONS = [
+  { value: "HEVC", label: "HEVC / H.265" },
+  { value: "AVC", label: "AVC / H.264" },
+  { value: "AV1", label: "AV1" },
+  { value: "VP9", label: "VP9" },
+] as const;
 
 const SORT_OPTIONS = [
   { value: "release-desc", labelKey: "filter.sort.releaseDesc" },
@@ -165,6 +178,7 @@ export default function FilterBar({
     normalizeReleaseType(item.release_type),
   );
   const hdrCounts = countBy(items, (item) => normalizeHdr(item.hdr));
+  const codecCounts = countBy(items, (item) => normalizeCodec(item.codec));
   const releaseTypeOptions = Array.from(
     new Set([
       "WEB-DL",
@@ -196,6 +210,7 @@ export default function FilterBar({
     filters.releaseType,
     filters.resolution,
     filters.hdr,
+    filters.codec,
     filters.genre,
   ].filter(Boolean).length;
 
@@ -209,12 +224,16 @@ export default function FilterBar({
   const hdrFilterOptions = HDR_OPTIONS.filter(
     (option) => hdrCounts.has(option.value) || filters.hdr === option.value,
   );
+  const codecFilterOptions = CODEC_OPTIONS.filter(
+    (option) => codecCounts.has(option.value) || filters.codec === option.value,
+  );
 
   const showReleaseTypeSection =
     releaseTypeFilterOptions.length > 1 || !!filters.releaseType;
   const showResolutionSection =
     resolutionFilterOptions.length > 1 || !!filters.resolution;
   const showHdrSection = hdrFilterOptions.length > 1 || !!filters.hdr;
+  const showCodecSection = codecFilterOptions.length > 1 || !!filters.codec;
 
   const genreCounts = countGenres(items);
   const genreOptions = [...GENRE_LIST]
@@ -280,6 +299,7 @@ export default function FilterBar({
               releaseType: "",
               resolution: "",
               hdr: "",
+              codec: "",
               genre: "",
             })
           }
@@ -427,6 +447,32 @@ export default function FilterBar({
                 active={filters.hdr === option.value}
                 onClick={() =>
                   set({ hdr: filters.hdr === option.value ? "" : option.value })
+                }
+              />
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {showCodecSection && (
+        <Section label={t(language, "filter.codec")}>
+          <div style={{ display: "grid", gap: 8 }}>
+            <Chip
+              label={t(language, "filter.allCodecs")}
+              count={items.length}
+              active={!filters.codec}
+              onClick={() => set({ codec: "" })}
+            />
+            {codecFilterOptions.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                count={codecCounts.get(option.value) ?? 0}
+                active={filters.codec === option.value}
+                onClick={() =>
+                  set({
+                    codec: filters.codec === option.value ? "" : option.value,
+                  })
                 }
               />
             ))}

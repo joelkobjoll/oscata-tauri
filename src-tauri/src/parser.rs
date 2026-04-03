@@ -283,9 +283,38 @@ fn parse_with_context(ftp_path: Option<&str>, filename: &str) -> ParsedMedia {
         .trim()
         .to_string();
 
-    let release_type = parse_release_type(&clean);
+    let release_type_from_filename = parse_release_type(&clean);
     let release_group = parse_release_group(without_ext);
     let languages = parse_languages(&clean);
+
+    // Build a list of ancestor folder names (immediate parent first, then
+    // grandparent, etc.) so that tech tags found in a category folder like
+    // "Peliculas BDrip 1080p X265" are picked up even when the movie lives
+    // inside its own subfolder.
+    let ancestor_cleans: Vec<String> = ftp_path
+        .map(|p| {
+            let mut dir = std::path::Path::new(p).parent();
+            let mut results = Vec::new();
+            while let Some(d) = dir {
+                if let Some(name) = d.file_name().and_then(|n| n.to_str()) {
+                    let s = name.replace(['.', '_'], " ");
+                    results.push(WHITESPACE_RE.replace_all(&s, " ").to_string());
+                }
+                dir = d.parent();
+            }
+            results
+        })
+        .unwrap_or_default();
+
+    // Helper: find the first ancestor that has a match for `f`.
+    macro_rules! ancestor_find {
+        ($f:expr) => {
+            ancestor_cleans.iter().find_map(|a| $f(a.as_str()))
+        };
+    }
+
+    let release_type = release_type_from_filename
+        .or_else(|| ancestor_find!(|a| parse_release_type(a)));
 
     ParsedMedia {
         title,
@@ -295,12 +324,20 @@ fn parse_with_context(ftp_path: Option<&str>, filename: &str) -> ParsedMedia {
         episode_end,
         resolution: RESOLUTION_RE
             .find(&clean)
-            .map(|m| m.as_str().to_uppercase()),
-        codec: CODEC_RE.find(&clean).map(|m| m.as_str().to_uppercase()),
+            .map(|m| m.as_str().to_uppercase())
+            .or_else(|| ancestor_find!(|a| RESOLUTION_RE.find(a).map(|m| m.as_str().to_uppercase()))),
+        codec: CODEC_RE
+            .find(&clean)
+            .map(|m| m.as_str().to_uppercase())
+            .or_else(|| ancestor_find!(|a| CODEC_RE.find(a).map(|m| m.as_str().to_uppercase()))),
         audio_codec: AUDIO_CODEC_RE
             .find(&clean)
-            .map(|m| m.as_str().to_uppercase()),
-        hdr: HDR_RE.find(&clean).map(|m| m.as_str().to_uppercase()),
+            .map(|m| m.as_str().to_uppercase())
+            .or_else(|| ancestor_find!(|a| AUDIO_CODEC_RE.find(a).map(|m| m.as_str().to_uppercase()))),
+        hdr: HDR_RE
+            .find(&clean)
+            .map(|m| m.as_str().to_uppercase())
+            .or_else(|| ancestor_find!(|a| HDR_RE.find(a).map(|m| m.as_str().to_uppercase()))),
         languages,
         release_type,
         release_group,
@@ -614,5 +651,40 @@ mod tests {
         // Verifies AUDIO_CODEC_RE picks up TrueHD Atmos (first match wins).
         let p = parse_media_path("", "Movie.2022.2160p.TrueHD.Atmos.x265.mkv");
         assert_eq!(p.audio_codec.as_deref(), Some("TRUEHD"));
+    }
+
+    #[test]
+    fn codec_falls_back_to_parent_folder() {
+        // Episode filename has no codec tag — should inherit from the folder name.
+        let p = parse_media_path(
+            "/TV/Show.S01.2160p.WEB-DL.x265-GROUP/S01E01.mkv",
+            "S01E01.mkv",
+        );
+        assert_eq!(p.codec.as_deref(), Some("X265"));
+        assert_eq!(p.resolution.as_deref(), Some("2160P"));
+        assert_eq!(p.release_type.as_deref(), Some("WEB-DL"));
+    }
+
+    #[test]
+    fn codec_falls_back_to_grandparent_category_folder() {
+        // Movie in its own subfolder; codec/resolution come from the grandparent
+        // category folder (e.g. "Peliculas BDrip 1080p X265").
+        let p = parse_media_path(
+            "/Peliculas BDrip 1080p X265/The Batman (2022)/The Batman.mkv",
+            "The Batman.mkv",
+        );
+        assert_eq!(p.codec.as_deref(), Some("X265"));
+        assert_eq!(p.resolution.as_deref(), Some("1080P"));
+        assert_eq!(p.release_type.as_deref(), Some("BDRip"));
+    }
+
+    #[test]
+    fn codec_from_filename_wins_over_parent_folder() {
+        // Filename explicitly says x264; folder says x265 — filename takes precedence.
+        let p = parse_media_path(
+            "/TV/Show.S01.2160p.x265-GROUP/S01E01.2160p.x264.mkv",
+            "S01E01.2160p.x264.mkv",
+        );
+        assert_eq!(p.codec.as_deref(), Some("X264"));
     }
 }

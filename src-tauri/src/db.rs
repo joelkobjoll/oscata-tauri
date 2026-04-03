@@ -501,6 +501,64 @@ impl Db {
         .map_err(|e| e.to_string())
     }
 
+    /// Re-parse `codec`, `resolution`, `audio_codec`, `hdr`, and `release_type`
+    /// for every media item using the current parser (which can now look at
+    /// ancestor folder names).  Only updates rows where the parser produces a
+    /// non-null value that differs from what is stored, so this is idempotent
+    /// and safe to call on every startup.
+    pub fn reparse_tech_tags(&self) -> Result<usize, String> {
+        // Collect all (id, ftp_path, filename) rows first so we can release
+        // the mutex lock before running the parser and doing per-row updates.
+        let rows: Vec<(i64, String, String)> = {
+            let conn = self.0.lock().unwrap();
+            let mut stmt = conn
+                .prepare("SELECT id, ftp_path, filename FROM media_items")
+                .map_err(|e| e.to_string())?;
+            let mut out = Vec::new();
+            let mut rowset = stmt.query([]).map_err(|e| e.to_string())?;
+            while let Some(row) = rowset.next().map_err(|e| e.to_string())? {
+                out.push((row.get(0).map_err(|e| e.to_string())?,
+                          row.get(1).map_err(|e| e.to_string())?,
+                          row.get(2).map_err(|e| e.to_string())?));
+            }
+            out
+        };
+
+        let mut updated = 0usize;
+        for (id, ftp_path, filename) in rows {
+            let parsed = crate::parser::parse_media_path(&ftp_path, &filename);
+            let conn = self.0.lock().unwrap();
+            let n = conn
+                .execute(
+                    "UPDATE media_items SET
+                        codec        = COALESCE(?2, codec),
+                        resolution   = COALESCE(?3, resolution),
+                        audio_codec  = COALESCE(?4, audio_codec),
+                        hdr          = COALESCE(?5, hdr),
+                        release_type = COALESCE(?6, release_type)
+                     WHERE id = ?1
+                       AND (
+                           (?2 IS NOT NULL AND (codec       IS NULL OR codec       != ?2)) OR
+                           (?3 IS NOT NULL AND (resolution  IS NULL OR resolution  != ?3)) OR
+                           (?4 IS NOT NULL AND (audio_codec IS NULL OR audio_codec != ?4)) OR
+                           (?5 IS NOT NULL AND (hdr         IS NULL OR hdr         != ?5)) OR
+                           (?6 IS NOT NULL AND (release_type IS NULL OR release_type != ?6))
+                       )",
+                    params![
+                        id,
+                        parsed.codec,
+                        parsed.resolution,
+                        parsed.audio_codec,
+                        parsed.hdr,
+                        parsed.release_type,
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            updated += n;
+        }
+        Ok(updated)
+    }
+
     pub fn prepare_for_app_version(&self, current_version: &str) -> Result<Option<String>, String> {
         let previous_version = self.load_app_value("last_app_version")?;
         match previous_version.as_deref() {

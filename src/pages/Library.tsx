@@ -10,6 +10,7 @@ import {
   normalizeHdr,
   normalizeReleaseType,
   normalizeResolution,
+  normalizeCodec,
 } from "../utils/filterUtils";
 import IndexStatus from "../components/IndexStatus";
 import Settings from "./Settings";
@@ -41,6 +42,7 @@ const defaultFilters = (): Filters => ({
   releaseType: "",
   resolution: "",
   hdr: "",
+  codec: "",
   genre: "",
   sort: "added-desc",
 });
@@ -595,6 +597,7 @@ export default function Library({
           (!filters.resolution ||
             normalizeResolution(item.resolution) === filters.resolution) &&
           (!filters.hdr || normalizeHdr(item.hdr) === filters.hdr) &&
+          (!filters.codec || normalizeCodec(item.codec) === filters.codec) &&
           matchesGenre
         );
       })
@@ -641,7 +644,7 @@ export default function Library({
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const currentPage = Math.min(page, pageCount);
-  const viewResetKey = `${activeTab}:${filters.search}:${filters.releaseType}:${filters.resolution}:${filters.hdr}:${filters.genre}:${filters.sort}:${tvView}:${movieView}`;
+  const viewResetKey = `${activeTab}:${filters.search}:${filters.releaseType}:${filters.resolution}:${filters.hdr}:${filters.codec}:${filters.genre}:${filters.sort}:${tvView}:${movieView}`;
   const pageResetKey = `${viewResetKey}:${currentPage}`;
   const paginatedItems = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -1206,7 +1209,9 @@ export default function Library({
 
         {/* Nav pills — hidden on mobile (tabs move to bottom bar) */}
         {!isMobile && (
-          <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
+          <div
+            style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}
+          >
             {TABS.map((tab) => {
               const active = activeTab === tab.id;
               return (
@@ -1358,8 +1363,7 @@ export default function Library({
             right: 0,
             zIndex: "var(--z-bottom-tabs)" as never,
             display: "flex",
-            background:
-              "color-mix(in srgb, var(--color-bg) 96%, black)",
+            background: "color-mix(in srgb, var(--color-bg) 96%, black)",
             borderTop:
               "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
             backdropFilter: "blur(16px)",
@@ -1390,7 +1394,11 @@ export default function Library({
                   transition: "color 0.15s ease",
                 }}
               >
-                <AppIcon name={tab.icon} size={22} strokeWidth={active ? 2.4 : 2.0} />
+                <AppIcon
+                  name={tab.icon}
+                  size={22}
+                  strokeWidth={active ? 2.4 : 2.0}
+                />
                 <span style={{ fontSize: 10, fontWeight: active ? 700 : 500 }}>
                   {t(language, tab.labelKey as never)}
                 </span>
@@ -1402,7 +1410,9 @@ export default function Library({
                       right: "calc(50% - 16px)",
                       fontSize: 9,
                       fontWeight: 700,
-                      background: active ? "var(--color-primary)" : "var(--color-surface-2)",
+                      background: active
+                        ? "var(--color-primary)"
+                        : "var(--color-surface-2)",
                       color: active ? "#fff" : "var(--color-text-muted)",
                       borderRadius: 999,
                       padding: "1px 5px",
@@ -1448,7 +1458,8 @@ export default function Library({
               flexDirection: "column",
               borderRight:
                 "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
-              boxShadow: "4px 0 32px color-mix(in srgb, black 40%, transparent)",
+              boxShadow:
+                "4px 0 32px color-mix(in srgb, black 40%, transparent)",
             }}
           >
             {/* Drawer header */}
@@ -1463,7 +1474,13 @@ export default function Library({
                 flexShrink: 0,
               }}
             >
-              <span style={{ fontWeight: 700, fontSize: 15, color: "var(--color-text)" }}>
+              <span
+                style={{
+                  fontWeight: 700,
+                  fontSize: 15,
+                  color: "var(--color-text)",
+                }}
+              >
                 {t(language, "filter.filters" as never)}
               </span>
               <button
@@ -1946,7 +1963,10 @@ export default function Library({
           </div>
         </div>
 
-        <div className={isMobile ? "mobile-content-area" : undefined} style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        <div
+          className={isMobile ? "mobile-content-area" : undefined}
+          style={{ flex: 1, display: "flex", minHeight: 0 }}
+        >
           {activeTab !== "downloads" && !isMobile && (
             <div
               style={{

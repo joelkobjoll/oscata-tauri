@@ -220,6 +220,15 @@ pub fn run() {
                     eprintln!("ftp_relative_path backfill failed: {e}");
                 }
 
+                // Re-parse codec/resolution/audio_codec/hdr/release_type from the
+                // stored ftp_path so that items indexed before the parent-folder
+                // fallback was added get their tech tags populated.
+                match db.reparse_tech_tags() {
+                    Ok(n) if n > 0 => println!("Reparsed tech tags for {n} library items"),
+                    Ok(_) => {}
+                    Err(e) => eprintln!("reparse_tech_tags failed: {e}"),
+                }
+
                 if let Ok(Some(backup_path)) = db.prepare_for_app_version(&current_version) {
                     println!(
                         "App updated to v{}; preserved existing library cache backup at {}",

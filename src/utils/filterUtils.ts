@@ -3,6 +3,7 @@ export interface Filters {
   releaseType: string;
   resolution: string;
   hdr: string;
+  codec: string;
   genre: string;
   sort: string;
 }
@@ -49,5 +50,27 @@ export function normalizeHdr(raw?: string): string {
     return "DV";
   if (value.includes("HDR10")) return "HDR10";
   if (value.includes("HDR")) return "HDR";
+  return value;
+}
+
+export function normalizeCodec(raw?: string): string {
+  const value = raw?.trim().toUpperCase() ?? "";
+  if (!value) return "";
+  if (
+    value === "X265" ||
+    value === "H265" ||
+    value === "H.265" ||
+    value === "HEVC"
+  )
+    return "HEVC";
+  if (
+    value === "X264" ||
+    value === "H264" ||
+    value === "H.264" ||
+    value === "AVC"
+  )
+    return "AVC";
+  if (value === "AV1") return "AV1";
+  if (value === "VP9") return "VP9";
   return value;
 }
