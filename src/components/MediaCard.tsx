@@ -9,6 +9,7 @@ import {
   getLocalizedPosterPath,
   getLocalizedTitle,
 } from "../utils/mediaLanguage";
+import { formatBytes } from "../lib/format";
 
 interface Props {
   item: MediaItem;
@@ -21,6 +22,7 @@ interface Props {
   };
   downloadItem?: DownloadItem;
   hideEpisodeBadge?: boolean;
+  showFileSize?: boolean;
   onDownload: (item: MediaItem) => void;
   onSelect?: (item: MediaItem) => void;
 }
@@ -143,6 +145,7 @@ function MediaCard({
   badges,
   downloadItem,
   hideEpisodeBadge = false,
+  showFileSize = false,
   onDownload: _onDownload,
   onSelect,
 }: Props) {
@@ -412,6 +415,12 @@ function MediaCard({
                   {langs[0]}
                 </InlineBadge>
               </span>
+            </>
+          )}
+          {showFileSize && item.size_bytes != null && item.size_bytes > 0 && (
+            <>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <span>{formatBytes(item.size_bytes)}</span>
             </>
           )}
         </div>

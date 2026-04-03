@@ -13,6 +13,7 @@ import {
 } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 import { GENRE_MAP } from "../utils/genres";
+import { formatBytes } from "../lib/format";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w342";
 
@@ -494,14 +495,27 @@ export default function DetailPanel({
                     </div>
                     <div
                       style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
                         fontSize: 12,
                         color: "var(--color-text-muted)",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
                       }}
                     >
-                      {version.filename}
+                      <span
+                        style={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {version.filename}
+                      </span>
+                      {version.size_bytes != null && version.size_bytes > 0 && (
+                        <span style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
+                          {formatBytes(version.size_bytes)}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div

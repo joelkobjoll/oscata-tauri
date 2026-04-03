@@ -25,6 +25,7 @@ import VirtualMediaGrid from "../components/VirtualMediaGrid";
 import ThemeToggle from "../components/ThemeToggle";
 import { AppLanguage, getLocalizedTitle } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
+import { formatBytes } from "../lib/format";
 
 type TabId = "all" | "movie" | "tv" | "documentary" | "downloads";
 type TabIcon = "grid" | "movie" | "tv" | "docs" | "download";
@@ -171,6 +172,11 @@ function EpisodeListView({
               >
                 {item.release_type && <span>{item.release_type}</span>}
                 {item.resolution && <span>{item.resolution}</span>}
+                {item.size_bytes != null && item.size_bytes > 0 && (
+                  <span style={{ fontWeight: 600 }}>
+                    {formatBytes(item.size_bytes)}
+                  </span>
+                )}
                 <AppIcon name="chevron-right" size={16} strokeWidth={2.2} />
               </div>
             </button>
@@ -1134,6 +1140,9 @@ export default function Library({
       badgeMap={badgeMap}
       downloadMap={downloadMap}
       hideEpisodeBadge={isSeriesTab && !useEpisodeList}
+      showFileSize={
+        activeTab === "all" || (activeTab === "movie" && movieView === "files")
+      }
     />
   );
 
