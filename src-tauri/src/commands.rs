@@ -813,10 +813,11 @@ async fn resolve_tmdb_match_with_plex(
     title: &str,
     year: Option<u16>,
     tmdb_search_type: &str,
-) -> Result<Option<crate::tmdb::TmdbMovie>, String> {
+) -> Result<Option<(crate::tmdb::TmdbMovie, String)>, String> {
     if let Some(imdb_id) = resolve_plex_imdb_id(config, title, year, tmdb_search_type).await? {
         if let Some(movie) = crate::tmdb::find_by_imdb_id(api_key, &imdb_id, tmdb_search_type).await? {
-            return Ok(Some(movie));
+            let actual_type = if tmdb_search_type == "tv" { "tv" } else { "movie" }.to_string();
+            return Ok(Some((movie, actual_type)));
         }
     }
 
@@ -825,19 +826,21 @@ async fn resolve_tmdb_match_with_plex(
             .await
             .ok()
             .and_then(|mut r| if r.is_empty() { None } else { Some(r.remove(0)) })
+            .map(|m| (m, "tv".to_string()))
     } else {
         crate::tmdb::smart_search(api_key, title, year, tmdb_search_type)
             .await
             .ok()
             .flatten()
+            .map(|(m, ep)| (m, ep.to_string()))
     };
 
-    if let Some(movie) = result {
-        let movie = match crate::tmdb::fetch_movie_by_id(api_key, movie.id, tmdb_search_type).await {
+    if let Some((movie, actual_type)) = result {
+        let movie = match crate::tmdb::fetch_movie_by_id(api_key, movie.id, &actual_type).await {
             Ok(full) => full,
             Err(_) => movie,
         };
-        return Ok(Some(movie));
+        return Ok(Some((movie, actual_type)));
     }
 
     Ok(None)
@@ -1095,7 +1098,7 @@ pub async fn rematch_all_internal(
         let api_key = &config.tmdb_api_key;
         let result = resolve_tmdb_match_with_plex(&config, api_key, &title, year, tmdb_search_type).await;
 
-        if let Ok(Some(movie)) = result {
+        if let Ok(Some((movie, actual_type))) = result {
             emit_index_log(
                 &window,
                 format!(
@@ -1105,7 +1108,7 @@ pub async fn rematch_all_internal(
                     movie.release_date.as_deref().unwrap_or("?")
                 ),
             );
-            db.update_tmdb_auto(item.id, &movie, &mtype).ok();
+            db.update_tmdb_auto(item.id, &movie, &actual_type).ok();
             if let Some(ref w) = window {
                 w.emit("index:update", serde_json::json!({
                     "id": item.id,
@@ -1120,7 +1123,7 @@ pub async fn rematch_all_internal(
                     "tmdb_overview_en": movie.overview_en,
                     "tmdb_genres": movie.genre_ids,
                     "tmdb_release_date": movie.release_date,
-                    "tmdb_type": mtype,
+                    "tmdb_type": actual_type,
                 })).ok();
             }
         } else {
@@ -1307,31 +1310,37 @@ pub async fn start_indexing_internal(
                         &tmdb_stype,
                     )
                     .await;
-                    if let Ok(Some(movie)) = result {
-                        on_log_clone(format!("🌐 TMDB: {} → {}", title, movie.title));
-                        db_clone.update_tmdb_auto(id, &movie, &mtype).ok();
-                        if let Some(ref w) = window_clone {
-                            w.emit(
-                                "index:update",
-                                serde_json::json!({
-                                    "id": id,
-                                    "tmdb_id": movie.id,
-                                    "imdb_id": movie.imdb_id,
-                                    "tmdb_title": movie.title,
-                                    "tmdb_title_en": movie.title_en,
-                                    "tmdb_poster": movie.poster_path,
-                                    "tmdb_poster_en": movie.poster_path_en,
-                                    "tmdb_rating": movie.vote_average,
-                                    "tmdb_overview": movie.overview,
-                                    "tmdb_overview_en": movie.overview_en,
-                                    "tmdb_genres": movie.genre_ids,
-                                    "tmdb_release_date": movie.release_date,
-                                    "tmdb_type": mtype,
-                                }),
-                            ).ok();
+                    match result {
+                        Ok(Some((movie, actual_type))) => {
+                            on_log_clone(format!("🌐 TMDB: {} → {}", title, movie.title));
+                            db_clone.update_tmdb_auto(id, &movie, &actual_type).ok();
+                            if let Some(ref w) = window_clone {
+                                w.emit(
+                                    "index:update",
+                                    serde_json::json!({
+                                        "id": id,
+                                        "tmdb_id": movie.id,
+                                        "imdb_id": movie.imdb_id,
+                                        "tmdb_title": movie.title,
+                                        "tmdb_title_en": movie.title_en,
+                                        "tmdb_poster": movie.poster_path,
+                                        "tmdb_poster_en": movie.poster_path_en,
+                                        "tmdb_rating": movie.vote_average,
+                                        "tmdb_overview": movie.overview,
+                                        "tmdb_overview_en": movie.overview_en,
+                                        "tmdb_genres": movie.genre_ids,
+                                        "tmdb_release_date": movie.release_date,
+                                        "tmdb_type": actual_type,
+                                    }),
+                                ).ok();
+                            }
                         }
-                    } else {
-                        on_log_clone(format!("⚠ TMDB: no match for \"{}\"", title));
+                        Ok(None) => {
+                            on_log_clone(format!("⚠ TMDB: no match for \"{}\"", title));
+                        }
+                        Err(e) => {
+                            on_log_clone(format!("✗ TMDB error for \"{}\": {}", title, e));
+                        }
                     }
                 }));
             }
@@ -1710,19 +1719,21 @@ pub async fn refresh_all_metadata_internal(
     let mut items: Vec<_> = items
         .into_iter()
         .filter(|item| {
-            item.tmdb_id.is_some()
-                && (
-                    item.tmdb_title.as_deref().unwrap_or("").is_empty()
-                        || item.tmdb_title_en.as_deref().unwrap_or("").is_empty()
-                        || item.tmdb_overview.as_deref().unwrap_or("").is_empty()
-                        || item.tmdb_overview_en.as_deref().unwrap_or("").is_empty()
-                        || item.tmdb_poster.as_deref().unwrap_or("").is_empty()
-                        || item.tmdb_poster_en.as_deref().unwrap_or("").is_empty()
-                        || item.tmdb_release_date.as_deref().unwrap_or("").is_empty()
-                        || item.imdb_id.as_deref().unwrap_or("").is_empty()
-                        || item.tmdb_rating.is_none()
-                        || item.tmdb_genres.as_deref().unwrap_or("").is_empty()
-                )
+            // Always include items that were never matched at all
+            if item.tmdb_id.is_none() {
+                return true;
+            }
+            // Include matched items that are missing any metadata field
+            item.tmdb_title.as_deref().unwrap_or("").is_empty()
+                || item.tmdb_title_en.as_deref().unwrap_or("").is_empty()
+                || item.tmdb_overview.as_deref().unwrap_or("").is_empty()
+                || item.tmdb_overview_en.as_deref().unwrap_or("").is_empty()
+                || item.tmdb_poster.as_deref().unwrap_or("").is_empty()
+                || item.tmdb_poster_en.as_deref().unwrap_or("").is_empty()
+                || item.tmdb_release_date.as_deref().unwrap_or("").is_empty()
+                || item.imdb_id.as_deref().unwrap_or("").is_empty()
+                || item.tmdb_rating.is_none()
+                || item.tmdb_genres.as_deref().unwrap_or("").is_empty()
         })
         .collect();
 
@@ -1749,10 +1760,6 @@ pub async fn refresh_all_metadata_internal(
     }
 
     for (i, item) in items.into_iter().enumerate() {
-        let tmdb_id = match item.tmdb_id {
-            Some(value) => value,
-            None => continue,
-        };
         let media_type = item.tmdb_type
             .clone()
             .or_else(|| item.media_type.clone())
@@ -1768,6 +1775,50 @@ pub async fn refresh_all_metadata_internal(
         );
 
         tokio::time::sleep(std::time::Duration::from_millis(260)).await;
+
+        // Items with no tmdb_id need a full search, not just a detail fetch.
+        if item.tmdb_id.is_none() {
+            let tmdb_search_type = match media_type.as_str() {
+                "tv" => "tv",
+                "documentary" => {
+                    let parsed = crate::parser::parse_media_path(&item.ftp_path, &item.filename);
+                    if parsed.season.is_some() { "tv" } else { "movie" }
+                },
+                _ => "movie",
+            };
+            let year = item.year.map(|y| y as u16);
+            match resolve_tmdb_match_with_plex(&config, &config.tmdb_api_key, &title, year, tmdb_search_type).await {
+                Ok(Some((movie, actual_type))) => {
+                    db.update_tmdb_auto(item.id, &movie, &actual_type).ok();
+                    if let Some(ref w) = window {
+                        w.emit("index:update", serde_json::json!({
+                            "id": item.id,
+                            "tmdb_id": movie.id,
+                            "imdb_id": movie.imdb_id,
+                            "tmdb_title": movie.title,
+                            "tmdb_title_en": movie.title_en,
+                            "tmdb_poster": movie.poster_path,
+                            "tmdb_poster_en": movie.poster_path_en,
+                            "tmdb_rating": movie.vote_average,
+                            "tmdb_overview": movie.overview,
+                            "tmdb_overview_en": movie.overview_en,
+                            "tmdb_genres": movie.genre_ids,
+                            "tmdb_release_date": movie.release_date,
+                            "tmdb_type": actual_type,
+                        })).ok();
+                    }
+                }
+                Ok(None) => {
+                    emit_index_log(&window, format!("⚠ No TMDB match found for: {}", title));
+                }
+                Err(err) => {
+                    emit_index_log(&window, format!("⚠ TMDB search failed for {}: {}", title, err));
+                }
+            }
+            continue;
+        }
+
+        let tmdb_id = item.tmdb_id.unwrap();
 
         match crate::tmdb::fetch_movie_by_id(&config.tmdb_api_key, tmdb_id, &media_type).await {
             Ok(movie) => {
