@@ -814,7 +814,7 @@ async fn resolve_tmdb_match_with_plex(
     year: Option<u16>,
     tmdb_search_type: &str,
 ) -> Result<Option<(crate::tmdb::TmdbMovie, String)>, String> {
-    if let Some(imdb_id) = resolve_plex_imdb_id(config, title, year, tmdb_search_type).await? {
+    if let Ok(Some(imdb_id)) = resolve_plex_imdb_id(config, title, year, tmdb_search_type).await {
         if let Some(movie) = crate::tmdb::find_by_imdb_id(api_key, &imdb_id, tmdb_search_type).await? {
             let actual_type = if tmdb_search_type == "tv" { "tv" } else { "movie" }.to_string();
             return Ok(Some((movie, actual_type)));
