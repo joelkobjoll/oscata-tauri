@@ -1,5 +1,13 @@
 # Novedades de Oscata
 
+## Versión 0.5.1 — 3 de abril de 2026
+
+### 🐛 Corrección: el asistente de configuración fallaba al guardar
+
+Las nuevas opciones de enrutamiento por destino y género que se añadieron en 0.4.0 no tenían valores por defecto en el servidor. Esto hacía que el asistente de configuración fallara al guardar si esos campos no estaban presentes —y en el asistente nunca lo están—. Se han añadido los valores por defecto correspondientes y ahora el guardado funciona correctamente.
+
+---
+
 ## Versión 0.5.0 — 3 de abril de 2026
 
 ### 📱 Interfaz adaptada a móvil
