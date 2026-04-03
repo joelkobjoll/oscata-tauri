@@ -132,10 +132,40 @@ export function useIndexing() {
       );
       // Re-fetch the full list so items added during a background index
       // (when progress events were suppressed) are visible immediately.
+      // Merge with in-memory state to preserve any TMDB patches (index:update)
+      // that arrived between index:complete and when get_all_media resolves —
+      // those writes may have been missed by the DB snapshot due to the race.
       call<MediaItem[]>("get_all_media")
         .then((loaded) => {
-          rebuildIndex(loaded);
-          setItems(loaded);
+          setItems((prev) => {
+            const prevById = new Map(prev.map((item) => [item.id, item]));
+            const merged = loaded.map((dbItem) => {
+              if (dbItem.tmdb_id != null) return dbItem;
+              const memItem = prevById.get(dbItem.id);
+              if (memItem?.tmdb_id != null) {
+                // index:update arrived before get_all_media resolved — keep TMDB fields
+                return {
+                  ...dbItem,
+                  tmdb_id: memItem.tmdb_id,
+                  imdb_id: memItem.imdb_id,
+                  tmdb_type: memItem.tmdb_type,
+                  tmdb_title: memItem.tmdb_title,
+                  tmdb_title_en: memItem.tmdb_title_en,
+                  tmdb_release_date: memItem.tmdb_release_date,
+                  tmdb_overview: memItem.tmdb_overview,
+                  tmdb_overview_en: memItem.tmdb_overview_en,
+                  tmdb_poster: memItem.tmdb_poster,
+                  tmdb_poster_en: memItem.tmdb_poster_en,
+                  tmdb_rating: memItem.tmdb_rating,
+                  tmdb_genres: memItem.tmdb_genres,
+                  metadata_at: memItem.metadata_at,
+                };
+              }
+              return dbItem;
+            });
+            rebuildIndex(merged);
+            return merged;
+          });
         })
         .catch(console.error);
     });
