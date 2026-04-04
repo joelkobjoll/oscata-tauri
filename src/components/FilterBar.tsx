@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { MediaItem } from "../hooks/useIndexing";
 import AppIcon from "./AppIcon";
 import type { AppLanguage } from "../utils/mediaLanguage";
@@ -74,32 +75,77 @@ function countGenres(items: MediaItem[]): Map<number, number> {
   return counts;
 }
 
+// Compact section with collapsible toggle
 function Section({
   label,
   children,
+  hasActive,
 }: {
   label: string;
   children: React.ReactNode;
+  hasActive?: boolean;
 }) {
+  const [open, setOpen] = useState(true);
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div
+    <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
         style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-          color: "var(--color-text-muted)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+          background: "none",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          width: "100%",
         }}
       >
-        {label}
-      </div>
-      {children}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.09em",
+              textTransform: "uppercase" as const,
+              color: hasActive
+                ? "var(--color-primary)"
+                : "var(--color-text-muted)",
+            }}
+          >
+            {label}
+          </span>
+          {hasActive && (
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 999,
+                background: "var(--color-primary)",
+                flexShrink: 0,
+              }}
+            />
+          )}
+        </div>
+        <span
+          style={{
+            color: "var(--color-text-muted)",
+            transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+            transition: "transform 0.15s ease",
+            lineHeight: 1,
+          }}
+        >
+          <AppIcon name="chevron-down" size={12} />
+        </span>
+      </button>
+      {open && children}
     </section>
   );
 }
 
-function Chip({
+// Compact pill-style chip, wraps horizontally with siblings
+function Pill({
   label,
   count,
   active,
@@ -110,45 +156,47 @@ function Chip({
   active: boolean;
   onClick: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   return (
     <button
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        display: "flex",
+        display: "inline-flex",
         alignItems: "center",
-        justifyContent: "space-between",
-        gap: 10,
-        width: "100%",
-        padding: "10px 12px",
-        borderRadius: "var(--radius)",
+        gap: 5,
+        padding: "5px 10px",
+        borderRadius: "var(--radius-full)",
         border: active
-          ? "1px solid color-mix(in srgb, var(--color-primary) 45%, transparent)"
-          : "1px solid color-mix(in srgb, var(--color-border) 82%, transparent)",
+          ? "1px solid color-mix(in srgb, var(--color-primary) 55%, transparent)"
+          : `1px solid color-mix(in srgb, var(--color-border) ${hovered ? "100%" : "75%"}, transparent)`,
         background: active
-          ? "color-mix(in srgb, var(--color-primary) 14%, transparent)"
-          : "color-mix(in srgb, var(--color-surface-2) 78%, transparent)",
-        color: active ? "var(--color-text)" : "var(--color-text-muted)",
-        fontSize: 13,
-        fontWeight: active ? 700 : 600,
+          ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
+          : hovered
+            ? "color-mix(in srgb, var(--color-surface-2) 100%, transparent)"
+            : "color-mix(in srgb, var(--color-surface-2) 65%, transparent)",
+        color: active
+          ? "var(--color-primary)"
+          : hovered
+            ? "var(--color-text)"
+            : "var(--color-text-muted)",
+        fontSize: 12,
+        fontWeight: active ? 700 : 500,
         cursor: "pointer",
+        transition:
+          "background 0.12s ease, border-color 0.12s ease, color 0.12s ease",
+        whiteSpace: "nowrap",
       }}
     >
       <span>{label}</span>
       {count != null && (
         <span
           style={{
-            minWidth: 22,
-            padding: "2px 7px",
-            borderRadius: 999,
-            background: active
-              ? "color-mix(in srgb, var(--color-primary) 22%, transparent)"
-              : "color-mix(in srgb, var(--color-surface) 92%, transparent)",
-            color: active
-              ? "var(--color-primary-hover)"
-              : "var(--color-text-muted)",
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: 700,
-            textAlign: "center",
+            color: active ? "var(--color-primary)" : "var(--color-text-muted)",
+            opacity: 0.8,
           }}
         >
           {count}
@@ -247,51 +295,72 @@ export default function FilterBar({
 
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
 
+  const selectStyle: React.CSSProperties = {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "0.72rem 2.2rem 0.72rem 0.9rem",
+    borderRadius: "var(--radius)",
+    border:
+      "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+    background: "color-mix(in srgb, var(--color-surface-2) 84%, transparent)",
+    color: "var(--color-text)",
+    fontSize: 13,
+    outline: "none",
+    cursor: "pointer",
+    appearance: "none",
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238888a0' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 0.75rem center",
+  };
+
   return (
     <aside
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 16,
-        padding: "16px",
+        gap: 12,
+        padding: "14px 12px",
         borderRadius: "var(--radius-lg)",
         border:
           "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
         background:
           "linear-gradient(160deg, color-mix(in srgb, var(--color-surface) 90%, var(--color-bg) 10%), color-mix(in srgb, var(--color-surface-2) 84%, var(--color-bg) 16%))",
-        boxShadow: "0 16px 38px color-mix(in srgb, black 18%, transparent)",
       }}
     >
+      {/* Header */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 12,
+          gap: 8,
         }}
       >
-        <div>
-          <div
-            style={{
-              fontSize: 17,
-              fontWeight: 700,
-              color: "var(--color-text)",
-            }}
-          >
-            {t(language, "filter.filters")}
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--color-text-muted)",
-              marginTop: 2,
-            }}
-          >
-            {activeFilterCount > 0
-              ? t(language, "filter.active", { count: activeFilterCount })
-              : t(language, "filter.browseHint")}
-          </div>
-        </div>
+        <span
+          style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}
+        >
+          {t(language, "filter.filters")}
+          {activeFilterCount > 0 && (
+            <span
+              style={{
+                marginLeft: 7,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 18,
+                height: 18,
+                padding: "0 5px",
+                borderRadius: 999,
+                background: "var(--color-primary)",
+                color: "#fff",
+                fontSize: 10,
+                fontWeight: 700,
+              }}
+            >
+              {activeFilterCount}
+            </span>
+          )}
+        </span>
         <button
           onClick={() =>
             set({
@@ -305,85 +374,108 @@ export default function FilterBar({
           }
           disabled={activeFilterCount === 0}
           style={{
-            padding: "7px 12px",
+            padding: "4px 9px",
             borderRadius: "var(--radius-full)",
             border:
               "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
-            background:
-              "color-mix(in srgb, var(--color-surface) 94%, transparent)",
+            background: "none",
             color:
               activeFilterCount === 0
                 ? "var(--color-text-muted)"
                 : "var(--color-text)",
-            opacity: activeFilterCount === 0 ? 0.5 : 1,
+            opacity: activeFilterCount === 0 ? 0.4 : 1,
             cursor: activeFilterCount === 0 ? "default" : "pointer",
-            fontSize: 12,
-            fontWeight: 700,
+            fontSize: 11,
+            fontWeight: 600,
           }}
         >
           {t(language, "filter.clear")}
         </button>
       </div>
 
-      <Section label={t(language, "filter.search")}>
-        <div
+      {/* Search */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          minHeight: 36,
+          padding: "0 10px",
+          borderRadius: "var(--radius)",
+          border:
+            "1px solid color-mix(in srgb, var(--color-border) 85%, transparent)",
+          background:
+            "color-mix(in srgb, var(--color-surface-2) 88%, transparent)",
+        }}
+      >
+        <span style={{ color: "var(--color-text-muted)", flexShrink: 0 }}>
+          <AppIcon name="search" size={14} strokeWidth={2.2} />
+        </span>
+        <input
+          ref={searchInputRef}
+          value={filters.search}
+          onChange={(e) => set({ search: e.target.value })}
+          placeholder={t(language, "filter.searchPlaceholder")}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            minHeight: 42,
-            padding: "0 12px",
-            borderRadius: "var(--radius)",
-            border:
-              "1px solid color-mix(in srgb, var(--color-border) 85%, transparent)",
-            background:
-              "color-mix(in srgb, var(--color-surface-2) 88%, transparent)",
+            width: "100%",
+            border: "none",
+            outline: "none",
+            background: "transparent",
+            color: "var(--color-text)",
+            fontSize: 13,
           }}
-        >
-          <span style={{ color: "var(--color-text-muted)" }}>
-            <AppIcon name="search" size={15} strokeWidth={2.2} />
-          </span>
-          <input
-            ref={searchInputRef}
-            value={filters.search}
-            onChange={(e) => set({ search: e.target.value })}
-            placeholder={t(language, "filter.searchPlaceholder")}
+        />
+        {filters.search && (
+          <button
+            onClick={() => set({ search: "" })}
             style={{
-              width: "100%",
+              flexShrink: 0,
+              background: "none",
               border: "none",
-              outline: "none",
-              background: "transparent",
-              color: "var(--color-text)",
-              fontSize: 14,
+              padding: 2,
+              cursor: "pointer",
+              color: "var(--color-text-muted)",
+              lineHeight: 1,
             }}
-          />
-        </div>
-      </Section>
+          >
+            <AppIcon name="close" size={12} />
+          </button>
+        )}
+      </div>
 
+      <div
+        style={{
+          height: 1,
+          background:
+            "color-mix(in srgb, var(--color-border) 55%, transparent)",
+          margin: "2px 0",
+        }}
+      />
+
+      {/* Sort */}
       <Section label={t(language, "filter.sort")}>
-        <div style={{ display: "grid", gap: 8 }}>
+        <select
+          style={selectStyle}
+          value={filters.sort}
+          onChange={(e) => set({ sort: e.target.value as Filters["sort"] })}
+        >
           {SORT_OPTIONS.map((option) => (
-            <Chip
-              key={option.value}
-              label={t(language, option.labelKey)}
-              active={filters.sort === option.value}
-              onClick={() => set({ sort: option.value })}
-            />
+            <option key={option.value} value={option.value}>
+              {t(language, option.labelKey)}
+            </option>
           ))}
-        </div>
+        </select>
       </Section>
 
+      {/* Release type */}
       {showReleaseTypeSection && (
-        <Section label={t(language, "filter.type")}>
-          <div style={{ display: "grid", gap: 8 }}>
-            <Chip
-              label={t(language, "filter.allTypes")}
-              count={items.length}
-              active={!filters.releaseType}
-              onClick={() => set({ releaseType: "" })}
-            />
+        <Section
+          label={t(language, "filter.type")}
+          hasActive={!!filters.releaseType}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {releaseTypeFilterOptions.map((option) => (
-              <Chip
+              <Pill
                 key={option}
                 label={option}
                 count={releaseTypeCounts.get(option) ?? 0}
@@ -399,17 +491,15 @@ export default function FilterBar({
         </Section>
       )}
 
+      {/* Resolution */}
       {showResolutionSection && (
-        <Section label={t(language, "filter.resolution")}>
-          <div style={{ display: "grid", gap: 8 }}>
-            <Chip
-              label={t(language, "filter.allResolutions")}
-              count={items.length}
-              active={!filters.resolution}
-              onClick={() => set({ resolution: "" })}
-            />
+        <Section
+          label={t(language, "filter.resolution")}
+          hasActive={!!filters.resolution}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {resolutionFilterOptions.map((option) => (
-              <Chip
+              <Pill
                 key={option.value}
                 label={option.label}
                 count={resolutionCounts.get(option.value) ?? 0}
@@ -426,17 +516,12 @@ export default function FilterBar({
         </Section>
       )}
 
+      {/* HDR */}
       {showHdrSection && (
-        <Section label={t(language, "filter.hdr")}>
-          <div style={{ display: "grid", gap: 8 }}>
-            <Chip
-              label={t(language, "filter.allHdr")}
-              count={items.length}
-              active={!filters.hdr}
-              onClick={() => set({ hdr: "" })}
-            />
+        <Section label={t(language, "filter.hdr")} hasActive={!!filters.hdr}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {hdrFilterOptions.map((option) => (
-              <Chip
+              <Pill
                 key={option.value}
                 label={
                   "labelKey" in option
@@ -454,17 +539,15 @@ export default function FilterBar({
         </Section>
       )}
 
+      {/* Codec */}
       {showCodecSection && (
-        <Section label={t(language, "filter.codec")}>
-          <div style={{ display: "grid", gap: 8 }}>
-            <Chip
-              label={t(language, "filter.allCodecs")}
-              count={items.length}
-              active={!filters.codec}
-              onClick={() => set({ codec: "" })}
-            />
+        <Section
+          label={t(language, "filter.codec")}
+          hasActive={!!filters.codec}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {codecFilterOptions.map((option) => (
-              <Chip
+              <Pill
                 key={option.value}
                 label={option.label}
                 count={codecCounts.get(option.value) ?? 0}
@@ -480,17 +563,15 @@ export default function FilterBar({
         </Section>
       )}
 
+      {/* Genre */}
       {showGenreSection && (
-        <Section label={t(language, "filter.genre")}>
-          <div style={{ display: "grid", gap: 8 }}>
-            <Chip
-              label={t(language, "filter.allGenres")}
-              count={items.length}
-              active={!filters.genre}
-              onClick={() => set({ genre: "" })}
-            />
+        <Section
+          label={t(language, "filter.genre")}
+          hasActive={!!filters.genre}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {genreOptions.map((g) => (
-              <Chip
+              <Pill
                 key={g.id}
                 label={t(language, g.i18nKey as never)}
                 count={genreCounts.get(g.id) ?? 0}
