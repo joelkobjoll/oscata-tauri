@@ -860,6 +860,63 @@ const messages = {
     es: "No se pudo inicializar la interfaz web",
     en: "Failed to initialize WebGUI",
   },
+
+  "toast.tmdb": { es: "Enriqueciendo", en: "Enriching" },
+  "toast.tmdbTitle": {
+    es: "Enriqueciendo metadatos",
+    en: "Enriching metadata",
+  },
+  "toast.tmdbOf": {
+    es: "{done} de {total} títulos",
+    en: "{done} of {total} titles",
+  },
+
+  "settings.appearanceTitle": { es: "Apariencia", en: "Appearance" },
+  "settings.appearanceDescription": {
+    es: "Elige cómo se ve Oscata. Sistema sigue la preferencia de tu SO y se actualiza al instante.",
+    en: "Choose how Oscata looks. System follows your OS preference and updates live.",
+  },
+  "settings.themeSystem": { es: "Sistema", en: "System" },
+  "settings.themeDark": { es: "Oscuro", en: "Dark" },
+  "settings.themeLight": { es: "Claro", en: "Light" },
+  "settings.themeSystemDesc": {
+    es: "Sigue automáticamente el modo oscuro/claro de tu sistema operativo.",
+    en: "Automatically matches your operating system's dark/light setting.",
+  },
+  "settings.themeDarkDesc": {
+    es: "Siempre usa modo oscuro independientemente del ajuste del SO.",
+    en: "Always use dark mode regardless of OS setting.",
+  },
+  "settings.themeLightDesc": {
+    es: "Siempre usa modo claro independientemente del ajuste del SO.",
+    en: "Always use light mode regardless of OS setting.",
+  },
+  "settings.desktopTitle": { es: "Escritorio", en: "Desktop" },
+  "settings.desktopDescription": {
+    es: "Comportamiento de la ventana de la aplicación de escritorio.",
+    en: "Behaviour of the desktop application window.",
+  },
+  "settings.closeToTrayLabel": {
+    es: "Minimizar a bandeja",
+    en: "Close to tray",
+  },
+  "settings.closeToTrayHelp": {
+    es: "Al cerrar la ventana, Oscata se oculta en la bandeja del sistema en lugar de cerrarse.",
+    en: "Closing the window hides Oscata to the system tray instead of quitting.",
+  },
+
+  "quit.title": { es: "Descargas en curso", en: "Downloads in progress" },
+  "quit.body": {
+    es: "{count} descarga(s) se cancelarán si cierras. ¿Continuar?",
+    en: "{count} download(s) will be cancelled if you quit. Continue?",
+  },
+  "quit.keep": { es: "Seguir descargando", en: "Keep Downloading" },
+  "quit.confirm": { es: "Cerrar de todas formas", en: "Quit Anyway" },
+
+  "metaRefresh.banner": {
+    es: "Actualizando metadatos · {done}/{total}",
+    en: "Updating metadata · {done}/{total}",
+  },
 } as const;
 
 export function t(

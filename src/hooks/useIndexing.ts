@@ -57,6 +57,14 @@ export function useIndexing() {
     removed: number;
   } | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
+  const [tmdbProgress, setTmdbProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
+  const [metaRefreshProgress, setMetaRefreshProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
   const itemIndexRef = useRef<Map<number, number>>(new Map());
 
   const rebuildIndex = (nextItems: MediaItem[]) => {
@@ -122,6 +130,7 @@ export function useIndexing() {
       removed?: number;
     }>("index:complete", ({ payload }) => {
       setProgress(null);
+      setTmdbProgress(null);
       setIsIndexing(false);
       setCompletionSummary({
         newItems: payload.new_items,
@@ -198,6 +207,7 @@ export function useIndexing() {
       setIndexError(null);
       setIsIndexing(true);
       setProgress(null);
+      setTmdbProgress(null);
       setCompletionSummary(null);
       setCrawlStats({ scannedFolders: 0, foundFiles: 0 });
       addLog("▶ Indexing started");
@@ -210,6 +220,27 @@ export function useIndexing() {
         })
       : Promise.resolve(() => {});
 
+    const unTmdbProgress = listen<{ done: number; total: number }>(
+      "index:tmdb_progress",
+      ({ payload }) => {
+        setTmdbProgress({ done: payload.done, total: payload.total });
+        if (payload.done >= payload.total) {
+          // All TMDB tasks finished — clear after a brief delay so the 100% state is visible
+          setTimeout(() => setTmdbProgress(null), 1500);
+        }
+      },
+    );
+
+    const unMetaRefresh = listen<{ done: number; total: number }>(
+      "metadata:refresh_progress",
+      ({ payload }) => {
+        setMetaRefreshProgress({ done: payload.done, total: payload.total });
+        if (payload.done >= payload.total) {
+          setTimeout(() => setMetaRefreshProgress(null), 1500);
+        }
+      },
+    );
+
     return () => {
       unProgress.then((f) => f());
       unUpdate.then((f) => f());
@@ -217,6 +248,8 @@ export function useIndexing() {
       unStart.then((f) => f());
       unComplete.then((f) => f());
       unLog.then((f) => f());
+      unTmdbProgress.then((f) => f());
+      unMetaRefresh.then((f) => f());
     };
   }, []);
 
@@ -245,6 +278,8 @@ export function useIndexing() {
     isIndexing,
     crawlStats,
     progress,
+    tmdbProgress,
+    metaRefreshProgress,
     completionSummary,
     dismissCompletion: () => setCompletionSummary(null),
     indexError,

@@ -53,9 +53,15 @@ pub struct AppConfig {
     pub alphabetical_subfolders: bool,   // default true
     #[serde(default)]
     pub genre_destinations: String,      // JSON: GenreDestRule[]
+    #[serde(default = "default_close_to_tray")]
+    pub close_to_tray: bool,             // default true
 }
 
 fn default_alphabetical_subfolders() -> bool {
+    true
+}
+
+fn default_close_to_tray() -> bool {
     true
 }
 
@@ -1092,6 +1098,10 @@ impl Db {
                 if config.alphabetical_subfolders { "1" } else { "0" },
             ),
             ("genre_destinations", config.genre_destinations.as_str()),
+            (
+                "close_to_tray",
+                if config.close_to_tray { "1" } else { "0" },
+            ),
         ];
         let port_str = config.ftp_port.to_string();
         for (k, v) in &pairs {
@@ -1479,6 +1489,10 @@ impl Db {
                 .map(|v| !matches!(v.as_str(), "0" | "false" | "FALSE" | "False"))
                 .unwrap_or(true),
             genre_destinations: get("genre_destinations").unwrap_or_else(|_| "[]".to_string()),
+            close_to_tray: get("close_to_tray")
+                .ok()
+                .map(|v| !matches!(v.as_str(), "0" | "false" | "FALSE" | "False"))
+                .unwrap_or(true),
         })
     }
 

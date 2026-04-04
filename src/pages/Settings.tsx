@@ -33,6 +33,7 @@ interface Config {
   documentary_destination: string;
   alphabetical_subfolders: boolean;
   genre_destinations: string; // JSON: GenreDestRule[]
+  close_to_tray: boolean;
 }
 
 interface GenreDestRule {
@@ -187,20 +188,30 @@ function SectionCard({
   title,
   description,
   children,
+  defaultOpen = true,
 }: {
   icon: "folder" | "search" | "download" | "activity" | "settings";
   title: string;
   description: string;
   children: React.ReactNode;
+  defaultOpen?: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <section style={sectionCardStyle}>
-      <div
+      <button
+        onClick={() => setOpen((o) => !o)}
         style={{
           display: "flex",
           alignItems: "flex-start",
           gap: 12,
-          marginBottom: 14,
+          marginBottom: open ? 14 : 0,
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: 0,
+          width: "100%",
+          textAlign: "left",
         }}
       >
         <div
@@ -219,7 +230,7 @@ function SectionCard({
         >
           <AppIcon name={icon} size={18} strokeWidth={2.1} />
         </div>
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
               fontSize: 15,
@@ -232,8 +243,19 @@ function SectionCard({
           </div>
           <div style={subtextStyle}>{description}</div>
         </div>
-      </div>
-      {children}
+        <div
+          style={{
+            flexShrink: 0,
+            color: "var(--color-text-muted)",
+            transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+            transition: "transform 0.15s ease",
+            alignSelf: "center",
+          }}
+        >
+          <AppIcon name="chevron-down" size={16} />
+        </div>
+      </button>
+      {open && children}
     </section>
   );
 }
@@ -290,6 +312,7 @@ export default function Settings({
             (base ? `${base}/Documentaries` : ""),
           alphabetical_subfolders: cfg.alphabetical_subfolders ?? true,
           genre_destinations: cfg.genre_destinations ?? "[]",
+          close_to_tray: cfg.close_to_tray ?? true,
         });
       })
       .catch(console.error);
@@ -809,16 +832,16 @@ export default function Settings({
           <div style={{ display: "grid", gap: 16 }}>
             <SectionCard
               icon="settings"
-              title="Appearance"
-              description="Choose how Oscata looks. System follows your OS preference and updates live."
+              title={t(language, "settings.appearanceTitle")}
+              description={t(language, "settings.appearanceDescription")}
             >
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 {(["system", "dark", "light"] as const).map((option) => {
                   const active = theme === option;
                   const labels: Record<string, string> = {
-                    system: "System",
-                    dark: "Dark",
-                    light: "Light",
+                    system: t(language, "settings.themeSystem"),
+                    dark: t(language, "settings.themeDark"),
+                    light: t(language, "settings.themeLight"),
                   };
                   return (
                     <button
@@ -857,10 +880,10 @@ export default function Settings({
                 }}
               >
                 {theme === "system"
-                  ? "Automatically matches your operating system's dark/light setting."
+                  ? t(language, "settings.themeSystemDesc")
                   : theme === "dark"
-                    ? "Always use dark mode regardless of OS setting."
-                    : "Always use light mode regardless of OS setting."}
+                    ? t(language, "settings.themeDarkDesc")
+                    : t(language, "settings.themeLightDesc")}
               </div>
             </SectionCard>
 
@@ -1059,46 +1082,6 @@ export default function Settings({
               }}
             >
               <SectionCard
-                icon="search"
-                title={t(language, "settings.metaTitle")}
-                description={t(language, "settings.metaDescription")}
-              >
-                <div style={{ display: "grid", gap: 12 }}>
-                  <div style={fieldStyle}>
-                    <label style={labelStyle}>
-                      {t(language, "settings.tmdbKey")}
-                    </label>
-                    <input
-                      style={inputStyle}
-                      value={form.tmdb_api_key}
-                      onChange={set("tmdb_api_key")}
-                      placeholder={t(language, "settings.tmdbPlaceholder")}
-                    />
-                  </div>
-                  <div style={fieldStyle}>
-                    <label style={labelStyle}>
-                      {t(language, "settings.defaultLanguage")}
-                    </label>
-                    <select
-                      style={selectStyle}
-                      value={form.default_language ?? "es"}
-                      onChange={set("default_language")}
-                    >
-                      <option value="es">
-                        {t(language, "common.languageSpanish")}
-                      </option>
-                      <option value="en">
-                        {t(language, "common.languageEnglish")}
-                      </option>
-                    </select>
-                    <span style={subtextStyle}>
-                      {t(language, "settings.defaultLanguageHelp")}
-                    </span>
-                  </div>
-                </div>
-              </SectionCard>
-
-              <SectionCard
                 icon="download"
                 title={t(language, "settings.downloadsTitle")}
                 description={t(language, "settings.downloadsDescription")}
@@ -1159,6 +1142,45 @@ export default function Settings({
                     />
                     <span style={subtextStyle}>
                       {t(language, "settings.maxConcurrentHelp")}
+                    </span>
+                  </div>
+                </div>
+              </SectionCard>
+              <SectionCard
+                icon="search"
+                title={t(language, "settings.metaTitle")}
+                description={t(language, "settings.metaDescription")}
+              >
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>
+                      {t(language, "settings.tmdbKey")}
+                    </label>
+                    <input
+                      style={inputStyle}
+                      value={form.tmdb_api_key}
+                      onChange={set("tmdb_api_key")}
+                      placeholder={t(language, "settings.tmdbPlaceholder")}
+                    />
+                  </div>
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>
+                      {t(language, "settings.defaultLanguage")}
+                    </label>
+                    <select
+                      style={selectStyle}
+                      value={form.default_language ?? "es"}
+                      onChange={set("default_language")}
+                    >
+                      <option value="es">
+                        {t(language, "common.languageSpanish")}
+                      </option>
+                      <option value="en">
+                        {t(language, "common.languageEnglish")}
+                      </option>
+                    </select>
+                    <span style={subtextStyle}>
+                      {t(language, "settings.defaultLanguageHelp")}
                     </span>
                   </div>
                 </div>
@@ -1542,53 +1564,119 @@ export default function Settings({
 
             <SectionCard
               icon="folder"
-              title={t(language, "settings.backupsTitle")}
-              description={t(language, "settings.backupsDescription")}
+              title={t(language, "settings.folderTypesTitle")}
+              description={t(language, "settings.folderTypesDescription")}
             >
-              <div style={{ display: "grid", gap: 12 }}>
-                {isTauri() ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                    <button
-                      onClick={exportBackup}
-                      disabled={backupBusy}
-                      style={ghostBtn}
-                    >
-                      <AppIcon name="download" size={15} />
-                      {t(language, "settings.exportBackup")}
-                    </button>
-                    <button
-                      onClick={importBackup}
-                      disabled={backupBusy}
-                      style={ghostBtn}
-                    >
-                      <AppIcon name="folder" size={15} />
-                      {t(language, "settings.importBackup")}
-                    </button>
-                  </div>
-                ) : (
-                  <span style={subtextStyle}>
-                    Backup export and import are only available in the desktop
-                    app.
-                  </span>
-                )}
-                <span style={subtextStyle}>
-                  {t(language, "settings.backupsHelp")}
-                </span>
-                {backupMessage && (
-                  <span
-                    style={{ ...subtextStyle, color: "var(--color-success)" }}
-                  >
-                    {backupMessage}
-                  </span>
-                )}
-                {backupError && (
-                  <span
-                    style={{ ...subtextStyle, color: "var(--color-danger)" }}
-                  >
-                    {backupError}
-                  </span>
-                )}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "center",
+                  marginBottom: 14,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={subtextStyle}>
+                  {t(language, "settings.folderTypesHelp")}
+                </div>
+                <button
+                  onClick={loadRootDirs}
+                  disabled={loadingDirs}
+                  style={ghostBtn}
+                >
+                  <AppIcon name="refresh" size={15} />
+                  {loadingDirs
+                    ? t(language, "settings.loading")
+                    : t(language, "settings.loadRootFolders")}
+                </button>
               </div>
+
+              {folderDirs.length > 0 ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {folderDirs.map((dir) => (
+                    <div
+                      key={dir}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0, 1fr) 220px",
+                        gap: 12,
+                        alignItems: "center",
+                        padding: "0.8rem 0.9rem",
+                        borderRadius: "var(--radius)",
+                        border:
+                          "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+                        background:
+                          "color-mix(in srgb, var(--color-surface-2) 70%, transparent)",
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            marginBottom: 4,
+                          }}
+                        >
+                          <AppIcon name="folder" size={15} />
+                          <span
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 700,
+                              color: "var(--color-text)",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {dir}
+                          </span>
+                        </div>
+                        <div style={{ ...subtextStyle, fontSize: 11 }}>
+                          {t(language, "settings.folderRowHelp")}
+                        </div>
+                      </div>
+                      <select
+                        value={folderTypes[dir] ?? ""}
+                        onChange={(event) =>
+                          setFolderType(dir, event.target.value)
+                        }
+                        style={selectStyle}
+                      >
+                        <option value="">
+                          {t(language, "settings.ignore")}
+                        </option>
+                        <option value="movie">
+                          {t(language, "settings.movies")}
+                        </option>
+                        <option value="tv">
+                          {t(language, "settings.tvShows")}
+                        </option>
+                        <option value="documentary">
+                          {t(language, "settings.documentaries")}
+                        </option>
+                        <option value="mixed">
+                          {t(language, "settings.mixed")}
+                        </option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    borderRadius: "var(--radius)",
+                    border:
+                      "1px dashed color-mix(in srgb, var(--color-border) 76%, transparent)",
+                    padding: "1rem",
+                    color: "var(--color-text-muted)",
+                    fontSize: 13,
+                  }}
+                >
+                  {t(language, "settings.noRootFolders")}
+                </div>
+              )}
             </SectionCard>
 
             <SectionCard
@@ -1805,123 +1893,74 @@ export default function Settings({
                 </div>
               </div>
             </SectionCard>
-
-            <SectionCard
-              icon="folder"
-              title={t(language, "settings.folderTypesTitle")}
-              description={t(language, "settings.folderTypesDescription")}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  alignItems: "center",
-                  marginBottom: 14,
-                  flexWrap: "wrap",
-                }}
+            {isTauri() && (
+              <SectionCard
+                icon="settings"
+                title={t(language, "settings.desktopTitle")}
+                description={t(language, "settings.desktopDescription")}
               >
-                <div style={subtextStyle}>
-                  {t(language, "settings.folderTypesHelp")}
-                </div>
-                <button
-                  onClick={loadRootDirs}
-                  disabled={loadingDirs}
-                  style={ghostBtn}
-                >
-                  <AppIcon name="refresh" size={15} />
-                  {loadingDirs
-                    ? t(language, "settings.loading")
-                    : t(language, "settings.loadRootFolders")}
-                </button>
-              </div>
-
-              {folderDirs.length > 0 ? (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {folderDirs.map((dir) => (
-                    <div
-                      key={dir}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "minmax(0, 1fr) 220px",
-                        gap: 12,
-                        alignItems: "center",
-                        padding: "0.8rem 0.9rem",
-                        borderRadius: "var(--radius)",
-                        border:
-                          "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
-                        background:
-                          "color-mix(in srgb, var(--color-surface-2) 70%, transparent)",
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            marginBottom: 4,
-                          }}
-                        >
-                          <AppIcon name="folder" size={15} />
-                          <span
-                            style={{
-                              fontSize: 14,
-                              fontWeight: 700,
-                              color: "var(--color-text)",
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
-                          >
-                            {dir}
-                          </span>
-                        </div>
-                        <div style={{ ...subtextStyle, fontSize: 11 }}>
-                          {t(language, "settings.folderRowHelp")}
-                        </div>
-                      </div>
-                      <select
-                        value={folderTypes[dir] ?? ""}
-                        onChange={(event) =>
-                          setFolderType(dir, event.target.value)
-                        }
-                        style={selectStyle}
-                      >
-                        <option value="">
-                          {t(language, "settings.ignore")}
-                        </option>
-                        <option value="movie">
-                          {t(language, "settings.movies")}
-                        </option>
-                        <option value="tv">
-                          {t(language, "settings.tvShows")}
-                        </option>
-                        <option value="documentary">
-                          {t(language, "settings.documentaries")}
-                        </option>
-                        <option value="mixed">
-                          {t(language, "settings.mixed")}
-                        </option>
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              ) : (
                 <div
                   style={{
-                    borderRadius: "var(--radius)",
-                    border:
-                      "1px dashed color-mix(in srgb, var(--color-border) 76%, transparent)",
-                    padding: "1rem",
-                    color: "var(--color-text-muted)",
-                    fontSize: 13,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 16,
                   }}
                 >
-                  {t(language, "settings.noRootFolders")}
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "var(--color-text)",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {t(language, "settings.closeToTrayLabel")}
+                    </div>
+                    <div style={subtextStyle}>
+                      {t(language, "settings.closeToTrayHelp")}
+                    </div>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={form?.close_to_tray ?? true}
+                    onClick={() =>
+                      setForm((c) =>
+                        c ? { ...c, close_to_tray: !c.close_to_tray } : c,
+                      )
+                    }
+                    style={{
+                      flexShrink: 0,
+                      width: 44,
+                      height: 24,
+                      borderRadius: 999,
+                      border: "none",
+                      cursor: "pointer",
+                      background:
+                        (form?.close_to_tray ?? true)
+                          ? "var(--color-primary)"
+                          : "var(--color-border)",
+                      position: "relative",
+                      transition: "background 0.15s ease",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: 3,
+                        left: (form?.close_to_tray ?? true) ? 23 : 3,
+                        width: 18,
+                        height: 18,
+                        borderRadius: 999,
+                        background: "#fff",
+                        transition: "left 0.15s ease",
+                      }}
+                    />
+                  </button>
                 </div>
-              )}
-            </SectionCard>
+              </SectionCard>
+            )}
 
             {webGuiConfig && (
               <SectionCard
@@ -2263,6 +2302,57 @@ export default function Settings({
                 </div>
               </SectionCard>
             )}
+
+            <SectionCard
+              icon="folder"
+              title={t(language, "settings.backupsTitle")}
+              description={t(language, "settings.backupsDescription")}
+            >
+              <div style={{ display: "grid", gap: 12 }}>
+                {isTauri() ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    <button
+                      onClick={exportBackup}
+                      disabled={backupBusy}
+                      style={ghostBtn}
+                    >
+                      <AppIcon name="download" size={15} />
+                      {t(language, "settings.exportBackup")}
+                    </button>
+                    <button
+                      onClick={importBackup}
+                      disabled={backupBusy}
+                      style={ghostBtn}
+                    >
+                      <AppIcon name="folder" size={15} />
+                      {t(language, "settings.importBackup")}
+                    </button>
+                  </div>
+                ) : (
+                  <span style={subtextStyle}>
+                    Backup export and import are only available in the desktop
+                    app.
+                  </span>
+                )}
+                <span style={subtextStyle}>
+                  {t(language, "settings.backupsHelp")}
+                </span>
+                {backupMessage && (
+                  <span
+                    style={{ ...subtextStyle, color: "var(--color-success)" }}
+                  >
+                    {backupMessage}
+                  </span>
+                )}
+                {backupError && (
+                  <span
+                    style={{ ...subtextStyle, color: "var(--color-danger)" }}
+                  >
+                    {backupError}
+                  </span>
+                )}
+              </div>
+            </SectionCard>
           </div>
         </div>
 

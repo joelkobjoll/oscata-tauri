@@ -1,4 +1,34 @@
-type IconName =
+import {
+  Activity,
+  Check,
+  CheckSquare,
+  ChevronDown,
+  ChevronRight,
+  Clapperboard,
+  Clock,
+  Download,
+  FileText,
+  Filter,
+  Folder,
+  LayoutGrid,
+  Monitor,
+  Moon,
+  MoreHorizontal,
+  Pencil,
+  RefreshCcw,
+  RefreshCw,
+  Search,
+  Settings,
+  Star,
+  Sun,
+  Trash2,
+  Tv2,
+  WifiOff,
+  X,
+} from "lucide-react";
+import type { LucideProps } from "lucide-react";
+
+export type IconName =
   | "grid"
   | "movie"
   | "tv"
@@ -26,6 +56,35 @@ type IconName =
   | "monitor"
   | "filter";
 
+const ICON_MAP: Record<IconName, React.ComponentType<LucideProps>> = {
+  grid: LayoutGrid,
+  movie: Clapperboard,
+  tv: Tv2,
+  docs: FileText,
+  download: Download,
+  settings: Settings,
+  activity: Activity,
+  search: Search,
+  refresh: RefreshCcw,
+  trash: Trash2,
+  "check-square": CheckSquare,
+  close: X,
+  edit: Pencil,
+  folder: Folder,
+  "chevron-down": ChevronDown,
+  "chevron-right": ChevronRight,
+  star: Star,
+  "more-horizontal": MoreHorizontal,
+  clock: Clock,
+  check: Check,
+  "refresh-cw": RefreshCw,
+  "wifi-off": WifiOff,
+  moon: Moon,
+  sun: Sun,
+  monitor: Monitor,
+  filter: Filter,
+};
+
 export default function AppIcon({
   name,
   size = 18,
@@ -35,219 +94,14 @@ export default function AppIcon({
   size?: number;
   strokeWidth?: number;
 }) {
-  const common = {
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-
-  const icon = (() => {
-    switch (name) {
-      case "grid":
-        return (
-          <>
-            <rect x="3" y="3" width="7" height="7" rx="1.5" {...common} />
-            <rect x="14" y="3" width="7" height="7" rx="1.5" {...common} />
-            <rect x="3" y="14" width="7" height="7" rx="1.5" {...common} />
-            <rect x="14" y="14" width="7" height="7" rx="1.5" {...common} />
-          </>
-        );
-      case "movie":
-        return (
-          <>
-            <rect x="3" y="5" width="18" height="14" rx="2.5" {...common} />
-            <path d="M7 3v4M12 3v4M17 3v4M7 17v4M12 17v4M17 17v4" {...common} />
-          </>
-        );
-      case "tv":
-        return (
-          <>
-            <rect x="4" y="5" width="16" height="12" rx="2.5" {...common} />
-            <path d="M9 21h6M12 17v4M8 3l4 4 4-4" {...common} />
-          </>
-        );
-      case "docs":
-        return (
-          <>
-            <path
-              d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
-              {...common}
-            />
-            <path d="M14 3v6h6M9 13h6M9 17h6" {...common} />
-          </>
-        );
-      case "download":
-        return (
-          <>
-            <path d="M12 4v10" {...common} />
-            <path d="m8 10 4 4 4-4" {...common} />
-            <path d="M4 19v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" {...common} />
-          </>
-        );
-      case "settings":
-        return (
-          <>
-            <path
-              d="M10.3 3.3 9.6 5.5a7.2 7.2 0 0 0-1.5.9L5.9 5.7 4.3 7.3l.7 2.2a7.2 7.2 0 0 0-.9 1.5l-2.2.7v2.3l2.2.7c.2.5.5 1 .9 1.5l-.7 2.2 1.6 1.6 2.2-.7c.5.4 1 .7 1.5.9l.7 2.2h2.3l.7-2.2c.5-.2 1-.5 1.5-.9l2.2.7 1.6-1.6-.7-2.2c.4-.5.7-1 .9-1.5l2.2-.7v-2.3l-2.2-.7a7.2 7.2 0 0 0-.9-1.5l.7-2.2-1.6-1.6-2.2.7a7.2 7.2 0 0 0-1.5-.9l-.7-2.2z"
-              {...common}
-            />
-            <circle cx="12" cy="12" r="3.2" {...common} />
-          </>
-        );
-      case "activity":
-        return <path d="M3 12h4l2.2-5 4.2 10 2.3-5H21" {...common} />;
-      case "search":
-        return (
-          <>
-            <circle cx="11" cy="11" r="6.5" {...common} />
-            <path d="m20 20-3.5-3.5" {...common} />
-          </>
-        );
-      case "refresh":
-        return (
-          <>
-            <path
-              d="M20 11a8 8 0 0 0-14.7-3M4 13a8 8 0 0 0 14.7 3"
-              {...common}
-            />
-            <path d="M20 4v7h-7M4 20v-7h7" {...common} />
-          </>
-        );
-      case "trash":
-        return (
-          <>
-            <path
-              d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"
-              {...common}
-            />
-            <path d="M10 11v6M14 11v6" {...common} />
-          </>
-        );
-      case "check-square":
-        return (
-          <>
-            <rect x="3" y="3" width="18" height="18" rx="2.5" {...common} />
-            <path d="m8 12 3 3 5-6" {...common} />
-          </>
-        );
-      case "close":
-        return <path d="m6 6 12 12M18 6 6 18" {...common} />;
-      case "edit":
-        return (
-          <>
-            <path d="M12 20h9" {...common} />
-            <path d="m16.5 3.5 4 4L8 20l-5 1 1-5z" {...common} />
-          </>
-        );
-      case "folder":
-        return (
-          <>
-            <path
-              d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z"
-              {...common}
-            />
-          </>
-        );
-      case "chevron-down":
-        return <path d="m6 9 6 6 6-6" {...common} />;
-      case "chevron-right":
-        return <path d="m9 6 6 6-6 6" {...common} />;
-      case "star":
-        return (
-          <path
-            d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9z"
-            {...common}
-          />
-        );
-      case "more-horizontal":
-        return (
-          <>
-            <circle cx="5" cy="12" r="1.8" {...common} />
-            <circle cx="12" cy="12" r="1.8" {...common} />
-            <circle cx="19" cy="12" r="1.8" {...common} />
-          </>
-        );
-      case "clock":
-        return (
-          <>
-            <circle cx="12" cy="12" r="9" {...common} />
-            <path d="M12 7v5l3 2" {...common} />
-          </>
-        );
-      case "check":
-        return <path d="M20 6 9 17l-5-5" {...common} />;
-      case "refresh-cw":
-        return (
-          <>
-            <path d="M21 12a9 9 0 0 0-15.3-6.4" {...common} />
-            <path d="M3 4v6h6" {...common} />
-            <path d="M3 12a9 9 0 0 0 15.3 6.4" {...common} />
-            <path d="M21 20v-6h-6" {...common} />
-          </>
-        );
-      case "wifi-off":
-        return (
-          <>
-            <path
-              d="M2 8.8A16.2 16.2 0 0 1 12 5c3.8 0 7.3 1.3 10 3.8"
-              {...common}
-            />
-            <path
-              d="M5 12.6A11.3 11.3 0 0 1 12 10c2.6 0 5 .9 7 2.6"
-              {...common}
-            />
-            <path
-              d="M8.5 16.2A6.5 6.5 0 0 1 12 15c1.3 0 2.6.4 3.6 1.2"
-              {...common}
-            />
-            <path d="M12 20h.01" {...common} />
-            <path d="M3 3l18 18" {...common} />
-          </>
-        );
-      case "moon":
-        return (
-          <path
-            d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
-            {...common}
-          />
-        );
-      case "sun":
-        return (
-          <>
-            <circle cx="12" cy="12" r="4" {...common} />
-            <path
-              d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
-              {...common}
-            />
-          </>
-        );
-      case "monitor":
-        return (
-          <>
-            <rect x="2" y="3" width="20" height="13" rx="2" {...common} />
-            <path d="M8 21h8M12 17v4" {...common} />
-          </>
-        );
-      case "filter":
-        return (
-          <path d="M4 6h16M7 12h10M10 18h4" {...common} />
-        );
-      default:
-        return null;
-    }
-  })();
-
+  const Icon = ICON_MAP[name];
+  if (!Icon) return null;
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
+    <Icon
+      size={size}
+      strokeWidth={strokeWidth}
       aria-hidden="true"
       style={{ display: "block", flexShrink: 0 }}
-    >
-      {icon}
-    </svg>
+    />
   );
 }
