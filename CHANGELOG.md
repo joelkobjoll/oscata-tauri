@@ -1,5 +1,13 @@
 # Novedades de Oscata
 
+## Versión 0.6.3 — 5 de abril de 2026
+
+### 💼 La versión portátil de Windows ya funciona bien
+
+El ZIP portátil de Windows se ha rehecho para incluir todo lo que necesita Oscata al arrancar. Ahora puedes descomprimirlo, abrir `Oscata.exe` y usar la app sin instalación, con la interfaz cargando bien y la biblioteca guardándose junto al ejecutable.
+
+---
+
 ## Versión 0.6.2 — 5 de abril de 2026
 
 ### 🗄️ Elige dónde guardar tu biblioteca
