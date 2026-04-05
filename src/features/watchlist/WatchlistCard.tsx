@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { X } from "lucide-react";
 import type { WatchlistItem } from "./types";
 import { AppLanguage } from "../../utils/mediaLanguage";
 
@@ -202,13 +203,12 @@ export default function WatchlistCard({
             justifyContent: "center",
             cursor: "pointer",
             color: "var(--color-danger)",
-            fontSize: 16,
-            lineHeight: 1,
             transition: "background 0.15s ease",
+            padding: 0,
           }}
           title="Quitar del watchlist"
         >
-          ×
+          <X size={14} strokeWidth={2.5} aria-hidden="true" />
         </button>
       )}
     </div>

@@ -1,9 +1,17 @@
 import React, { useState } from "react";
+import {
+  Check,
+  Clock,
+  Download,
+  Pencil,
+  RefreshCw,
+  Star,
+  X,
+} from "lucide-react";
 import { isTauri } from "../lib/transport";
 import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import type { DownloadItem } from "../hooks/useDownloads";
 import type { MediaItem } from "../hooks/useIndexing";
-import AppIcon from "./AppIcon";
 import FixMatchModal from "./FixMatchModal";
 import {
   AppLanguage,
@@ -224,7 +232,12 @@ export default function DetailPanel({
                 "transparent";
             }}
           >
-            <AppIcon name="close" size={16} strokeWidth={2.3} />
+            <X
+              size={16}
+              strokeWidth={2.3}
+              aria-hidden="true"
+              style={{ display: "block" }}
+            />
           </button>
         </div>
 
@@ -306,7 +319,12 @@ export default function DetailPanel({
               )}
               {rating && (
                 <span style={metaPill}>
-                  <AppIcon name="star" size={13} strokeWidth={2} />
+                  <Star
+                    size={13}
+                    strokeWidth={2}
+                    aria-hidden="true"
+                    style={{ display: "block" }}
+                  />
                   {rating}
                 </span>
               )}
@@ -823,7 +841,12 @@ export default function DetailPanel({
             <span
               style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
             >
-              <AppIcon name="edit" size={16} strokeWidth={2.3} />
+              <Pencil
+                size={16}
+                strokeWidth={2.3}
+                aria-hidden="true"
+                style={{ display: "block" }}
+              />
               {t(language, "detail.fixMatch")}
             </span>
           </button>
@@ -922,7 +945,12 @@ function renderDownloadButton(
             gap: 8,
           }}
         >
-          <AppIcon name="download" size={16} strokeWidth={2.3} />
+          <Download
+            size={16}
+            strokeWidth={2.3}
+            aria-hidden="true"
+            style={{ display: "block" }}
+          />
           {`${t(language, "downloads.downloading")} · ${pct.toFixed(0)}%${downloadItem?.speed_bps ? " · " + formatSpeed(downloadItem.speed_bps) : ""}`}
         </span>
       </button>
@@ -941,7 +969,12 @@ function renderDownloadButton(
         }}
       >
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <AppIcon name="clock" size={16} strokeWidth={2.3} />
+          <Clock
+            size={16}
+            strokeWidth={2.3}
+            aria-hidden="true"
+            style={{ display: "block" }}
+          />
           {t(language, "downloads.queued")}
         </span>
       </button>
@@ -961,7 +994,12 @@ function renderDownloadButton(
         }}
       >
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <AppIcon name="check" size={16} strokeWidth={2.3} />
+          <Check
+            size={16}
+            strokeWidth={2.3}
+            aria-hidden="true"
+            style={{ display: "block" }}
+          />
           {t(language, "downloads.done")}
         </span>
       </button>
@@ -984,7 +1022,12 @@ function renderDownloadButton(
         }}
       >
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <AppIcon name="check" size={16} strokeWidth={2.3} />
+          <Check
+            size={16}
+            strokeWidth={2.3}
+            aria-hidden="true"
+            style={{ display: "block" }}
+          />
           {t(language, "detail.alreadyDownloaded")}
         </span>
       </button>
@@ -1003,7 +1046,12 @@ function renderDownloadButton(
         }}
       >
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <AppIcon name="refresh-cw" size={16} strokeWidth={2.3} />
+          <RefreshCw
+            size={16}
+            strokeWidth={2.3}
+            aria-hidden="true"
+            style={{ display: "block" }}
+          />
           {t(language, "downloads.retry")}
         </span>
       </button>
@@ -1022,7 +1070,12 @@ function renderDownloadButton(
       }}
     >
       <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-        <AppIcon name="download" size={16} strokeWidth={2.3} />
+        <Download
+          size={16}
+          strokeWidth={2.3}
+          aria-hidden="true"
+          style={{ display: "block" }}
+        />
         {t(language, "detail.download")}
       </span>
     </button>

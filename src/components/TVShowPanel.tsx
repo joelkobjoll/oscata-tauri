@@ -1,9 +1,18 @@
 import { useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Folder,
+  Pencil,
+  Tv2,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import type { MediaItem } from "../hooks/useIndexing";
 import type { DownloadItem } from "../hooks/useDownloads";
-import AppIcon from "./AppIcon";
 import WatchlistButton from "../features/watchlist/WatchlistButton";
 import type { AddWatchlistParams } from "../features/watchlist/types";
 import {
@@ -228,7 +237,7 @@ function IconActionButton({
   disabled,
 }: {
   title: string;
-  icon: Parameters<typeof AppIcon>[0]["name"];
+  icon: LucideIcon;
   tone?: "muted" | "primary" | "danger";
   onClick?: () => void;
   disabled?: boolean;
@@ -244,6 +253,7 @@ function IconActionButton({
       ? "var(--color-primary)"
       : "color-mix(in srgb, var(--color-surface-2) 75%, transparent)";
 
+  const Icon = icon;
   return (
     <button
       title={title}
@@ -266,9 +276,15 @@ function IconActionButton({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        padding: 0,
       }}
     >
-      <AppIcon name={icon} size={16} strokeWidth={2.3} />
+      <Icon
+        size={16}
+        strokeWidth={2.3}
+        aria-hidden="true"
+        style={{ display: "block" }}
+      />
     </button>
   );
 }
@@ -449,12 +465,12 @@ function EpisodeRow({
       <div style={{ display: "flex", gap: 8 }}>
         <IconActionButton
           title={t(language, "library.fixMatch")}
-          icon="edit"
+          icon={Pencil}
           onClick={() => onFixMatch([episode])}
         />
         <IconActionButton
           title={downloadTooltip}
-          icon="download"
+          icon={Download}
           tone={isDownloaded ? "muted" : "primary"}
           onClick={() => onDownload(episode)}
           disabled={isDownloading || isDownloaded}
@@ -508,7 +524,12 @@ function GroupHeader({
         }}
         title={group.folderName}
       >
-        <AppIcon name="folder" size={13} strokeWidth={2.1} />
+        <Folder
+          size={13}
+          strokeWidth={2.1}
+          aria-hidden="true"
+          style={{ display: "block" }}
+        />
         <span
           style={{
             minWidth: 0,
@@ -548,7 +569,12 @@ function GroupHeader({
           opacity: disabled ? 0.5 : 1,
         }}
       >
-        <AppIcon name="download" size={13} strokeWidth={2.2} />
+        <Download
+          size={13}
+          strokeWidth={2.2}
+          aria-hidden="true"
+          style={{ display: "block" }}
+        />
         {t(language, "tv.downloadFolder")}
       </button>
     </div>
@@ -659,11 +685,21 @@ function SeasonGroup({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ color: "var(--color-text-muted)" }}>
-            <AppIcon
-              name={open ? "chevron-down" : "chevron-right"}
-              size={16}
-              strokeWidth={2.2}
-            />
+            {open ? (
+              <ChevronDown
+                size={16}
+                strokeWidth={2.2}
+                aria-hidden="true"
+                style={{ display: "block" }}
+              />
+            ) : (
+              <ChevronRight
+                size={16}
+                strokeWidth={2.2}
+                aria-hidden="true"
+                style={{ display: "block" }}
+              />
+            )}
           </span>
           <div>
             <div
@@ -707,7 +743,12 @@ function SeasonGroup({
             opacity: downloadableEpisodes.length === 0 ? 0.5 : 1,
           }}
         >
-          <AppIcon name="download" size={13} strokeWidth={2.2} />
+          <Download
+            size={13}
+            strokeWidth={2.2}
+            aria-hidden="true"
+            style={{ display: "block" }}
+          />
           {t(language, "tv.downloadSeason")}
         </button>
       </div>
@@ -1054,7 +1095,12 @@ export default function TVShowPanel({
                     color: "var(--color-text-muted)",
                   }}
                 >
-                  <AppIcon name="tv" size={38} strokeWidth={1.8} />
+                  <Tv2
+                    size={38}
+                    strokeWidth={1.8}
+                    aria-hidden="true"
+                    style={{ display: "block" }}
+                  />
                 </div>
               )}
             </div>
@@ -1129,14 +1175,14 @@ export default function TVShowPanel({
                     )}
                   <IconActionButton
                     title={t(language, "tv.downloadAllVisible")}
-                    icon="download"
+                    icon={Download}
                     tone="primary"
                     onClick={() => onDownloadSeason(downloadableFiltered)}
                     disabled={downloadableFiltered.length === 0}
                   />
                   <IconActionButton
                     title={t(language, "tv.close")}
-                    icon="close"
+                    icon={X}
                     onClick={onClose}
                   />
                 </div>
@@ -1253,7 +1299,12 @@ export default function TVShowPanel({
                     fontWeight: 700,
                   }}
                 >
-                  <AppIcon name="edit" size={15} strokeWidth={2.2} />
+                  <Pencil
+                    size={15}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                    style={{ display: "block" }}
+                  />
                   {filtered.length === allEpisodes.length
                     ? t(language, "tv.fixShow")
                     : t(language, "tv.fixVisible")}

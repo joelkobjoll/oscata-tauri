@@ -1,4 +1,14 @@
-import AppIcon from "./AppIcon";
+import {
+  Activity,
+  Check,
+  Clock,
+  Download,
+  Folder,
+  RefreshCw,
+  Trash2,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import type { DownloadItem } from "../hooks/useDownloads";
 import type { AppLanguage } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
@@ -59,15 +69,12 @@ const STATUS_COLORS: Record<DownloadItem["status"], string> = {
   cancelled: "var(--color-text-muted)",
 };
 
-const STATUS_ICONS: Record<
-  DownloadItem["status"],
-  "clock" | "refresh-cw" | "check" | "close"
-> = {
-  queued: "clock",
-  downloading: "refresh-cw",
-  done: "check",
-  error: "close",
-  cancelled: "close",
+const STATUS_ICONS: Record<DownloadItem["status"], LucideIcon> = {
+  queued: Clock,
+  downloading: RefreshCw,
+  done: Check,
+  error: X,
+  cancelled: X,
 };
 
 function StatusBadge({
@@ -79,6 +86,7 @@ function StatusBadge({
 }) {
   const color = STATUS_COLORS[status];
 
+  const StatusIcon = STATUS_ICONS[status];
   return (
     <span
       style={{
@@ -96,19 +104,24 @@ function StatusBadge({
         textTransform: "uppercase",
       }}
     >
-      <AppIcon name={STATUS_ICONS[status]} size={13} strokeWidth={2.2} />
+      <StatusIcon
+        size={13}
+        strokeWidth={2.2}
+        aria-hidden="true"
+        style={{ display: "block" }}
+      />
       {t(language, `downloads.${status}` as never)}
     </span>
   );
 }
 
 function ActionButton({
-  icon,
+  icon: Icon,
   label,
   onClick,
   tone = "neutral",
 }: {
-  icon: "close" | "refresh-cw" | "folder" | "trash";
+  icon: LucideIcon;
   label: string;
   onClick: () => void;
   tone?: "neutral" | "primary" | "success" | "danger";
@@ -143,19 +156,24 @@ function ActionButton({
         flexShrink: 0,
       }}
     >
-      <AppIcon name={icon} size={14} strokeWidth={2.25} />
+      <Icon
+        size={14}
+        strokeWidth={2.25}
+        aria-hidden="true"
+        style={{ display: "block" }}
+      />
       {label}
     </button>
   );
 }
 
 function StatCard({
-  icon,
+  icon: Icon,
   value,
   label,
   tone = "neutral",
 }: {
-  icon: "download" | "refresh-cw" | "check" | "close" | "clock";
+  icon: LucideIcon;
   value: string;
   label: string;
   tone?: "neutral" | "primary" | "success" | "danger";
@@ -198,7 +216,12 @@ function StatCard({
           flexShrink: 0,
         }}
       >
-        <AppIcon name={icon} size={18} strokeWidth={2.1} />
+        <Icon
+          size={18}
+          strokeWidth={2.1}
+          aria-hidden="true"
+          style={{ display: "block" }}
+        />
       </div>
       <div>
         <div
@@ -226,11 +249,11 @@ function StatCard({
 }
 
 function SectionTitle({
-  icon,
+  icon: Icon,
   title,
   subtitle,
 }: {
-  icon: "activity" | "clock" | "check";
+  icon: LucideIcon;
   title: string;
   subtitle: string;
 }) {
@@ -257,7 +280,12 @@ function SectionTitle({
           flexShrink: 0,
         }}
       >
-        <AppIcon name={icon} size={16} strokeWidth={2.1} />
+        <Icon
+          size={16}
+          strokeWidth={2.1}
+          aria-hidden="true"
+          style={{ display: "block" }}
+        />
       </div>
       <div>
         <div
@@ -297,6 +325,8 @@ function DownloadRow({
   const isDone = item.status === "done";
   const canOpenFolder = isDone && isTauri();
 
+  const StatusIcon = STATUS_ICONS[item.status];
+
   return (
     <article
       style={{
@@ -327,10 +357,11 @@ function DownloadRow({
             flexShrink: 0,
           }}
         >
-          <AppIcon
-            name={STATUS_ICONS[item.status]}
+          <StatusIcon
             size={18}
             strokeWidth={2.15}
+            aria-hidden="true"
+            style={{ display: "block" }}
           />
         </div>
 
@@ -387,7 +418,7 @@ function DownloadRow({
           >
             {isActive && (
               <ActionButton
-                icon="close"
+                icon={X}
                 label={t(language, "downloads.cancel")}
                 onClick={onCancel}
                 tone="danger"
@@ -395,7 +426,7 @@ function DownloadRow({
             )}
             {canRetry && (
               <ActionButton
-                icon="refresh-cw"
+                icon={RefreshCw}
                 label={t(language, "downloads.retry")}
                 onClick={onRetry}
                 tone="primary"
@@ -403,7 +434,7 @@ function DownloadRow({
             )}
             {canOpenFolder && (
               <ActionButton
-                icon="folder"
+                icon={Folder}
                 label={t(language, "downloads.openFolder")}
                 onClick={onOpenFolder}
                 tone="success"
@@ -411,7 +442,7 @@ function DownloadRow({
             )}
             {(canRetry || isDone) && (
               <ActionButton
-                icon="trash"
+                icon={Trash2}
                 label={t(language, "downloads.delete")}
                 onClick={onDelete}
                 tone="danger"
@@ -545,7 +576,12 @@ function DownloadRow({
             fontSize: 12,
           }}
         >
-          <AppIcon name="clock" size={14} strokeWidth={2.2} />
+          <Clock
+            size={14}
+            strokeWidth={2.2}
+            aria-hidden="true"
+            style={{ display: "block" }}
+          />
           {t(language, "downloads.waiting")}
         </div>
       )}
@@ -711,7 +747,12 @@ export default function DownloadsTab({
                 flexShrink: 0,
               }}
             >
-              <AppIcon name="download" size={18} strokeWidth={2.1} />
+              <Download
+                size={18}
+                strokeWidth={2.1}
+                aria-hidden="true"
+                style={{ display: "block" }}
+              />
             </div>
             <div>
               <div
@@ -751,7 +792,7 @@ export default function DownloadsTab({
             )}
             {historyDownloads.length > 0 && (
               <ActionButton
-                icon="close"
+                icon={X}
                 label={t(language, "downloads.clearCompleted")}
                 onClick={() => {
                   void clearCompleted();
@@ -770,7 +811,7 @@ export default function DownloadsTab({
         }}
       >
         <StatCard
-          icon="refresh-cw"
+          icon={RefreshCw}
           value={String(downloading)}
           label={t(language, "downloads.downloadingCount", {
             count: downloading,
@@ -778,18 +819,18 @@ export default function DownloadsTab({
           tone="primary"
         />
         <StatCard
-          icon="clock"
+          icon={Clock}
           value={String(queued)}
           label={t(language, "downloads.queuedCount", { count: queued })}
         />
         <StatCard
-          icon="check"
+          icon={Check}
           value={String(done)}
           label={t(language, "downloads.doneCount", { count: done })}
           tone="success"
         />
         <StatCard
-          icon="close"
+          icon={X}
           value={String(errors)}
           label={t(language, "downloads.failedCount", { count: errors })}
           tone="danger"
@@ -824,7 +865,12 @@ export default function DownloadsTab({
               color: "var(--color-primary)",
             }}
           >
-            <AppIcon name="download" size={22} strokeWidth={2.1} />
+            <Download
+              size={22}
+              strokeWidth={2.1}
+              aria-hidden="true"
+              style={{ display: "block" }}
+            />
           </div>
           <div
             style={{
@@ -852,7 +898,7 @@ export default function DownloadsTab({
         <>
           <section>
             <SectionTitle
-              icon="activity"
+              icon={Activity}
               title={t(language, "downloads.activeSection")}
               subtitle={t(language, "downloads.activeSectionBody")}
             />
@@ -882,7 +928,12 @@ export default function DownloadsTab({
               </div>
             ) : (
               <div style={emptySectionStyle}>
-                <AppIcon name="clock" size={18} strokeWidth={2.1} />
+                <Clock
+                  size={18}
+                  strokeWidth={2.1}
+                  aria-hidden="true"
+                  style={{ display: "block" }}
+                />
                 <span>{t(language, "downloads.noActive")}</span>
               </div>
             )}
@@ -890,7 +941,7 @@ export default function DownloadsTab({
 
           <section>
             <SectionTitle
-              icon="check"
+              icon={Check}
               title={t(language, "downloads.historySection")}
               subtitle={t(language, "downloads.historySectionBody")}
             />
@@ -920,7 +971,12 @@ export default function DownloadsTab({
               </div>
             ) : (
               <div style={emptySectionStyle}>
-                <AppIcon name="check" size={18} strokeWidth={2.1} />
+                <Check
+                  size={18}
+                  strokeWidth={2.1}
+                  aria-hidden="true"
+                  style={{ display: "block" }}
+                />
                 <span>{t(language, "downloads.noHistory")}</span>
               </div>
             )}

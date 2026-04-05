@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Bookmark, Plus } from "lucide-react";
 import type { AppLanguage } from "../../utils/mediaLanguage";
 import { t } from "../../utils/i18n";
 import type { AddWatchlistParams } from "./types";
@@ -108,15 +109,14 @@ export default function WatchlistButton({
                   : "rgba(0,0,0,0.6)",
               border: `1px solid ${isAdded ? "var(--color-primary)" : "rgba(255,255,255,0.2)"}`,
               borderRadius: "50%",
-              width: 30,
-              height: 30,
+              width: 36,
+              height: 36,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: adding ? "wait" : "pointer",
               color: isAdded ? "#fff" : "rgba(255,255,255,0.8)",
-              fontSize: 15,
-              lineHeight: 1,
+              padding: 0,
               transition: "background 0.15s ease, border-color 0.15s ease",
               flexShrink: 0,
             }
@@ -124,7 +124,7 @@ export default function WatchlistButton({
     >
       {fullWidth ? (
         <>
-          <span style={{ fontSize: 16 }}>🔖</span>
+          <Bookmark size={16} strokeWidth={2.2} aria-hidden="true" />
           {adding
             ? "…"
             : isAdded
@@ -134,9 +134,14 @@ export default function WatchlistButton({
       ) : adding ? (
         "…"
       ) : isAdded ? (
-        "🔖"
+        <Bookmark
+          size={16}
+          strokeWidth={2.2}
+          aria-hidden="true"
+          fill="currentColor"
+        />
       ) : (
-        "＋"
+        <Plus size={16} strokeWidth={2.5} aria-hidden="true" />
       )}
     </button>
   );

@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
+import { Check, Clapperboard, Tv2 } from "lucide-react";
 import { MediaItem } from "../hooks/useIndexing";
 import type { DownloadItem } from "../hooks/useDownloads";
-import AppIcon from "./AppIcon";
 import DownloadRing from "./DownloadRing";
 import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import {
@@ -243,7 +243,21 @@ function MediaCard({
               color: "var(--color-text-muted)",
             }}
           >
-            <AppIcon name={isTV ? "tv" : "movie"} size={36} strokeWidth={1.9} />
+            {isTV ? (
+              <Tv2
+                size={36}
+                strokeWidth={1.9}
+                aria-hidden="true"
+                style={{ display: "block" }}
+              />
+            ) : (
+              <Clapperboard
+                size={36}
+                strokeWidth={1.9}
+                aria-hidden="true"
+                style={{ display: "block" }}
+              />
+            )}
           </div>
         )}
 
@@ -296,7 +310,12 @@ function MediaCard({
           >
             {badges.downloaded && (
               <OverlayBadge tone="success" iconOnly>
-                <AppIcon name="check" size={12} strokeWidth={2.8} />
+                <Check
+                  size={12}
+                  strokeWidth={2.8}
+                  aria-hidden="true"
+                  style={{ display: "block" }}
+                />
               </OverlayBadge>
             )}
             {inPlex && (
@@ -316,7 +335,12 @@ function MediaCard({
             )}
             {showLibraryFallback && (
               <OverlayBadge tone="info" title="In Library" iconOnly>
-                <AppIcon name="check" size={11} strokeWidth={2.8} />
+                <Check
+                  size={11}
+                  strokeWidth={2.8}
+                  aria-hidden="true"
+                  style={{ display: "block" }}
+                />
               </OverlayBadge>
             )}
           </div>

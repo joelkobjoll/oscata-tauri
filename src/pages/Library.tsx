@@ -1,11 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+  Activity,
+  Bookmark,
+  CheckSquare,
+  ChevronRight,
+  Clapperboard,
+  Download,
+  FileText,
+  Filter,
+  LayoutGrid,
+  MoreHorizontal,
+  Pencil,
+  Settings as SettingsIcon,
+  Tv2,
+  type LucideIcon,
+} from "lucide-react";
 import { call } from "../lib/transport";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { useIndexing, MediaItem } from "../hooks/useIndexing";
 import { useDownload } from "../hooks/useDownload";
 import { useDownloads } from "../hooks/useDownloads";
-import AppIcon from "../components/AppIcon";
 import FilterBar, { type Filters } from "../components/FilterBar";
 import {
   normalizeHdr,
@@ -32,15 +47,14 @@ import { t } from "../utils/i18n";
 import { formatBytes } from "../lib/format";
 
 type TabId = "all" | "movie" | "tv" | "documentary" | "downloads" | "watchlist";
-type TabIcon = "grid" | "movie" | "tv" | "docs" | "download" | "bookmark";
 
-const TABS: { id: TabId; labelKey: string; icon: TabIcon }[] = [
-  { id: "all", labelKey: "nav.all", icon: "grid" },
-  { id: "movie", labelKey: "nav.movies", icon: "movie" },
-  { id: "tv", labelKey: "nav.tv", icon: "tv" },
-  { id: "documentary", labelKey: "nav.docs", icon: "docs" },
-  { id: "downloads", labelKey: "nav.downloads", icon: "download" },
-  { id: "watchlist", labelKey: "nav.watchlist", icon: "bookmark" },
+const TABS: { id: TabId; labelKey: string; icon: LucideIcon }[] = [
+  { id: "all", labelKey: "nav.all", icon: LayoutGrid },
+  { id: "movie", labelKey: "nav.movies", icon: Clapperboard },
+  { id: "tv", labelKey: "nav.tv", icon: Tv2 },
+  { id: "documentary", labelKey: "nav.docs", icon: FileText },
+  { id: "watchlist", labelKey: "nav.watchlist", icon: Bookmark },
+  { id: "downloads", labelKey: "nav.downloads", icon: Download },
 ];
 
 const defaultFilters = (): Filters => ({
@@ -182,7 +196,12 @@ function EpisodeListView({
                     {formatBytes(item.size_bytes)}
                   </span>
                 )}
-                <AppIcon name="chevron-right" size={16} strokeWidth={2.2} />
+                <ChevronRight
+                  size={16}
+                  strokeWidth={2.2}
+                  aria-hidden="true"
+                  style={{ display: "block", flexShrink: 0 }}
+                />
               </div>
             </button>
           );
@@ -1263,7 +1282,12 @@ export default function Library({
                     transition: "color 0.18s ease, background 0.18s ease",
                   }}
                 >
-                  <AppIcon name={tab.icon} size={16} strokeWidth={2.2} />
+                  <tab.icon
+                    size={16}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                    style={{ display: "block", flexShrink: 0 }}
+                  />
                   <span>{t(language, tab.labelKey as never)}</span>
                   {tabCounts[tab.id] > 0 && (
                     <span
@@ -1361,7 +1385,12 @@ export default function Library({
                   {log.length}
                 </span>
               ) : (
-                <AppIcon name="activity" size={15} strokeWidth={2.3} />
+                <Activity
+                  size={15}
+                  strokeWidth={2.3}
+                  aria-hidden="true"
+                  style={{ display: "block", flexShrink: 0 }}
+                />
               )}
             </button>
           )}
@@ -1372,7 +1401,12 @@ export default function Library({
             title={t(language, "settings.title")}
             style={iconButton}
           >
-            <AppIcon name="settings" size={16} strokeWidth={2.1} />
+            <SettingsIcon
+              size={16}
+              strokeWidth={2.1}
+              aria-hidden="true"
+              style={{ display: "block", flexShrink: 0 }}
+            />
           </button>
         </div>
       </nav>
@@ -1419,10 +1453,11 @@ export default function Library({
                   transition: "color 0.15s ease",
                 }}
               >
-                <AppIcon
-                  name={tab.icon}
+                <tab.icon
                   size={22}
                   strokeWidth={active ? 2.4 : 2.0}
+                  aria-hidden="true"
+                  style={{ display: "block", flexShrink: 0 }}
                 />
                 <span style={{ fontSize: 10, fontWeight: active ? 700 : 500 }}>
                   {t(language, tab.labelKey as never)}
@@ -1704,7 +1739,12 @@ export default function Library({
                   title={t(language, "filter.filters" as never)}
                   style={ghostBtn}
                 >
-                  <AppIcon name="filter" size={14} strokeWidth={2.2} />
+                  <Filter
+                    size={14}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                    style={{ display: "block", flexShrink: 0 }}
+                  />
                 </button>
               )}
             {activeTab === "downloads" ||
@@ -1739,7 +1779,12 @@ export default function Library({
                     cursor: checkedIds.size === 0 ? "default" : "pointer",
                   }}
                 >
-                  <AppIcon name="edit" size={14} strokeWidth={2.2} />
+                  <Pencil
+                    size={14}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                    style={{ display: "block", flexShrink: 0 }}
+                  />
                   {t(language, "library.fixMatch")} ({checkedIds.size})
                 </button>
                 <button onClick={exitSelect} style={ghostBtn}>
@@ -1753,7 +1798,12 @@ export default function Library({
                   title={t(language, "library.selectMultiple")}
                   style={ghostBtn}
                 >
-                  <AppIcon name="check-square" size={14} strokeWidth={2.2} />
+                  <CheckSquare
+                    size={14}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                    style={{ display: "block", flexShrink: 0 }}
+                  />
                   {t(language, "library.select")}
                 </button>
                 <div ref={actionsMenuRef} style={{ position: "relative" }}>
@@ -1762,10 +1812,11 @@ export default function Library({
                     title={t(language, "library.actions")}
                     style={{ ...ghostBtn, padding: "7px 11px" }}
                   >
-                    <AppIcon
-                      name="more-horizontal"
+                    <MoreHorizontal
                       size={16}
                       strokeWidth={2.2}
+                      aria-hidden="true"
+                      style={{ display: "block", flexShrink: 0 }}
                     />
                   </button>
 
