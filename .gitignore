@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Dev FTP server media (local test files, not committed)
+docker/ftp-dev/media/

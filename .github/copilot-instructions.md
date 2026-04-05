@@ -164,7 +164,29 @@ Never use `<input type="checkbox">` for boolean settings or preferences. Always 
 </div>
 ```
 
-**6. Avoid prop drilling beyond 2 levels**
+**6. Always use shared form styles for inputs and selects**
+Never define a local `inputStyle` or `selectStyle` object. Always import from `src/lib/formStyles.ts`. Using `formInput` styles on a `<select>` is **forbidden** — selects must use the matching `formSelect` export so they get `appearance: "none"` and a custom chevron arrow, making them the same height and visual weight as inputs.
+
+| Context                         | Input               | Select               |
+| ------------------------------- | ------------------- | -------------------- |
+| Modals, panels, compact cards   | `formInputCompact`  | `formSelectCompact`  |
+| Full-page forms, settings pages | `formInputStandard` | `formSelectStandard` |
+
+```tsx
+// ❌ Bad — local definition, or applying inputStyle to a <select>
+const inputStyle = { padding: "6px 10px", fontSize: 13, ... };
+const selectStyle = inputStyle;  // select will look taller due to native OS chrome
+<select style={inputStyle}>
+
+// ✅ Good
+import { formInputCompact, formSelectCompact } from "../lib/formStyles";
+const inputStyle = formInputCompact;
+const selectStyle = formSelectCompact;
+<input style={inputStyle} />
+<select style={selectStyle}>
+```
+
+**7. Avoid prop drilling beyond 2 levels**
 If a value needs to go more than 2 levels deep, promote it to a hook or a React context.
 
 ---
@@ -354,6 +376,8 @@ When adding a new feature, work through these in order:
 - ❌ Do not leave `console.log` or `dbg!` in committed code
 - ❌ Do not create markdown planning files in the repo — use the session workspace
 - ❌ Do not add a UI feature to the Tauri desktop without also verifying it works (or is intentionally gated with `isTauri()`) in the web UI
+- ❌ Do not define local `inputStyle` or `selectStyle` objects — always import from `src/lib/formStyles.ts`
+- ❌ Do not apply `formInput*` styles to `<select>` elements — use the matching `formSelect*` export
 
 ---
 

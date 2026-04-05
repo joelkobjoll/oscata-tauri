@@ -14,9 +14,11 @@ import {
   Pencil,
   Settings as SettingsIcon,
   Tv2,
+  Upload,
   type LucideIcon,
 } from "lucide-react";
-import { call } from "../lib/transport";
+import { call, isTauri } from "../lib/transport";
+import { invoke } from "@tauri-apps/api/core";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { useIndexing, MediaItem } from "../hooks/useIndexing";
 import { useDownload } from "../hooks/useDownload";
@@ -36,6 +38,8 @@ import FixMatchModal from "../components/FixMatchModal";
 import DownloadsTab from "../components/DownloadsTab";
 import WatchlistTab from "../features/watchlist/WatchlistTab";
 import { useWatchlist } from "../features/watchlist/useWatchlist";
+import UploadsTab from "../features/uploads/UploadsTab";
+import { useUploads } from "../features/uploads/useUploads";
 import DownloadFeedbackToast from "../components/DownloadFeedbackToast";
 import IndexErrorToast from "../components/IndexErrorToast";
 import TVShowPanel from "../components/TVShowPanel";
@@ -46,7 +50,14 @@ import { AppLanguage, getLocalizedTitle } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 import { formatBytes } from "../lib/format";
 
-type TabId = "all" | "movie" | "tv" | "documentary" | "downloads" | "watchlist";
+type TabId =
+  | "all"
+  | "movie"
+  | "tv"
+  | "documentary"
+  | "downloads"
+  | "watchlist"
+  | "uploads";
 
 const TABS: { id: TabId; labelKey: string; icon: LucideIcon }[] = [
   { id: "all", labelKey: "nav.all", icon: LayoutGrid },
@@ -55,6 +66,9 @@ const TABS: { id: TabId; labelKey: string; icon: LucideIcon }[] = [
   { id: "documentary", labelKey: "nav.docs", icon: FileText },
   { id: "watchlist", labelKey: "nav.watchlist", icon: Bookmark },
   { id: "downloads", labelKey: "nav.downloads", icon: Download },
+  ...(isTauri()
+    ? [{ id: "uploads" as const, labelKey: "nav.uploads", icon: Upload }]
+    : []),
 ];
 
 const defaultFilters = (): Filters => ({
@@ -245,6 +259,14 @@ export default function Library({
     deleteDownload,
   } = useDownloads();
   const watchlist = useWatchlist();
+  const {
+    uploads,
+    cancelUpload,
+    retryUpload,
+    deleteUpload,
+    clearCompleted: clearCompletedUploads,
+  } = useUploads();
+  const [ftpWriteOk, setFtpWriteOk] = useState<boolean>(false);
   const downloadMap = useMemo(
     () => new Map(downloads.map((d) => [d.ftp_path, d])),
     [downloads],
@@ -294,6 +316,19 @@ export default function Library({
   const paginationInitRef = useRef(false);
   const hasStartedInitialIndexRef = useRef(false);
   const badgeRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    invoke<boolean>("check_ftp_write_permission")
+      .then((ok) => setFtpWriteOk(ok))
+      .catch(() => setFtpWriteOk(false));
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "uploads" && !ftpWriteOk) {
+      switchTab("all");
+    }
+  }, [ftpWriteOk, activeTab]);
 
   useEffect(() => {
     if (!startIndexingOnMount || hasStartedInitialIndexRef.current) {
@@ -567,9 +602,11 @@ export default function Library({
             (movie.title ?? movie.filename)),
     );
 
+  const visibleTabs = TABS.filter((tab) => tab.id !== "uploads" || ftpWriteOk);
+
   const tabCounts = useMemo(
     () =>
-      TABS.reduce(
+      visibleTabs.reduce(
         (acc, t) => {
           switch (t.id) {
             case "all":
@@ -578,6 +615,11 @@ export default function Library({
             case "downloads":
               acc[t.id] = downloads.filter(
                 (d) => d.status === "queued" || d.status === "downloading",
+              ).length;
+              break;
+            case "uploads":
+              acc[t.id] = uploads.filter(
+                (u) => u.status === "queued" || u.status === "uploading",
               ).length;
               break;
             case "movie":
@@ -765,6 +807,7 @@ export default function Library({
     documentary: t(language, "nav.docs"),
     downloads: t(language, "nav.downloads"),
     watchlist: t(language, "nav.watchlist"),
+    uploads: t(language, "nav.uploads" as never),
   };
 
   useEffect(() => {
@@ -1264,7 +1307,7 @@ export default function Library({
           <div
             style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}
           >
-            {TABS.map((tab) => {
+            {visibleTabs.map((tab) => {
               const active = activeTab === tab.id;
               return (
                 <button
@@ -1437,7 +1480,7 @@ export default function Library({
             WebkitBackdropFilter: "blur(16px)",
           }}
         >
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const active = activeTab === tab.id;
             return (
               <button
@@ -1759,7 +1802,8 @@ export default function Library({
                 </button>
               )}
             {activeTab === "downloads" ||
-            activeTab === "watchlist" ? null : selecting ? (
+            activeTab === "watchlist" ||
+            activeTab === "uploads" ? null : selecting ? (
               <>
                 <span
                   style={{ color: "var(--color-text-muted)", fontSize: 13 }}
@@ -2057,40 +2101,53 @@ export default function Library({
           className={isMobile ? "mobile-content-area" : undefined}
           style={{ flex: 1, display: "flex", minHeight: 0 }}
         >
-          {activeTab !== "downloads" && !isMobile && (
-            <div
-              style={{
-                width: 320,
-                flexShrink: 0,
-                padding: "1.5rem 0 1.5rem 1.5rem",
-                borderRight:
-                  "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
-              }}
-            >
+          {activeTab !== "downloads" &&
+            activeTab !== "uploads" &&
+            !isMobile && (
               <div
                 style={{
-                  height: "100%",
-                  overflowY: "auto",
-                  paddingRight: "1rem",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
+                  width: 320,
+                  flexShrink: 0,
+                  padding: "1.5rem 0 1.5rem 1.5rem",
+                  borderRight:
+                    "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
                 }}
               >
-                <FilterBar
-                  filters={filters}
-                  items={filterableItems}
-                  language={language}
-                  searchInputRef={searchInputRef}
-                  onChange={setFilters}
-                />
+                <div
+                  style={{
+                    height: "100%",
+                    overflowY: "auto",
+                    paddingRight: "1rem",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  <FilterBar
+                    filters={filters}
+                    items={filterableItems}
+                    language={language}
+                    searchInputRef={searchInputRef}
+                    onChange={setFilters}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           {/* Scrollable content grid */}
           <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-            {activeTab === "downloads" ? (
+            {activeTab === "uploads" ? (
+              <div style={{ height: "100%", overflowY: "auto" }}>
+                <UploadsTab
+                  uploads={uploads}
+                  language={language}
+                  onCancel={cancelUpload}
+                  onRetry={retryUpload}
+                  onDelete={deleteUpload}
+                  onClearCompleted={clearCompletedUploads}
+                />
+              </div>
+            ) : activeTab === "downloads" ? (
               <div
                 style={{ height: "100%", overflowY: "auto", padding: "1.5rem" }}
               >

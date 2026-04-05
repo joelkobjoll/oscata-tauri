@@ -55,6 +55,10 @@ pub struct AppConfig {
     pub genre_destinations: String,      // JSON: GenreDestRule[]
     #[serde(default = "default_close_to_tray")]
     pub close_to_tray: bool,             // default true
+    #[serde(default)]
+    pub telegram_bot_token: String,      // "" = disabled
+    #[serde(default)]
+    pub telegram_chat_id: String,        // "" = disabled
 }
 
 fn default_alphabetical_subfolders() -> bool {
@@ -1340,6 +1344,8 @@ impl Db {
                 "close_to_tray",
                 if config.close_to_tray { "1" } else { "0" },
             ),
+            ("telegram_bot_token", config.telegram_bot_token.as_str()),
+            ("telegram_chat_id", config.telegram_chat_id.as_str()),
         ];
         let port_str = config.ftp_port.to_string();
         for (k, v) in &pairs {
@@ -1731,6 +1737,8 @@ impl Db {
                 .ok()
                 .map(|v| !matches!(v.as_str(), "0" | "false" | "FALSE" | "False"))
                 .unwrap_or(true),
+            telegram_bot_token: get("telegram_bot_token").unwrap_or_default(),
+            telegram_chat_id: get("telegram_chat_id").unwrap_or_default(),
         })
     }
 

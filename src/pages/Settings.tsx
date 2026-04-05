@@ -3,6 +3,7 @@ import AppIcon from "../components/AppIcon";
 import Toggle from "../components/Toggle";
 import { useQualityProfiles } from "../features/watchlist/useQualityProfiles";
 import type { QualityProfile } from "../features/watchlist/types";
+import { formInputStandard, formSelectStandard } from "../lib/formStyles";
 import type { AppLanguage } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 import {
@@ -37,6 +38,8 @@ interface Config {
   alphabetical_subfolders: boolean;
   genre_destinations: string; // JSON: GenreDestRule[]
   close_to_tray: boolean;
+  telegram_bot_token: string;
+  telegram_chat_id: string;
 }
 
 interface GenreDestRule {
@@ -63,28 +66,9 @@ interface WebGuiConfig {
 
 type ConnectionState = "idle" | "testing" | "ok" | "error";
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: "0.72rem 0.9rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
-  background: "color-mix(in srgb, var(--color-surface-2) 84%, transparent)",
-  color: "var(--color-text)",
-  fontSize: 14,
-  outline: "none",
-  boxShadow: "inset 0 1px 0 color-mix(in srgb, white 4%, transparent)",
-};
+const inputStyle = formInputStandard;
 
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  appearance: "none",
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238888a0' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "right 0.75rem center",
-  paddingRight: "2.2rem",
-  cursor: "pointer",
-};
+const selectStyle = formSelectStandard;
 
 const fieldStyle: React.CSSProperties = {
   display: "flex",
@@ -831,6 +815,8 @@ export default function Settings({
   const [embyMsg, setEmbyMsg] = useState("");
   const [plexStatus, setPlexStatus] = useState<ConnectionState>("idle");
   const [plexMsg, setPlexMsg] = useState("");
+  const [telegramStatus, setTelegramStatus] = useState<ConnectionState>("idle");
+  const [telegramMsg, setTelegramMsg] = useState("");
   const [backupMessage, setBackupMessage] = useState("");
   const [backupError, setBackupError] = useState("");
   const [backupBusy, setBackupBusy] = useState(false);
@@ -1087,6 +1073,22 @@ export default function Settings({
     } catch (error: unknown) {
       setPlexMsg(String(error));
       setPlexStatus("error");
+    }
+  };
+
+  const testTelegram = async () => {
+    setTelegramStatus("testing");
+    setTelegramMsg("");
+    try {
+      await call("test_telegram", {
+        token: form.telegram_bot_token,
+        chatId: form.telegram_chat_id,
+      });
+      setTelegramMsg("Mensaje de prueba enviado correctamente");
+      setTelegramStatus("ok");
+    } catch (error: unknown) {
+      setTelegramMsg(String(error));
+      setTelegramStatus("error");
     }
   };
 
@@ -3025,6 +3027,81 @@ export default function Settings({
                       )}
                     </>
                   )}
+                </div>
+              </SectionCard>
+            )}
+
+            {isTauri() && (
+              <SectionCard
+                icon="activity"
+                title="Notificaciones"
+                description="Recibe avisos por Telegram cuando terminen las subidas al servidor FTP."
+                defaultOpen={false}
+              >
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 14 }}
+                >
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>Token del bot de Telegram</label>
+                    <input
+                      style={inputStyle}
+                      type="password"
+                      value={form.telegram_bot_token ?? ""}
+                      onChange={set("telegram_bot_token")}
+                      placeholder="1234567890:ABCdef..."
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>Chat ID</label>
+                    <input
+                      style={inputStyle}
+                      value={form.telegram_chat_id ?? ""}
+                      onChange={set("telegram_chat_id")}
+                      placeholder="-1001234567890"
+                    />
+                    <span style={subtextStyle}>
+                      Puedes obtener el Chat ID enviando un mensaje a tu bot y
+                      usando la API getUpdates.
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <button
+                      onClick={testTelegram}
+                      disabled={
+                        telegramStatus === "testing" ||
+                        !form.telegram_bot_token ||
+                        !form.telegram_chat_id
+                      }
+                      style={{
+                        ...ghostBtn,
+                        opacity:
+                          telegramStatus === "testing" ||
+                          !form.telegram_bot_token ||
+                          !form.telegram_chat_id
+                            ? 0.5
+                            : 1,
+                      }}
+                    >
+                      {telegramStatus === "testing"
+                        ? "Enviando..."
+                        : "Probar notificación"}
+                    </button>
+                    <StatusPill
+                      state={telegramStatus}
+                      text={
+                        telegramMsg ||
+                        (telegramStatus === "ok" ? "Enviado" : "Error")
+                      }
+                    />
+                  </div>
                 </div>
               </SectionCard>
             )}

@@ -7,6 +7,7 @@ const messages = {
   "nav.docs": { es: "Documentales", en: "Documentaries" },
   "nav.downloads": { es: "Descargas", en: "Downloads" },
   "nav.watchlist": { es: "Seguimiento", en: "Watchlist" },
+  "nav.uploads": { es: "Subidas", en: "Uploads" },
 
   "common.loading": { es: "Cargando…", en: "Loading…" },
   "common.search": { es: "Buscar", en: "Search" },
@@ -1046,6 +1047,62 @@ const messages = {
   "qualityProfile.edit": { es: "Editar", en: "Edit" },
   "qualityProfile.delete": { es: "Eliminar", en: "Delete" },
   "qualityProfile.confirmDelete": { es: "¿Confirmar?", en: "Confirm?" },
+
+  // Upload section
+  "upload.title": { es: "Subidas", en: "Uploads" },
+  "upload.uploadFiles": { es: "Subir archivos", en: "Upload files" },
+  "upload.selectFiles": { es: "Seleccionar archivos", en: "Select files" },
+  "upload.selectFolder": { es: "Seleccionar carpeta", en: "Select folder" },
+  "upload.analysing": { es: "Analizando…", en: "Analysing…" },
+  "upload.ffprobeMissing": {
+    es: "ffprobe no encontrado. Instala ffmpeg para obtener información detallada del archivo.",
+    en: "ffprobe not found. Install ffmpeg to get detailed file information.",
+  },
+  "upload.destination": { es: "Destino en el FTP", en: "FTP destination" },
+  "upload.rename": { es: "Renombrar archivo", en: "Rename file" },
+  "upload.addToQueue": { es: "Añadir a la cola", en: "Add to queue" },
+  "upload.writeError": {
+    es: "Sin permiso de escritura en el FTP. Comprueba la configuración del servidor.",
+    en: "No write permission on FTP. Check your server configuration.",
+  },
+  "upload.noUploads": { es: "No hay subidas", en: "No uploads" },
+  "upload.noUploadsDesc": {
+    es: "Pulsa «Subir archivos» para empezar.",
+    en: "Click «Upload files» to start.",
+  },
+  "upload.active": { es: "En curso", en: "Active" },
+  "upload.history": { es: "Historial", en: "History" },
+  "upload.clearCompleted": { es: "Limpiar completadas", en: "Clear completed" },
+  "upload.status.queued": { es: "En cola", en: "Queued" },
+  "upload.status.uploading": { es: "Subiendo", en: "Uploading" },
+  "upload.status.done": { es: "Completada", en: "Done" },
+  "upload.status.error": { es: "Error", en: "Error" },
+  "upload.status.cancelled": { es: "Cancelada", en: "Cancelled" },
+  "upload.filenamePreview": { es: "Vista previa del nombre", en: "Filename preview" },
+  "upload.stepSelect": { es: "Seleccionar", en: "Select" },
+  "upload.stepAnalyse": { es: "Analizar", en: "Analyse" },
+  "upload.stepConfigure": { es: "Configurar", en: "Configure" },
+  "upload.next": { es: "Siguiente", en: "Next" },
+  "upload.back": { es: "Atrás", en: "Back" },
+  "upload.noFilesSelected": { es: "No has seleccionado ningún archivo.", en: "No files selected." },
+  "upload.retry": { es: "Reintentar", en: "Retry" },
+  "upload.cancel": { es: "Cancelar", en: "Cancel" },
+  "upload.delete": { es: "Eliminar", en: "Delete" },
+
+  // Telegram (Settings)
+  "telegram.section": { es: "Notificaciones", en: "Notifications" },
+  "telegram.sectionDesc": {
+    es: "Recibe un mensaje de Telegram cuando termine una subida.",
+    en: "Get a Telegram message when an upload finishes.",
+  },
+  "telegram.token": { es: "Token del bot", en: "Bot token" },
+  "telegram.tokenPlaceholder": { es: "123456:ABCdef…", en: "123456:ABCdef…" },
+  "telegram.chatId": { es: "Chat ID / canal", en: "Chat ID / channel" },
+  "telegram.chatIdPlaceholder": { es: "@micanal o -100123456789", en: "@mychannel or -100123456789" },
+  "telegram.test": { es: "Probar", en: "Test" },
+  "telegram.testing": { es: "Probando…", en: "Testing…" },
+  "telegram.ok": { es: "Mensaje enviado", en: "Message sent" },
+  "telegram.error": { es: "Error al enviar", en: "Send failed" },
 } as const;
 
 export function t(

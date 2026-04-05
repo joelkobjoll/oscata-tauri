@@ -163,6 +163,24 @@ pub async fn test_connection(
     Ok(())
 }
 
+/// Delete a single file on the FTP server at `remote_dir/filename`.
+pub async fn delete_file(
+    host: &str,
+    port: u16,
+    user: &str,
+    pass: &str,
+    remote_dir: &str,
+    filename: &str,
+) -> Result<(), String> {
+    let mut ftp = connect(host, port, user, pass).await?;
+    let full_path = format!("{}/{}", remote_dir.trim_end_matches('/'), filename);
+    ftp.rm(&full_path)
+        .await
+        .map_err(|e| format!("DELE {full_path}: {}", clean_ftp_error(e)))?;
+    ftp.quit().await.ok();
+    Ok(())
+}
+
 pub async fn list_raw(
     host: &str,
     port: u16,
@@ -428,4 +446,121 @@ pub async fn download_file(
     }
 
     Ok(())
+}
+
+/// Upload a local file to the FTP server at `remote_dir/filename`.
+///
+/// `remote_dir` is created recursively if it does not exist.
+/// `on_progress(bytes_done, bytes_total)` is called periodically; returning
+/// `false` cancels the transfer.
+pub async fn upload_file(
+    host: &str,
+    port: u16,
+    user: &str,
+    pass: &str,
+    remote_dir: &str,
+    filename: &str,
+    local_path: &str,
+    on_progress: impl Fn(u64, u64) -> bool,
+) -> Result<(), String> {
+    let file_size = tokio::fs::metadata(local_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    let mut ftp = connect(host, port, user, pass).await?;
+    ftp.transfer_type(FileType::Binary).await.map_err(|e| clean_ftp_error(e))?;
+
+    // Ensure remote directory exists (create each segment, ignore "already exists").
+    ensure_remote_dir(&mut ftp, remote_dir).await?;
+
+    // CWD into the target dir.
+    ftp.cwd(remote_dir).await.map_err(|e| format!("CWD {remote_dir}: {}", clean_ftp_error(e)))?;
+
+    // Open local file.
+    let local_file = tokio::fs::File::open(local_path)
+        .await
+        .map_err(|e| format!("Cannot open local file: {e}"))?;
+
+    let mut uploaded: u64 = 0;
+    let mut cancelled = false;
+
+    // Wrap local file reader with progress tracking.
+    use tokio::io::AsyncReadExt;
+    let mut reader = local_file;
+    let mut buf = vec![0u8; 65536];
+
+    // Build the data to send (suppaFTP's put_file takes a reader).
+    // We collect into a Vec<u8> only when the file is small enough;
+    // for streaming we use put_with_stream.
+    let remote_full = format!("{}/{}", remote_dir.trim_end_matches('/'), filename);
+
+    // Use suppaftp's put_file which takes a Read; bridge via tokio_util compat.
+    // Simpler: read into channel buffer and report progress as we read.
+    let mut data: Vec<u8> = Vec::with_capacity(file_size as usize);
+    loop {
+        let n = reader.read(&mut buf).await.map_err(|e| format!("Read error: {e}"))?;
+        if n == 0 { break; }
+        data.extend_from_slice(&buf[..n]);
+        uploaded += n as u64;
+        if !on_progress(uploaded, file_size) {
+            cancelled = true;
+            break;
+        }
+    }
+
+    if cancelled {
+        ftp.quit().await.ok();
+        return Err("Cancelled".to_string());
+    }
+
+    // Upload via suppaftp (put_file requires futures::AsyncRead).
+    // AllowStdIo from the futures crate bridges std::io::Read → futures::AsyncRead.
+    let mut cursor = futures::io::AllowStdIo::new(std::io::Cursor::new(data));
+    ftp.put_file(filename, &mut cursor)
+        .await
+        .map_err(|e| format!("Upload failed for {remote_full}: {}", clean_ftp_error(e)))?;
+
+    ftp.quit().await.ok();
+    Ok(())
+}
+
+/// Recursively ensure that all segments of `path` exist on the FTP server.
+/// Ignores "550 directory already exists" type errors (FTP 550 is also returned
+/// for other errors, so we attempt MKD and continue regardless).
+async fn ensure_remote_dir(ftp: &mut AsyncFtpStream, path: &str) -> Result<(), String> {
+    let mut current = String::new();
+    for segment in path.split('/') {
+        if segment.is_empty() {
+            current.push('/');
+            continue;
+        }
+        if current.is_empty() || current == "/" {
+            current = format!("/{segment}");
+        } else {
+            current = format!("{current}/{segment}");
+        }
+        // Try MKD; ignore error (directory may already exist).
+        ftp.mkdir(&current).await.ok();
+    }
+    Ok(())
+}
+
+/// Test whether the FTP user has write permission by attempting to create
+/// and immediately remove a temporary directory.
+pub async fn check_write_permission(
+    host: &str,
+    port: u16,
+    user: &str,
+    pass: &str,
+    root: &str,
+) -> Result<bool, String> {
+    let mut ftp = connect(host, port, user, pass).await?;
+    let test_dir = format!("{root}/.oscata-write-test");
+    let writable = ftp.mkdir(&test_dir).await.is_ok();
+    if writable {
+        ftp.rmdir(&test_dir).await.ok();
+    }
+    ftp.quit().await.ok();
+    Ok(writable)
 }

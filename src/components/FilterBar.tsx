@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { MediaItem } from "../hooks/useIndexing";
+import { formSelectCompact } from "../lib/formStyles";
 import AppIcon from "./AppIcon";
 import type { AppLanguage } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
@@ -295,23 +296,7 @@ export default function FilterBar({
 
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
 
-  const selectStyle: React.CSSProperties = {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "0.72rem 2.2rem 0.72rem 0.9rem",
-    borderRadius: "var(--radius)",
-    border:
-      "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
-    background: "color-mix(in srgb, var(--color-surface-2) 84%, transparent)",
-    color: "var(--color-text)",
-    fontSize: 13,
-    outline: "none",
-    cursor: "pointer",
-    appearance: "none",
-    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238888a0' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
-    backgroundRepeat: "no-repeat",
-    backgroundPosition: "right 0.75rem center",
-  };
+  const selectStyle = formSelectCompact;
 
   return (
     <aside

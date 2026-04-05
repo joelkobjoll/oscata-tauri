@@ -43,13 +43,6 @@ const RELEASE_TYPE_COLORS: Record<string, string> = {
   CAM: "#7f1d1d",
 };
 
-const LANG_COLORS: Record<string, string> = {
-  DUAL: "#b45309",
-  MULTI: "#7c3aed",
-  DUBBED: "#6b7280",
-  SUBBED: "#6b7280",
-};
-
 type BadgeTone = "neutral" | "success" | "info" | "violet" | "release";
 
 function badgeSurface(
@@ -120,24 +113,6 @@ function OverlayBadge({
         textOverflow: "ellipsis",
         ...style,
       }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function InlineBadge({
-  children,
-  tone = "neutral",
-  releaseColor,
-}: {
-  children: React.ReactNode;
-  tone?: BadgeTone;
-  releaseColor?: string;
-}) {
-  return (
-    <span
-      style={badgeSurface(tone, releaseColor, { compact: true, shadow: false })}
     >
       {children}
     </span>
@@ -403,8 +378,8 @@ function MediaCard({
           )}
         </div>
 
-        {/* Release type badge bottom-left */}
-        {item.release_type && (
+        {/* Language + release type — stacked bottom-left */}
+        {(langs.length > 0 || item.release_type) && (
           <div
             style={{
               position: "absolute",
@@ -412,15 +387,35 @@ function MediaCard({
               left: "0.4rem",
               zIndex: 4,
               maxWidth: "calc(58% - 0.4rem)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: "0.2rem",
             }}
           >
-            <OverlayBadge
-              tone="release"
-              releaseColor={RELEASE_TYPE_COLORS[item.release_type] || "#1e293b"}
-              title={item.release_type}
-            >
-              {item.release_type}
-            </OverlayBadge>
+            {langs.length > 0 && (
+              <OverlayBadge
+                tone="neutral"
+                title={langs.join(", ")}
+                style={{
+                  background: "color-mix(in srgb, black 62%, transparent)",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                {langs.join(" · ")}
+              </OverlayBadge>
+            )}
+            {item.release_type && (
+              <OverlayBadge
+                tone="release"
+                releaseColor={
+                  RELEASE_TYPE_COLORS[item.release_type] || "#1e293b"
+                }
+                title={item.release_type}
+              >
+                {item.release_type}
+              </OverlayBadge>
+            )}
           </div>
         )}
 
@@ -467,19 +462,7 @@ function MediaCard({
               <span>{item.tmdb_rating.toFixed(1)}</span>
             </>
           )}
-          {langs.length > 0 && langs[0] !== "EN" && langs[0] !== "en" && (
-            <>
-              <span style={{ opacity: 0.4 }}>·</span>
-              <span style={{ display: "inline-flex" }}>
-                <InlineBadge
-                  tone="release"
-                  releaseColor={LANG_COLORS[langs[0]] || "#6b7280"}
-                >
-                  {langs[0]}
-                </InlineBadge>
-              </span>
-            </>
-          )}
+
           {showFileSize && item.size_bytes != null && item.size_bytes > 0 && (
             <>
               <span style={{ opacity: 0.4 }}>·</span>

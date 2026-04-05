@@ -12,7 +12,7 @@ Además del instalador NSIS, cada release de GitHub incluye ahora un ZIP portát
 
 ### 🗑️ Eliminar una descarga borra también el archivo
 
-Hasta ahora, borrar una entrada de la cola de descargas quitaba el registro pero dejaba el archivo a medias en disco. Ahora Oscata cancela la transferencia activa y elimina el fichero local al mismo tiempo, sin rastro.
+Al borrar una descarga, Oscata cancela la transferencia activa y elimina el fichero del disco. Sin rastro.
 
 ### 🖥️ Aspecto más nativo
 

@@ -1,9 +1,12 @@
+mod analysis;
 mod commands;
 mod db;
 mod downloads;
 mod ftp;
 mod parser;
+mod telegram;
 mod tmdb;
+mod uploads;
 mod web;
 
 use std::collections::HashMap;
@@ -101,6 +104,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(db::Db::new().expect("Failed to init SQLite"))
         .manage(Arc::new(Mutex::new(downloads::DownloadQueue::new(2))) as downloads::SharedQueue)
+        .manage(Arc::new(Mutex::new(uploads::UploadQueue::new(2))) as uploads::SharedUploadQueue)
         .manage(TrayState(Mutex::new(None)))
         .manage(WatchdogState(Mutex::new(HashMap::new())))
         .invoke_handler(tauri::generate_handler![
@@ -157,6 +161,20 @@ pub fn run() {
             commands::create_quality_profile,
             commands::update_quality_profile,
             commands::delete_quality_profile,
+            commands::check_ffprobe,
+            commands::analyze_local_file,
+            commands::list_local_video_files,
+            commands::check_ftp_write_permission,
+            commands::suggest_upload_destination,
+            commands::ftp_list_dir,
+            commands::generate_upload_filename,
+            commands::queue_upload,
+            commands::get_uploads,
+            commands::cancel_upload,
+            commands::retry_upload,
+            commands::delete_upload,
+            commands::clear_completed_uploads,
+            commands::test_telegram,
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {

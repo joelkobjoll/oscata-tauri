@@ -2622,6 +2622,977 @@ pub async fn trigger_watchlist_auto_downloads(
 
 // ── Fix 4: indexing loop decoupling tests ────────────────────────────────────
 //
+// ─── Analysis / Upload / Telegram commands ────────────────────────────────────
+
+fn format_bytes_human(bytes: u64) -> String {
+    if bytes >= 1_073_741_824 {
+        format!("{:.2} GB", bytes as f64 / 1_073_741_824.0)
+    } else if bytes >= 1_048_576 {
+        format!("{:.0} MB", bytes as f64 / 1_048_576.0)
+    } else {
+        format!("{:.0} KB", bytes as f64 / 1024.0)
+    }
+}
+
+/// Returns the ffprobe version string if found in PATH, or null.
+#[tauri::command]
+pub fn check_ffprobe() -> Option<String> {
+    crate::analysis::check_ffprobe()
+}
+
+/// Run ffprobe on a local file and return media info.
+#[tauri::command]
+pub fn analyze_local_file(path: String) -> Result<crate::analysis::LocalMediaInfo, String> {
+    crate::analysis::ffprobe_analyze(&path)
+}
+
+/// List video files inside a local directory, sorted by name.
+/// Recursively collects absolute paths to video files under `dir`.
+fn collect_video_files_recursive(
+    dir: &std::path::Path,
+    out: &mut Vec<String>,
+    video_exts: &[&str],
+) {
+    let Ok(read) = std::fs::read_dir(dir) else { return };
+    for entry in read.flatten() {
+        let p = entry.path();
+        if p.is_dir() {
+            collect_video_files_recursive(&p, out, video_exts);
+        } else if p.is_file() {
+            let is_video = p
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| video_exts.contains(&e.to_lowercase().as_str()))
+                .unwrap_or(false);
+            if is_video {
+                if let Some(s) = p.to_str() {
+                    out.push(s.to_string());
+                }
+            }
+        }
+    }
+}
+
+/// Returns a sorted list of absolute paths to all video files under `dir` (recursive).
+#[tauri::command]
+pub fn list_local_video_files(dir: String) -> Result<Vec<String>, String> {
+    const VIDEO_EXTS: &[&str] = &["mkv", "mp4", "avi", "m2ts", "mov", "ts"];
+    let mut entries: Vec<String> = Vec::new();
+    collect_video_files_recursive(std::path::Path::new(&dir), &mut entries, VIDEO_EXTS);
+    entries.sort();
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn check_ftp_write_permission(
+    state: tauri::State<'_, crate::db::Db>,
+) -> Result<bool, String> {
+    let config = state.load_config()?;
+    crate::ftp::check_write_permission(
+        &config.ftp_host,
+        config.ftp_port,
+        &config.ftp_user,
+        &config.ftp_pass,
+        &config.ftp_root,
+    )
+    .await
+}
+
+// ─── Upload destination suggestion ───────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+pub struct UploadSuggestion {
+    pub dest: String,
+    pub media_type: String, // "movie" | "tv" | "documentary"
+    pub detected_title: Option<String>,
+    pub detected_season: Option<u32>,
+    pub detected_episode: Option<u32>,
+    pub detected_year: Option<u32>,
+    /// Release type detected from the filename (e.g. "BDREMUX", "WEB-DL", "BDRip")
+    pub detected_release_type: Option<String>,
+    /// Resolution detected from the filename (e.g. "1080p", "4K")
+    pub detected_resolution: Option<String>,
+    /// Video codec detected from the filename (e.g. "HEVC", "AVC")
+    pub detected_codec: Option<String>,
+    /// Audio codec detected from the filename (e.g. "DTS", "AC3")
+    pub detected_audio_codec: Option<String>,
+    /// Languages detected from the filename (e.g. ["spa", "eng"])
+    pub detected_languages: Vec<String>,
+    /// HDR type detected from the filename (e.g. "HDR", "DV")
+    pub detected_hdr: Option<String>,
+    /// Base FTP folder configured for movies (sanitised, empty if not set)
+    pub movie_dest: String,
+    /// Base FTP folder configured for TV shows (sanitised, empty if not set)
+    pub tv_dest: String,
+    /// TV base + resolved category subfolder (e.g. tv_dest/Temporadas en emision).
+    /// Season folder uploads should go directly inside this path.
+    pub tv_category_dest: String,
+}
+
+/// Normalise a string for fuzzy folder matching: lowercase, strip non-alphanumeric, collapse spaces.
+fn normalise_for_match(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Count how many tokens from `query` appear in `candidate` (exact word match after normalisation).
+fn token_overlap(query: &str, candidate: &str) -> usize {
+    let q_tokens: Vec<&str> = query.split_whitespace().collect();
+    let c_tokens: Vec<&str> = candidate.split_whitespace().collect();
+    q_tokens.iter().filter(|t| c_tokens.contains(t)).count()
+}
+
+/// Given a list of raw FTP LIST lines, extract directory names.
+fn extract_dir_names(raw: &[String]) -> Vec<String> {
+    raw.iter()
+        .filter_map(|line| {
+            let is_dir = line.starts_with('d') || line.to_uppercase().contains("<DIR>");
+            if !is_dir { return None; }
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            let name_start = if line.starts_with('d') { 8 } else { 3 };
+            if parts.len() > name_start {
+                let name = parts[name_start..].join(" ");
+                if name != "." && name != ".." && !name.is_empty() {
+                    Some(name)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Find the season subfolder name in `dirs` that best matches `season_num`.
+/// Accepts "Season 01", "Temporada 1", "S01", etc.
+fn find_season_dir(dirs: &[String], season_num: u8) -> Option<String> {
+    for dir in dirs {
+        let lower = dir.to_lowercase();
+        // Extract all digit runs from the dir name
+        let digits: String = lower.chars().filter(|c| c.is_ascii_digit()).collect();
+        if let Ok(n) = digits.trim_start_matches('0').parse::<u8>() {
+            if n == season_num {
+                return Some(dir.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Find the closest matching show directory name in `dirs` for `show_title`.
+/// Returns the dir name with the highest token overlap (minimum 1 token match).
+fn fuzzy_best_show(show_title: &str, dirs: &[String]) -> Option<String> {
+    let norm_query = normalise_for_match(show_title);
+    let mut best: Option<(usize, &String)> = None;
+    for dir in dirs {
+        let norm_dir = normalise_for_match(dir);
+        let overlap = token_overlap(&norm_query, &norm_dir);
+        if overlap == 0 { continue; }
+        if best.map_or(true, |(best_score, _)| overlap > best_score) {
+            best = Some((overlap, dir));
+        }
+    }
+    best.map(|(_, dir)| dir.clone())
+}
+
+/// Given a local file or folder path, suggest an FTP destination path and
+/// detect whether it's a movie, TV show, or documentary.
+#[tauri::command]
+pub async fn suggest_upload_destination(
+    local_path: String,
+    state: tauri::State<'_, crate::db::Db>,
+) -> Result<UploadSuggestion, String> {
+    use std::path::Path;
+    let config = state.load_config()?;
+    let p = Path::new(&local_path);
+
+    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+    let mut parsed = crate::parser::parse_media_path("", &name);
+
+    // If no episode info from the name itself, scan directory contents for
+    // Season subfolders or episode-patterned files.
+    if parsed.season.is_none() && parsed.episode.is_none() && p.is_dir() {
+        'scan: for entry in std::fs::read_dir(&local_path).into_iter().flatten().flatten() {
+            let entry_name = entry.file_name().to_string_lossy().to_string();
+            let lower = entry_name.to_lowercase();
+            // Season subfolder: "Season 01", "Temporada 1", "S01", etc.
+            if lower.starts_with("season")
+                || lower.starts_with("temporada")
+                || (lower.len() >= 2 && lower.starts_with('s') && lower.chars().nth(1).map_or(false, |c| c.is_ascii_digit()))
+            {
+                let n: Option<u8> = entry_name
+                    .chars()
+                    .filter(|c| c.is_ascii_digit())
+                    .collect::<String>()
+                    .parse()
+                    .ok();
+                parsed.season = n.or(Some(1));
+                break 'scan;
+            }
+            // Episode-pattern file (e.g. S01E01 in filename)
+            if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                let ep = crate::parser::parse_media_path("", &entry_name);
+                if ep.season.is_some() || ep.episode.is_some() {
+                    parsed.season = ep.season.or(parsed.season);
+                    parsed.episode = ep.episode.or(parsed.episode);
+                    break 'scan;
+                }
+            }
+        }
+    }
+
+    let media_type = if parsed.season.is_some() || parsed.episode.is_some() {
+        "tv"
+    } else {
+        "movie"
+    };
+
+    // ── Build FTP destinations from folder_types + ftp_root ──────────────
+    let folder_map: std::collections::HashMap<String, String> =
+        serde_json::from_str(&config.folder_types).unwrap_or_default();
+    let ftp_root = config.ftp_root.trim_end_matches('/').to_string();
+
+    // Score a folder name against parsed file metadata — higher is better.
+    let score_folder = |folder: &str| -> i32 {
+        let fl = folder.to_lowercase();
+        let mut score = 0i32;
+        // Resolution
+        if let Some(ref res) = parsed.resolution {
+            let rl = res.to_lowercase();
+            if rl.contains("2160") || rl.contains("4k") || rl.contains("uhd") {
+                if fl.contains("2160") || fl.contains("4k") || fl.contains("uhd") {
+                    score += 10;
+                } else {
+                    score -= 5; // penalise 1080p folders for 4K files
+                }
+            } else if rl.contains("1080") && fl.contains("1080") {
+                score += 10;
+            }
+        }
+        // Codec
+        if let Some(ref codec) = parsed.codec {
+            let cl = codec.to_lowercase();
+            if cl.contains("x265") || cl.contains("hevc") || cl.contains("265") {
+                if fl.contains("x265") || fl.contains("hevc") { score += 5; }
+            } else if cl.contains("x264") || cl.contains("264") || cl.contains("avc") {
+                if fl.contains("x264") { score += 5; }
+            }
+        }
+        // Release type
+        if let Some(ref rt) = parsed.release_type {
+            let rtl = rt.to_lowercase();
+            if rtl.contains("bdremux") || rtl.contains("bd remux") {
+                if fl.contains("bdremux") { score += 8; }
+            } else if rtl.contains("webdl") || rtl.contains("web-dl") || rtl.contains("web dl") {
+                if fl.contains("web dl") || fl.contains("webdl") { score += 8; }
+            } else if rtl.contains("bdrip") {
+                if fl.contains("bdrip") { score += 8; }
+            }
+        }
+        score
+    };
+
+    // Pick the best FTP folder for the given media type.
+    let pick_best_folder = |target_type: &str| -> String {
+        let mut candidates: Vec<&str> = folder_map
+            .iter()
+            .filter(|(_, v)| v.as_str() == target_type)
+            .map(|(k, _)| k.as_str())
+            .collect();
+        // Sort for determinism before scoring
+        candidates.sort();
+        if candidates.is_empty() {
+            return String::new();
+        }
+        let best = candidates
+            .iter()
+            .copied()
+            .max_by_key(|f| score_folder(f))
+            .unwrap_or(candidates[0]);
+        format!("{}/{}", ftp_root, best)
+    };
+
+    let movie_dest = pick_best_folder("movie");
+    let tv_dest = pick_best_folder("tv");
+
+    let base_dest = match media_type {
+        "tv" => tv_dest.clone(),
+        _ => movie_dest.clone(),
+    };
+
+    // For TV shows: search for the show across category subfolders (e.g. "Temporadas en emision",
+    // "Temporadas completas"). If found, use the existing path + season subfolder. If not found,
+    // default to "Temporadas en emision" category (prefer the category whose name contains
+    // "emision" or the first category found) and construct the full path — the uploader will
+    // create it via MKD. Season path is always constructed as "Season NN".
+    // For movies: just return the movie base folder.
+    //
+    // `resolved_tv_category` = tv_dest/Category — the folder that season dirs live directly inside.
+    // Used by directory-mode uploads where the flat season folder goes there.
+    let (dest, resolved_tv_category) = if media_type == "tv" && !tv_dest.is_empty() {
+        let show_title = parsed.title.trim().replace(['/', '\\'], "");
+        let season = parsed.season.unwrap_or(1);
+        let season_folder = format!("Season {:02}", season);
+
+        // List level-1 dirs (category folders) under the tv base
+        let category_dirs = if !show_title.is_empty() {
+            crate::ftp::list_raw(
+                &config.ftp_host, config.ftp_port, &config.ftp_user, &config.ftp_pass,
+                &tv_dest,
+            ).await.map(|r| extract_dir_names(&r)).unwrap_or_default()
+        } else {
+            vec![]
+        };
+
+        // Search each category for the show; collect (cat_path, show_path, season_path) if found.
+        let mut found_show: Option<(String, String, String)> = None; // (cat_path, show_path, season_path)
+        for cat_dir in &category_dirs {
+            let cat_path = format!("{}/{}", tv_dest.trim_end_matches('/'), cat_dir);
+            if let Ok(cat_raw) = crate::ftp::list_raw(
+                &config.ftp_host, config.ftp_port, &config.ftp_user, &config.ftp_pass,
+                &cat_path,
+            ).await {
+                let show_dirs = extract_dir_names(&cat_raw);
+                if let Some(best_show) = fuzzy_best_show(&show_title, &show_dirs) {
+                    let show_path = format!("{}/{}", cat_path.trim_end_matches('/'), best_show);
+                    // Try to find existing season subfolder
+                    let season_path = if let Ok(sr) = crate::ftp::list_raw(
+                        &config.ftp_host, config.ftp_port, &config.ftp_user, &config.ftp_pass,
+                        &show_path,
+                    ).await {
+                        let sdirs = extract_dir_names(&sr);
+                        find_season_dir(&sdirs, season)
+                            .map(|sd| format!("{}/{}", show_path.trim_end_matches('/'), sd))
+                            .unwrap_or_else(|| format!("{}/{}", show_path.trim_end_matches('/'), &season_folder))
+                    } else {
+                        format!("{}/{}", show_path.trim_end_matches('/'), &season_folder)
+                    };
+                    found_show = Some((cat_path, show_path, season_path));
+                    break;
+                }
+            }
+        }
+
+        if let Some((cat_path, _show_path, season_path)) = found_show {
+            (season_path, cat_path)
+        } else {
+            // Show doesn't exist yet — pick the right category:
+            // full season upload (directory) → "Temporadas completas"
+            // single episode → "Temporadas en emision"
+            let default_cat = if p.is_dir() {
+                category_dirs.iter()
+                    .find(|d| normalise_for_match(d).contains("completa"))
+                    .or_else(|| category_dirs.first())
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                category_dirs.iter()
+                    .find(|d| normalise_for_match(d).contains("emision"))
+                    .or_else(|| category_dirs.first())
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            let cat_path = if default_cat.is_empty() {
+                tv_dest.clone()
+            } else {
+                format!("{}/{}", tv_dest.trim_end_matches('/'), default_cat)
+            };
+            let new_dest = if !show_title.is_empty() {
+                format!("{}/{}/{}", cat_path.trim_end_matches('/'), show_title, season_folder)
+            } else {
+                cat_path.clone()
+            };
+            (new_dest, cat_path)
+        }
+    } else {
+        (movie_dest.clone(), String::new())
+    };
+
+    // Ensure tv_category_dest is always populated even when media_type was detected as "movie".
+    // The frontend uses it when the user manually switches the content type to TV.
+    let resolved_tv_category = if resolved_tv_category.is_empty() && !tv_dest.is_empty() {
+        let cat_dirs = crate::ftp::list_raw(
+            &config.ftp_host, config.ftp_port,
+            &config.ftp_user, &config.ftp_pass,
+            &tv_dest,
+        ).await.map(|r| extract_dir_names(&r)).unwrap_or_default();
+        let preferred = if p.is_dir() { "completa" } else { "emision" };
+        let cat = cat_dirs.iter()
+            .find(|d| normalise_for_match(d).contains(preferred))
+            .or_else(|| cat_dirs.first())
+            .cloned()
+            .unwrap_or_default();
+        if cat.is_empty() {
+            tv_dest.clone()
+        } else {
+            format!("{}/{}", tv_dest.trim_end_matches('/'), cat)
+        }
+    } else {
+        resolved_tv_category
+    };
+
+    Ok(UploadSuggestion {
+        dest,
+        media_type: media_type.to_string(),
+        detected_title: if parsed.title.is_empty() {
+            None
+        } else {
+            Some(parsed.title)
+        },
+        detected_season: parsed.season.map(|s| s as u32),
+        detected_episode: parsed.episode.map(|e| e as u32),
+        detected_year: parsed.year.map(|y| y as u32),
+        detected_release_type: parsed.release_type,
+        detected_resolution: parsed.resolution,
+        detected_codec: parsed.codec,
+        detected_audio_codec: parsed.audio_codec,
+        detected_languages: parsed.languages,
+        detected_hdr: parsed.hdr,
+        movie_dest,
+        tv_dest,
+        tv_category_dest: resolved_tv_category,
+    })
+}
+
+/// List all subdirectory names at a given FTP path.
+#[tauri::command]
+pub async fn ftp_list_dir(
+    path: String,
+    state: tauri::State<'_, crate::db::Db>,
+) -> Result<Vec<String>, String> {
+    let config = state.load_config()?;
+    let entries = crate::ftp::list_raw(
+        &config.ftp_host,
+        config.ftp_port,
+        &config.ftp_user,
+        &config.ftp_pass,
+        &path,
+    )
+    .await?;
+    let dirs = entries
+        .into_iter()
+        .filter_map(|line| {
+            let is_dir =
+                line.starts_with('d') || line.to_uppercase().contains("<DIR>");
+            if !is_dir {
+                return None;
+            }
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            let name_start = if line.starts_with('d') { 8 } else { 3 };
+            if parts.len() > name_start {
+                let name = parts[name_start..].join(" ");
+                if name != "." && name != ".." {
+                    Some(name)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
+    Ok(dirs)
+}
+
+/// Build a standard media filename from components.
+/// Example: `The Dark Knight`, 2008, `4K`, `HEVC`, `HDR10`, `DTS`, [`spa`, `eng`], `mkv`
+/// → `The.Dark.Knight.2008.4K.HEVC.HDR10.DTS.SPA.ENG.mkv`
+#[tauri::command]
+pub fn generate_upload_filename(
+    title: String,
+    year: Option<u32>,
+    resolution: Option<String>,
+    codec: Option<String>,
+    hdr: Option<String>,
+    audio_codec: Option<String>,
+    languages: Vec<String>,
+    extension: String,
+) -> String {
+    let mut parts: Vec<String> = vec![];
+    // Replace spaces with dots in the title
+    parts.push(title.replace(' ', "."));
+    if let Some(y) = year {
+        parts.push(y.to_string());
+    }
+    if let Some(r) = resolution.filter(|s| !s.is_empty()) {
+        parts.push(r);
+    }
+    if let Some(c) = codec.filter(|s| !s.is_empty()) {
+        parts.push(c);
+    }
+    if let Some(h) = hdr.filter(|s| !s.is_empty()) {
+        parts.push(h);
+    }
+    if let Some(a) = audio_codec.filter(|s| !s.is_empty()) {
+        parts.push(a);
+    }
+    for lang in languages {
+        if !lang.is_empty() {
+            parts.push(lang.to_uppercase());
+        }
+    }
+    let ext = extension.trim_start_matches('.');
+    format!("{}.{}", parts.join("."), ext)
+}
+
+// ─── Upload queue commands ────────────────────────────────────────────────────
+
+fn spawn_upload_job(
+    db: crate::db::Db,
+    upload_queue: crate::uploads::SharedUploadQueue,
+    app: tauri::AppHandle,
+    id: u64,
+    local_path: String,
+    ftp_dest_path: String,
+    filename: String,
+    media_title: Option<String>,
+    tmdb_id: Option<i64>,
+    size_bytes: u64,
+    resolution: Option<String>,
+    hdr: Option<String>,
+    languages: Vec<String>,
+    codec: Option<String>,
+    group_id: Option<String>,
+    semaphore: Arc<tokio::sync::Semaphore>,
+    cancel_flag: Arc<std::sync::atomic::AtomicBool>,
+) {
+    tokio::spawn(async move {
+        use std::sync::atomic::Ordering;
+
+        let _permit = match semaphore.acquire().await {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+
+        if cancel_flag.load(Ordering::SeqCst) {
+            let mut q = upload_queue.lock().unwrap();
+            q.mark_cancelled(id);
+            return;
+        }
+
+        {
+            let mut q = upload_queue.lock().unwrap();
+            q.mark_started(id);
+        }
+
+        app.emit("upload:update", serde_json::json!({
+            "id": id,
+            "status": "uploading",
+        })).ok();
+
+        let config = match db.load_config() {
+            Ok(c) => c,
+            Err(e) => {
+                let mut q = upload_queue.lock().unwrap();
+                q.mark_error(id, e.clone());
+                app.emit("upload:update", serde_json::json!({
+                    "id": id, "status": "error", "error": e
+                })).ok();
+                return;
+            }
+        };
+
+        let app_clone = app.clone();
+        let upload_id = id;
+        let result = crate::ftp::upload_file(
+            &config.ftp_host,
+            config.ftp_port,
+            &config.ftp_user,
+            &config.ftp_pass,
+            &ftp_dest_path,
+            &filename,
+            &local_path,
+            move |done, total| {
+                if cancel_flag.load(Ordering::SeqCst) {
+                    return false;
+                }
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                app_clone.emit("upload:progress", serde_json::json!({
+                    "id": upload_id,
+                    "bytes_done": done,
+                    "bytes_total": total,
+                    "timestamp_ms": ts,
+                })).ok();
+                true
+            },
+        )
+        .await;
+
+        match result {
+            Ok(()) => {
+                {
+                    let mut q = upload_queue.lock().unwrap();
+                    q.mark_done(id);
+                }
+                app.emit("upload:update", serde_json::json!({
+                    "id": id, "status": "done",
+                })).ok();
+
+                // Telegram notification
+                let tg_token = config.telegram_bot_token.clone();
+                let tg_chat = config.telegram_chat_id.clone();
+                if !tg_token.is_empty() && !tg_chat.is_empty() {
+                    // For grouped season uploads: only notify when the last episode finishes.
+                    let should_notify = if let Some(ref gid) = group_id {
+                        let q = upload_queue.lock().unwrap();
+                        let (done, _total, all_finished) = q.group_status(gid);
+                        let _ = done;
+                        all_finished
+                    } else {
+                        true
+                    };
+
+                    if should_notify {
+                        // Derive display folder: last two path segments
+                        let dest_display = {
+                            let parts: Vec<&str> = ftp_dest_path.trim_end_matches('/').rsplitn(3, '/').collect();
+                            match parts.as_slice() {
+                                [last, prev, _] => format!("{}/{}", prev, last),
+                                [last, prev] => format!("{}/{}", prev, last),
+                                [last] => last.to_string(),
+                                _ => ftp_dest_path.clone(),
+                            }
+                        };
+
+                        // Infer media type from path (rough heuristic)
+                        let path_lower = ftp_dest_path.to_lowercase();
+                        let inferred_media_type = if path_lower.contains("serie") || path_lower.contains("/tv/") {
+                            "tv"
+                        } else {
+                            "movie"
+                        };
+
+                        // Parse the filename to detect season/episode numbers.
+                        let parsed = crate::parser::parse_media_path(&ftp_dest_path, &filename);
+
+                        // For season groups: build a season-level header and episode count
+                        let (header, episode_str) = if group_id.is_some() {
+                            // Count how many episodes were in this group
+                            let ep_count = {
+                                let q = upload_queue.lock().unwrap();
+                                q.group_status(group_id.as_deref().unwrap_or("")).1
+                            };
+                            let season_num = parsed.season.unwrap_or(1);
+                            let h = "📁 Nueva temporada";
+                            let e = format!("\n🗂 Temporada {season_num} · {ep_count} episodios");
+                            (h, e)
+                        } else {
+                            let h = if inferred_media_type == "tv" {
+                                match (parsed.season, parsed.episode) {
+                                    (Some(_), Some(_)) => "📺 Nuevo episodio",
+                                    (Some(_), None)    => "📁 Nueva temporada",
+                                    _                  => "📺 Nueva serie",
+                                }
+                            } else {
+                                "🎬 Nueva película"
+                            };
+                            let e = match (parsed.season, parsed.episode) {
+                                (Some(s), Some(e)) => format!("\n🗂 T{s} · E{e:02}"),
+                                (Some(s), None)    => format!("\n🗂 Temporada {s}"),
+                                _                  => String::new(),
+                            };
+                            (h, e)
+                        };
+
+                        // Try to fetch TMDB metadata for poster + year
+                        let tmdb_data = if let (Some(tid), false) = (tmdb_id, config.tmdb_api_key.is_empty()) {
+                            crate::tmdb::fetch_movie_by_id(&config.tmdb_api_key, tid, inferred_media_type)
+                                .await
+                                .ok()
+                        } else {
+                            None
+                        };
+
+                        let display_title = tmdb_data.as_ref()
+                            .map(|m| m.title.clone())
+                            .or(media_title.clone())
+                            .unwrap_or_else(|| filename.clone());
+
+                        let year_str = tmdb_data.as_ref()
+                            .and_then(|m| m.release_date.as_deref())
+                            .and_then(|d| d.split('-').next())
+                            .map(|y| format!(" ({})", y))
+                            .unwrap_or_default();
+
+                        let rating_str = tmdb_data.as_ref()
+                            .and_then(|m| m.vote_average)
+                            .filter(|&r| r > 0.0)
+                            .map(|r| format!("\n⭐ <b>{:.1}</b>", r))
+                            .unwrap_or_default();
+
+                        let overview_str = tmdb_data.as_ref()
+                            .and_then(|m| m.overview.as_deref())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| {
+                                let truncated = if s.chars().count() > 300 {
+                                    let cut: String = s.chars().take(300).collect();
+                                    format!("{}…", cut)
+                                } else {
+                                    s.to_string()
+                                };
+                                format!("\n\n<i>{}</i>", truncated)
+                            })
+                            .unwrap_or_default();
+
+                        // Tech-specs line: resolution · codec · HDR · languages
+                        let specs_parts: Vec<String> = [
+                            resolution.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
+                            codec.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
+                            hdr.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
+                            if languages.is_empty() { None } else {
+                                Some(languages.iter().map(|l| l.to_uppercase()).collect::<Vec<_>>().join(", "))
+                            },
+                        ].into_iter().flatten().collect();
+                        let specs_str = if specs_parts.is_empty() {
+                            String::new()
+                        } else {
+                            format!("\n📏 {}", specs_parts.join(" · "))
+                        };
+                        let size_str = if let Some(ref gid) = group_id {
+                            // For season groups use the sum of all episode sizes
+                            let total = upload_queue.lock().unwrap().group_total_bytes(gid);
+                            if total > 0 {
+                                format!("\n💾 {}", format_bytes_human(total))
+                            } else {
+                                String::new()
+                            }
+                        } else if size_bytes > 0 {
+                            format!("\n💾 {}", format_bytes_human(size_bytes))
+                        } else {
+                            String::new()
+                        };
+
+                        let tmdb_link_str = if let Some(tid) = tmdb_id {
+                            let tmdb_type_path = if inferred_media_type == "tv" { "tv" } else { "movie" };
+                            format!("\n🔗 <a href=\"https://www.themoviedb.org/{tmdb_type_path}/{tid}\">Ver en TMDB</a>")
+                        } else {
+                            String::new()
+                        };
+
+                        let msg = format!(
+                            "<b>{header}</b>\n\n<b>{display_title}</b>{year_str}{episode_str}{rating_str}{overview_str}{specs_str}{size_str}{tmdb_link_str}\n\n📂 <code>{dest_display}</code>",
+                        );
+
+                        let poster_url = tmdb_data.as_ref()
+                            .and_then(|m| m.poster_path.as_deref())
+                            .map(|p| format!("https://image.tmdb.org/t/p/w500{p}"));
+
+                        let notify_result = if let Some(url) = poster_url {
+                            crate::telegram::send_photo(&tg_token, &tg_chat, &url, &msg).await
+                        } else {
+                            crate::telegram::send_message(&tg_token, &tg_chat, &msg).await
+                        };
+
+                        if let Err(e) = notify_result {
+                            eprintln!("[upload] Telegram notify failed: {e}");
+                        }
+                    }
+                }
+            }
+            Err(e) if e == "Cancelled" => {
+                let mut q = upload_queue.lock().unwrap();
+                q.mark_cancelled(id);
+                app.emit("upload:update", serde_json::json!({
+                    "id": id, "status": "cancelled",
+                })).ok();
+            }
+            Err(e) => {
+                {
+                    let mut q = upload_queue.lock().unwrap();
+                    q.mark_error(id, e.clone());
+                }
+                app.emit("upload:update", serde_json::json!({
+                    "id": id, "status": "error", "error": e
+                })).ok();
+            }
+        }
+    });
+}
+
+#[tauri::command]
+pub async fn queue_upload(
+    local_path: String,
+    ftp_dest_path: String,
+    filename: String,
+    media_title: Option<String>,
+    tmdb_id: Option<i64>,
+    size_bytes: u64,
+    resolution: Option<String>,
+    hdr: Option<String>,
+    languages: Vec<String>,
+    codec: Option<String>,
+    group_id: Option<String>,
+    upload_queue: tauri::State<'_, crate::uploads::SharedUploadQueue>,
+    db: tauri::State<'_, crate::db::Db>,
+    app: tauri::AppHandle,
+) -> Result<u64, String> {
+    let (id, semaphore, cancel_flag) = {
+        let mut q = upload_queue.lock().unwrap();
+        q.add(
+            local_path.clone(),
+            ftp_dest_path.clone(),
+            filename.clone(),
+            media_title.clone(),
+            tmdb_id,
+            size_bytes,
+            resolution.clone(),
+            hdr.clone(),
+            languages.clone(),
+            codec.clone(),
+            group_id.clone(),
+        )
+    };
+
+    let item = {
+        let q = upload_queue.lock().unwrap();
+        q.items.iter().find(|i| i.id == id).cloned()
+    };
+
+    if let Some(item) = item {
+        app.emit("upload:added", &item).ok();
+    }
+
+    let (item_media_title, item_tmdb_id) = {
+        let q = upload_queue.lock().unwrap();
+        q.items.iter().find(|i| i.id == id)
+            .map(|i| (i.media_title.clone(), i.tmdb_id))
+            .unwrap_or((None, None))
+    };
+
+    spawn_upload_job(
+        db.inner().clone(),
+        upload_queue.inner().clone(),
+        app,
+        id,
+        local_path,
+        ftp_dest_path,
+        filename,
+        item_media_title,
+        item_tmdb_id,
+        size_bytes,
+        resolution,
+        hdr,
+        languages,
+        codec,
+        group_id,
+        semaphore,
+        cancel_flag,
+    );
+
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn get_uploads(
+    upload_queue: tauri::State<'_, crate::uploads::SharedUploadQueue>,
+) -> Vec<crate::uploads::UploadItem> {
+    upload_queue.lock().unwrap().items.clone()
+}
+
+#[tauri::command]
+pub fn cancel_upload(
+    id: u64,
+    upload_queue: tauri::State<'_, crate::uploads::SharedUploadQueue>,
+) -> Result<(), String> {
+    upload_queue.lock().unwrap().cancel(id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn retry_upload(
+    id: u64,
+    upload_queue: tauri::State<'_, crate::uploads::SharedUploadQueue>,
+    db: tauri::State<'_, crate::db::Db>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let (item, semaphore, cancel_flag) = {
+        let mut q = upload_queue.lock().unwrap();
+        q.retry(id)?
+    };
+
+    spawn_upload_job(
+        db.inner().clone(),
+        upload_queue.inner().clone(),
+        app,
+        id,
+        item.local_path,
+        item.ftp_dest_path,
+        item.filename,
+        item.media_title,
+        item.tmdb_id,
+        item.bytes_total,
+        item.resolution,
+        item.hdr,
+        item.languages,
+        item.codec,
+        item.group_id,
+        semaphore,
+        cancel_flag,
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_upload(
+    id: u64,
+    upload_queue: tauri::State<'_, crate::uploads::SharedUploadQueue>,
+    db: tauri::State<'_, crate::db::Db>,
+) -> Result<(), String> {
+    // Grab the item details before removing from queue.
+    let item = {
+        let q = upload_queue.lock().unwrap();
+        q.items.iter().find(|i| i.id == id).cloned()
+    };
+
+    // Delete the remote file when the upload completed successfully.
+    if let Some(item) = &item {
+        if item.status == crate::uploads::UploadStatus::Done {
+            if let Ok(config) = db.load_config() {
+                if let Err(e) = crate::ftp::delete_file(
+                    &config.ftp_host,
+                    config.ftp_port,
+                    &config.ftp_user,
+                    &config.ftp_pass,
+                    &item.ftp_dest_path,
+                    &item.filename,
+                ).await {
+                    eprintln!("[delete_upload] FTP delete failed (removing from queue anyway): {e}");
+                }
+            }
+        }
+    }
+
+    upload_queue.lock().unwrap().delete(id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_completed_uploads(
+    upload_queue: tauri::State<'_, crate::uploads::SharedUploadQueue>,
+) -> Result<(), String> {
+    upload_queue.lock().unwrap().clear_completed();
+    Ok(())
+}
+
+/// Send a test Telegram message with the provided credentials.
+#[tauri::command]
+pub async fn test_telegram(token: String, chat_id: String) -> Result<(), String> {
+    crate::telegram::send_message(
+        &token,
+        &chat_id,
+        "✅ Oscata — conexión con Telegram correcta",
+    )
+    .await
+}
+
 // `start_indexing_internal` requires a live FTP connection and a Tauri
 // AppHandle, which cannot be constructed in unit tests. Instead we test the
 // supporting pure helpers and document the integration-test scenarios.

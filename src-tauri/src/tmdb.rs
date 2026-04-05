@@ -35,28 +35,70 @@ struct LocalizedTmdbResult {
     genre_ids: Vec<i64>,
 }
 
-fn title_similarity_score(title: &str, query: &str) -> f64 {
-    let title_lower = title.to_lowercase();
-    let query_lower = query.to_lowercase();
+/// Fold common diacritics to their ASCII base so that
+/// "años" matches "anos", "después" matches "despues", etc.
+/// Covers the full set of accented Latin characters used in Spanish, French,
+/// German, Portuguese, Italian and Catalan — no external crate required.
+fn ascii_fold(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        // Strip Unicode combining diacritics (U+0300–U+036F) that appear when
+        // macOS filenames are stored in NFD form. The base letter has already
+        // been emitted; the combining mark is noise for TMDB queries.
+        if ('\u{0300}'..='\u{036F}').contains(&c) {
+            continue;
+        }
+        let base = match c {
+            'á' | 'à' | 'ä' | 'â' | 'ã' | 'å' | 'Á' | 'À' | 'Ä' | 'Â' | 'Ã' | 'Å' => 'a',
+            'é' | 'è' | 'ë' | 'ê' | 'É' | 'È' | 'Ë' | 'Ê' => 'e',
+            'í' | 'ì' | 'ï' | 'î' | 'Í' | 'Ì' | 'Ï' | 'Î' => 'i',
+            'ó' | 'ò' | 'ö' | 'ô' | 'õ' | 'ø' | 'Ó' | 'Ò' | 'Ö' | 'Ô' | 'Õ' | 'Ø' => 'o',
+            'ú' | 'ù' | 'ü' | 'û' | 'Ú' | 'Ù' | 'Ü' | 'Û' => 'u',
+            'ñ' | 'Ñ' => 'n',
+            'ç' | 'Ç' => 'c',
+            'ß' => 's',
+            other => other,
+        };
+        out.push(base);
+    }
+    out
+}
 
-    if title_lower.is_empty() || query_lower.is_empty() {
+/// Normalise a string for word-level comparison:
+/// lowercase → fold accents → replace non-alphanumeric with space → collapse spaces.
+fn normalise(s: &str) -> String {
+    let folded = ascii_fold(&s.to_lowercase());
+    let stripped: String = folded
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect();
+    // Collapse multiple spaces
+    stripped.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn title_similarity_score(title: &str, query: &str) -> f64 {
+    let title_n = normalise(title);
+    let query_n = normalise(query);
+
+    if title_n.is_empty() || query_n.is_empty() {
         return 0.0;
     }
 
-    if title_lower == query_lower {
+    if title_n == query_n {
         return 100.0;
     }
 
-    if title_lower.contains(&query_lower) || query_lower.contains(&title_lower) {
+    if title_n.contains(&query_n) || query_n.contains(&title_n) {
         return 50.0;
     }
 
-    let query_words: std::collections::HashSet<&str> = query_lower.split_whitespace().collect();
-    let title_words: std::collections::HashSet<&str> = title_lower.split_whitespace().collect();
+    let query_words: std::collections::HashSet<&str> = query_n.split_whitespace().collect();
+    let title_words: std::collections::HashSet<&str> = title_n.split_whitespace().collect();
     let overlap = query_words.intersection(&title_words).count() as f64;
     let total = query_words.len().max(title_words.len()).max(1) as f64;
     (overlap / total) * 40.0
 }
+
 
 fn score_result(result: &TmdbMovie, query: &str, year: Option<u16>) -> f64 {
     let mut score = title_similarity_score(&result.title, query).max(
@@ -165,7 +207,16 @@ async fn fetch_search_results_lang(
     endpoint: &str,
     language: &str,
 ) -> Result<Vec<LocalizedTmdbResult>, String> {
-    let encoded = urlencoding::encode(query);
+    // Normalise the query: lowercase + strip hyphens/dashes so e.g.
+    // "28 Años Despues" → "28 años despues" and "WEB-DL" → "WEB DL".
+    // TMDB indexes titles in a similar normalised form, so this maximises matches.
+    let normalised: String = query
+        .to_lowercase()
+        .replace('-', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let encoded = urlencoding::encode(&normalised);
     let year_param = year.map(|y| format!("&year={y}")).unwrap_or_default();
     let url = format!(
         "https://api.themoviedb.org/3/search/{endpoint}?api_key={api_key}&query={encoded}{year_param}&language={language}&page=1"
@@ -221,6 +272,20 @@ async fn fetch_search_results_lang(
 /// enter the throttle concurrently — they each acquire the Mutex and sleep
 /// if needed, so they will stagger naturally by at least
 /// `TMDB_MIN_REQUEST_INTERVAL` (35 ms).
+/// Return the main title (before ` - ` or `: ` subtitle separator) if one exists.
+/// Returns `None` if the query has no subtitle.
+fn strip_subtitle(query: &str) -> Option<String> {
+    for sep in &[" - ", ": "] {
+        if let Some(idx) = query.find(sep) {
+            let main = query[..idx].trim();
+            if !main.is_empty() && main.len() < query.len() {
+                return Some(main.to_string());
+            }
+        }
+    }
+    None
+}
+
 async fn search_endpoint_results(
     api_key: &str,
     query: &str,
@@ -244,6 +309,64 @@ async fn search_endpoint_results(
             );
             spanish = es2?;
             english = en2?;
+        }
+    }
+
+    // If still no results and the query has a subtitle, retry with main title only.
+    // This handles filenames like "28 Años Despues - El Templo De Los Huesos" where
+    // searching the combined title+subtitle returns nothing from TMDB.
+    if spanish.is_empty() && english.is_empty() {
+        if let Some(main_title) = strip_subtitle(query) {
+            let (es3, en3) = tokio::join!(
+                fetch_search_results_lang(api_key, &main_title, year, endpoint, "es-ES"),
+                fetch_search_results_lang(api_key, &main_title, year, endpoint, "en-US"),
+            );
+            spanish = es3?;
+            english = en3?;
+            // One more retry without year if still empty
+            if spanish.is_empty() && english.is_empty() && year.is_some() {
+                let (es4, en4) = tokio::join!(
+                    fetch_search_results_lang(api_key, &main_title, None, endpoint, "es-ES"),
+                    fetch_search_results_lang(api_key, &main_title, None, endpoint, "en-US"),
+                );
+                spanish = es4?;
+                english = en4?;
+            }
+        }
+    }
+
+    // ASCII-fold retry: TMDB normalises accents in its index (ñ→n, é→e, etc.) but
+    // does not always normalise the *query*. Sending the folded query ensures
+    // e.g. "28 Años Despues" → "28 Anos Despues" matches "28 anos despues"
+    // which TMDB derives from the stored Spanish title "28 años después".
+    if spanish.is_empty() && english.is_empty() {
+        let folded = ascii_fold(query).to_lowercase();
+        if folded != query.to_lowercase() {
+            let (es_f, en_f) = tokio::join!(
+                fetch_search_results_lang(api_key, &folded, year, endpoint, "es-ES"),
+                fetch_search_results_lang(api_key, &folded, year, endpoint, "en-US"),
+            );
+            spanish = es_f?;
+            english = en_f?;
+        }
+    }
+
+    // First-words fallback: if the query is multi-word and still empty, retry
+    // with just the first 2 significant words. "28 Anos Despues" → "28 Anos".
+    // This is the last resort before giving up.
+    if spanish.is_empty() && english.is_empty() {
+        let first_words: String = ascii_fold(query)
+            .split_whitespace()
+            .take(2)
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !first_words.is_empty() && first_words != ascii_fold(query) {
+            let (es_fw, en_fw) = tokio::join!(
+                fetch_search_results_lang(api_key, &first_words, year, endpoint, "es-ES"),
+                fetch_search_results_lang(api_key, &first_words, year, endpoint, "en-US"),
+            );
+            spanish = es_fw?;
+            english = en_fw?;
         }
     }
 
@@ -366,7 +489,41 @@ pub async fn smart_search(
 
 pub async fn search_tmdb_multi(api_key: &str, query: &str, media_type: &str) -> Result<Vec<TmdbMovie>, String> {
     let endpoint = if media_type == "tv" { "tv" } else { "movie" };
-    let mut results = search_endpoint_results(api_key, query, None, endpoint).await?;
+
+    // Clean the query before sending to TMDB:
+    // - strip year in parens/brackets, e.g. "(2026)" or "[2026]"
+    // - replace " - " separator (dash-subtitle) with a space
+    // - collapse extra whitespace
+    // Also capture the main title (before " - ") for subtitle-less fallback.
+    let (cleaned, main_title_only) = {
+        let s = regex::Regex::new(r"[\(\[]\d{4}[\)\]]").unwrap().replace_all(query, " ");
+        // Extract main title before " - " from the original (pre-stripped) string
+        let main_only: Option<String> = if s.contains(" - ") {
+            let part = s.split(" - ").next().unwrap_or("").trim().to_string();
+            if !part.is_empty() { Some(part) } else { None }
+        } else {
+            None
+        };
+        let s = s.replace(" - ", " ");
+        let cleaned = s.split_whitespace().collect::<Vec<_>>().join(" ");
+        (cleaned, main_only)
+    };
+
+    // Extract year from original query for scoring boost
+    let year: Option<u16> = regex::Regex::new(r"(?:[\(\[])?((19|20)\d{2})(?:[\)\]])?")
+        .unwrap()
+        .captures(query)
+        .and_then(|c| c.get(1))
+        .and_then(|m| m.as_str().parse().ok());
+
+    let mut results = search_endpoint_results(api_key, &cleaned, year, endpoint).await?;
+
+    // If no results and we had a subtitle, retry with main title only.
+    if results.is_empty() {
+        if let Some(ref main) = main_title_only {
+            results = search_endpoint_results(api_key, main, year, endpoint).await?;
+        }
+    }
     results.truncate(10);
     Ok(results)
 }
