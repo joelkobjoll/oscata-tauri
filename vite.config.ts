@@ -19,7 +19,7 @@ export default defineConfig(async () => ({
     host: host || false,
     proxy: {
       "/api": {
-        target: "http://localhost:47860",
+        target: "http://localhost:47870",
         changeOrigin: true,
       },
     },

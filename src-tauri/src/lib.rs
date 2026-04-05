@@ -140,6 +140,7 @@ pub fn run() {
             commands::ftp_list_root_dirs,
             commands::ftp_list_root_dirs_preview,
             commands::watchdog_pong,
+            commands::quit_app,
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {
@@ -147,7 +148,38 @@ pub fn run() {
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                window.hide().ok();
+                let app = window.app_handle().clone();
+                let window_clone = window.clone();
+                tauri::async_runtime::spawn(async move {
+                    let db = app.state::<db::Db>().inner().clone();
+                    let close_to_tray = db.load_config()
+                        .map(|c| c.close_to_tray)
+                        .unwrap_or(true);
+                    if close_to_tray {
+                        window_clone.hide().ok();
+                        return;
+                    }
+                    // close_to_tray is off: check for active downloads before quitting
+                    let active_count = {
+                        let shared = app.state::<downloads::SharedQueue>();
+                        let queue = shared.lock().unwrap();
+                        queue.items.iter().filter(|i| matches!(
+                            i.status,
+                            downloads::DownloadStatus::Queued | downloads::DownloadStatus::Downloading
+                        )).count()
+                    };
+                    if active_count > 0 {
+                        // Show the window so the dialog is visible, then emit
+                        window_clone.show().ok();
+                        window_clone.set_focus().ok();
+                        window_clone.emit(
+                            "app:quit-requested",
+                            serde_json::json!({ "active": active_count }),
+                        ).ok();
+                    } else {
+                        app.exit(0);
+                    }
+                });
             }
         })
         .setup(|app| {
@@ -163,7 +195,25 @@ pub fn run() {
                         show_main_window(app_handle);
                     }
                     "tray_quit" => {
-                        app_handle.exit(0);
+                        let active_count = {
+                            let shared = app_handle.state::<downloads::SharedQueue>();
+                            let queue = shared.lock().unwrap();
+                            queue.items.iter().filter(|i| matches!(
+                                i.status,
+                                downloads::DownloadStatus::Queued | downloads::DownloadStatus::Downloading
+                            )).count()
+                        };
+                        if active_count > 0 {
+                            show_main_window(app_handle);
+                            if let Some(w) = app_handle.get_webview_window("main") {
+                                w.emit(
+                                    "app:quit-requested",
+                                    serde_json::json!({ "active": active_count }),
+                                ).ok();
+                            }
+                        } else {
+                            app_handle.exit(0);
+                        }
                     }
                     _ => {}
                 })

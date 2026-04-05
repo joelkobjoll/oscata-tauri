@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { call } from "../lib/transport";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { useIndexing, MediaItem } from "../hooks/useIndexing";
@@ -21,6 +22,7 @@ import DownloadsTab from "../components/DownloadsTab";
 import DownloadFeedbackToast from "../components/DownloadFeedbackToast";
 import IndexErrorToast from "../components/IndexErrorToast";
 import TVShowPanel from "../components/TVShowPanel";
+import { useQuitHandler } from "../hooks/useQuitHandler";
 import VirtualMediaGrid from "../components/VirtualMediaGrid";
 import ThemeToggle from "../components/ThemeToggle";
 import { AppLanguage, getLocalizedTitle } from "../utils/mediaLanguage";
@@ -197,6 +199,8 @@ export default function Library({
     items,
     isIndexing,
     progress,
+    tmdbProgress,
+    metaRefreshProgress,
     completionSummary,
     dismissCompletion,
     indexError,
@@ -206,6 +210,8 @@ export default function Library({
     appendLog,
     clearLog,
   } = useIndexing();
+  const { quitDialogVisible, activeCount, confirmQuit, cancelQuit } =
+    useQuitHandler();
   const { startDownload, isDownloadPending } = useDownload();
   const {
     downloads,
@@ -2067,7 +2073,54 @@ export default function Library({
         onDismissCompletion={dismissCompletion}
         activityLogOpen={showLog}
         language={language}
+        tmdbProgress={tmdbProgress}
       />
+      {metaRefreshProgress !== null && !isIndexing && (
+        <div
+          style={{
+            position: "fixed",
+            left: 18,
+            bottom: 22,
+            zIndex: 52,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "0.6rem 0.85rem",
+            borderRadius: 999,
+            border: "1px solid var(--color-border)",
+            background: "var(--color-surface)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            fontSize: 12,
+            color: "var(--color-text-muted)",
+            fontWeight: 600,
+          }}
+        >
+          <div
+            style={{
+              width: 80,
+              height: 4,
+              borderRadius: 999,
+              overflow: "hidden",
+              background: "var(--color-surface-2)",
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.min(100, Math.round((metaRefreshProgress.done / metaRefreshProgress.total) * 100))}%`,
+                height: "100%",
+                background: "var(--color-primary)",
+                transition: "width 0.3s ease",
+              }}
+            />
+          </div>
+          <span>
+            {t(language, "metaRefresh.banner", {
+              done: metaRefreshProgress.done,
+              total: metaRefreshProgress.total,
+            })}
+          </span>
+        </div>
+      )}
       <DownloadFeedbackToast language={language} />
       {indexError && (
         <IndexErrorToast
@@ -2233,6 +2286,94 @@ export default function Library({
       {showDevLog && showLog && (
         <ActivityLog language={language} entries={log} onClear={clearLog} />
       )}
+
+      {quitDialogVisible &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              background: "rgba(0,0,0,0.7)",
+              backdropFilter: "blur(4px)",
+              WebkitBackdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "1.5rem",
+            }}
+          >
+            <div
+              style={{
+                width: "100%",
+                maxWidth: 420,
+                background: "var(--color-surface)",
+                borderRadius: "var(--radius-lg)",
+                border: "1px solid var(--color-border)",
+                padding: "1.75rem",
+                boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: "var(--color-text)",
+                  marginBottom: 8,
+                }}
+              >
+                {t(language, "quit.title")}
+              </div>
+              <div
+                style={{
+                  fontSize: 14,
+                  color: "var(--color-text-muted)",
+                  marginBottom: 24,
+                }}
+              >
+                {t(language, "quit.body", { count: activeCount })}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  onClick={cancelQuit}
+                  style={{
+                    padding: "0.5rem 1rem",
+                    borderRadius: "var(--radius)",
+                    border: "1px solid var(--color-border)",
+                    background: "var(--color-surface-2)",
+                    color: "var(--color-text)",
+                    fontSize: 14,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t(language, "quit.keep")}
+                </button>
+                <button
+                  onClick={confirmQuit}
+                  style={{
+                    padding: "0.5rem 1rem",
+                    borderRadius: "var(--radius)",
+                    border: "none",
+                    background: "var(--color-danger)",
+                    color: "#fff",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t(language, "quit.confirm")}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ export default function IndexStatus({
   onDismissCompletion,
   activityLogOpen,
   language,
+  tmdbProgress,
 }: {
   progress: { current: number; total: number } | null;
   isIndexing: boolean;
@@ -17,6 +18,7 @@ export default function IndexStatus({
   onDismissCompletion: () => void;
   activityLogOpen: boolean;
   language: AppLanguage;
+  tmdbProgress?: { done: number; total: number } | null;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [scanBarOffset, setScanBarOffset] = useState(-45);
@@ -40,6 +42,7 @@ export default function IndexStatus({
     return () => window.clearTimeout(timer);
   }, [collapsed, progress?.current, progress?.total]);
 
+  // Also animate scan bar during TMDB enrichment phase (no FTP progress, TMDB running)
   useEffect(() => {
     if (!isIndexing || progress) return;
 
@@ -49,6 +52,20 @@ export default function IndexStatus({
 
     return () => window.clearInterval(timer);
   }, [isIndexing, progress]);
+
+  const scanDone = progress == null || progress.current >= progress.total;
+  const isTmdbPhase =
+    isIndexing &&
+    scanDone &&
+    tmdbProgress != null &&
+    tmdbProgress.done < tmdbProgress.total;
+  const tmdbPercent =
+    tmdbProgress && tmdbProgress.total > 0
+      ? Math.min(
+          100,
+          Math.round((tmdbProgress.done / tmdbProgress.total) * 100),
+        )
+      : 0;
 
   if (!isIndexing && !progress && !completionSummary) return null;
 
@@ -200,9 +217,10 @@ export default function IndexStatus({
             width: 28,
             height: 28,
             borderRadius: 999,
-            background:
-              "color-mix(in srgb, var(--color-primary) 18%, transparent)",
-            color: "var(--color-primary)",
+            background: isTmdbPhase
+              ? "color-mix(in srgb, var(--color-teal) 18%, transparent)"
+              : "color-mix(in srgb, var(--color-primary) 18%, transparent)",
+            color: isTmdbPhase ? "var(--color-teal)" : "var(--color-primary)",
           }}
         >
           <AppIcon name="refresh-cw" size={15} strokeWidth={2.1} />
@@ -224,10 +242,16 @@ export default function IndexStatus({
               color: "var(--color-text-muted)",
             }}
           >
-            {t(language, "toast.refresh")}
+            {isTmdbPhase
+              ? t(language, "toast.tmdb")
+              : t(language, "toast.refresh")}
           </span>
           <span style={{ fontSize: 13, fontWeight: 800 }}>
-            {progress ? `${percent}%` : t(language, "toast.starting")}
+            {isTmdbPhase
+              ? `${tmdbProgress!.done}/${tmdbProgress!.total}`
+              : progress
+                ? `${percent}%`
+                : t(language, "toast.starting")}
           </span>
         </span>
       </button>
@@ -272,9 +296,10 @@ export default function IndexStatus({
               width: 34,
               height: 34,
               borderRadius: 999,
-              background:
-                "color-mix(in srgb, var(--color-primary) 16%, transparent)",
-              color: "var(--color-primary)",
+              background: isTmdbPhase
+                ? "color-mix(in srgb, var(--color-teal) 16%, transparent)"
+                : "color-mix(in srgb, var(--color-primary) 16%, transparent)",
+              color: isTmdbPhase ? "var(--color-teal)" : "var(--color-primary)",
               flexShrink: 0,
             }}
           >
@@ -287,11 +312,15 @@ export default function IndexStatus({
                 fontWeight: 700,
                 letterSpacing: "0.06em",
                 textTransform: "uppercase",
-                color: "var(--color-primary)",
+                color: isTmdbPhase
+                  ? "var(--color-teal)"
+                  : "var(--color-primary)",
                 marginBottom: 4,
               }}
             >
-              {t(language, "toast.refresh")}
+              {isTmdbPhase
+                ? t(language, "toast.tmdbTitle")
+                : t(language, "toast.refresh")}
             </div>
             <div
               style={{
@@ -300,12 +329,17 @@ export default function IndexStatus({
                 color: "var(--color-text)",
               }}
             >
-              {progress
-                ? t(language, "toast.enriching", {
-                    current: progress.current,
-                    total: progress.total,
+              {isTmdbPhase
+                ? t(language, "toast.tmdbOf", {
+                    done: tmdbProgress!.done,
+                    total: tmdbProgress!.total,
                   })
-                : t(language, "toast.scanning")}
+                : progress
+                  ? t(language, "toast.enriching", {
+                      current: progress.current,
+                      total: progress.total,
+                    })
+                  : t(language, "toast.scanning")}
             </div>
           </div>
         </div>
@@ -341,7 +375,17 @@ export default function IndexStatus({
             "1px solid color-mix(in srgb, var(--color-border) 75%, transparent)",
         }}
       >
-        {progress ? (
+        {isTmdbPhase ? (
+          <div
+            style={{
+              width: `${tmdbPercent}%`,
+              height: "100%",
+              background:
+                "linear-gradient(90deg, var(--color-teal), color-mix(in srgb, var(--color-teal) 80%, white 20%))",
+              transition: "width 0.3s ease",
+            }}
+          />
+        ) : progress && !scanDone ? (
           <div
             style={{
               width: `${percent}%`,
@@ -374,9 +418,17 @@ export default function IndexStatus({
         }}
       >
         <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
-          {t(language, progress ? "toast.subtitle" : "toast.scanning")}
+          {isTmdbPhase
+            ? t(language, "toast.tmdbOf", {
+                done: tmdbProgress!.done,
+                total: tmdbProgress!.total,
+              })
+            : t(
+                language,
+                progress && !scanDone ? "toast.subtitle" : "toast.scanning",
+              )}
         </span>
-        {progress && (
+        {((!scanDone && progress) || isTmdbPhase) && (
           <span
             style={{
               fontSize: 12,
@@ -384,7 +436,7 @@ export default function IndexStatus({
               color: "var(--color-text)",
             }}
           >
-            {`${percent}%`}
+            {isTmdbPhase ? `${tmdbPercent}%` : `${percent}%`}
           </span>
         )}
       </div>

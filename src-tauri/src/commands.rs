@@ -1188,6 +1188,10 @@ pub async fn start_indexing_internal(
     let mut metadata_queued = 0usize;
     let mut new_items = 0usize;
 
+    // Counters for TMDB enrichment progress events (index:tmdb_progress)
+    let tmdb_done = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let tmdb_total = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
     if total == 0 {
         if let Some(ref w) = window { w.emit("index:error", serde_json::json!({ "message": "FTP crawl returned 0 media files. Check your Root Path setting." })).ok(); }
         return Ok(());
@@ -1299,6 +1303,9 @@ pub async fn start_indexing_internal(
                 let config_clone = config.clone();
                 let on_log_clone = on_log.clone();
                 let label = if upsert.is_new { "new" } else { "existing" };
+                let tmdb_done_clone = tmdb_done.clone();
+                let tmdb_total_clone = tmdb_total.clone();
+                tmdb_total.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
                 metadata_tasks.push(tokio::spawn(async move {
                     on_log_clone(format!("🌐 TMDB ({label}): {title}"));
@@ -1341,6 +1348,15 @@ pub async fn start_indexing_internal(
                         Err(e) => {
                             on_log_clone(format!("✗ TMDB error for \"{}\": {}", title, e));
                         }
+                    }
+                    // Emit progress after task completes (success or failure)
+                    let done = tmdb_done_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                    let total_val = tmdb_total_clone.load(std::sync::atomic::Ordering::SeqCst);
+                    if let Some(ref w) = window_clone {
+                        w.emit(
+                            "index:tmdb_progress",
+                            serde_json::json!({ "done": done, "total": total_val }),
+                        ).ok();
                     }
                 }));
             }
@@ -1678,6 +1694,11 @@ pub async fn open_download_folder(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 
 #[tauri::command]
 pub async fn clear_item_metadata(
@@ -1757,6 +1778,11 @@ pub async fn refresh_all_metadata_internal(
     if total == 0 {
         emit_index_log(&window, "✓ Metadata refresh complete — nothing missing".to_string());
         return Ok(());
+    }
+
+    // Emit initial progress so the frontend shows the banner immediately
+    if let Some(ref w) = window {
+        w.emit("metadata:refresh_progress", serde_json::json!({ "done": 0, "total": total })).ok();
     }
 
     for (i, item) in items.into_iter().enumerate() {
@@ -1852,6 +1878,14 @@ pub async fn refresh_all_metadata_internal(
                     format!("⚠ Metadata refresh failed for {}: {}", title, err),
                 );
             }
+        }
+
+        // Emit per-item progress
+        if let Some(ref w) = window {
+            w.emit(
+                "metadata:refresh_progress",
+                serde_json::json!({ "done": i + 1, "total": total }),
+            ).ok();
         }
     }
 
