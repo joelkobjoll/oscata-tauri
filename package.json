@@ -8,6 +8,7 @@
     "webui:watch": "vite build --watch",
     "verify:seed-db": "node ./scripts/verify-seed-sanitized.mjs",
     "build": "npm run verify:seed-db && tsc && vite build",
+    "build:portable:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-portable-windows.ps1",
     "preview": "vite preview",
     "docker:vnc": "bash ./scripts/docker-vnc.sh",
     "docker:vnc:build": "bash ./scripts/docker-vnc.sh build",
