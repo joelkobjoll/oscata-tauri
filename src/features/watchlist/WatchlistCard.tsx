@@ -161,6 +161,24 @@ export default function WatchlistCard({
           </span>
         )}
 
+        {/* Library count — TV episodes in library */}
+        {item.library_count > 0 && (
+          <span
+            style={{
+              background: "rgba(0,0,0,0.7)",
+              color: "var(--color-teal)",
+              fontSize: 10,
+              fontWeight: 600,
+              borderRadius: "var(--radius-full)",
+              padding: "2px 7px",
+              letterSpacing: "0.04em",
+            }}
+          >
+            {item.library_count}{" "}
+            {item.tmdb_type === "tv" ? "ep." : "archivo(s)"}
+          </span>
+        )}
+
         {/* Next episode date */}
         {nextEpSoon && (
           <span

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import type { WatchlistCoverageItem, WatchlistItem } from "./types";
 import type { AppLanguage } from "../../utils/mediaLanguage";
 import { t } from "../../utils/i18n";
@@ -110,6 +111,18 @@ export default function WatchlistDetailPanel({
     },
     {},
   );
+
+  // Auto-load coverage when panel opens if items already in library
+  useEffect(() => {
+    if (item.library_count > 0) {
+      setLoadingCoverage(true);
+      setCoverageOpen(true);
+      getCoverage(item.tmdb_id)
+        .then(setCoverage)
+        .finally(() => setLoadingCoverage(false));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
 
   // Close on Escape
   useEffect(() => {
@@ -502,8 +515,20 @@ export default function WatchlistDetailPanel({
                               style={{
                                 fontSize: 12,
                                 color: "var(--color-text)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 5,
                               }}
                             >
+                              <Check
+                                size={13}
+                                strokeWidth={2.5}
+                                style={{
+                                  color: "var(--color-success)",
+                                  flexShrink: 0,
+                                }}
+                                aria-hidden="true"
+                              />
                               E{String(ep.episode).padStart(2, "0")}{" "}
                               <span
                                 style={{ color: "var(--color-text-muted)" }}
