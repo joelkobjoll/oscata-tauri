@@ -3456,7 +3456,7 @@ fn spawn_upload_job(
                         };
 
                         let msg = format!(
-                            "<b>{header}</b>\n\n<b>{display_title}</b>{year_str}{episode_str}{rating_str}{overview_str}{specs_str}{size_str}{tmdb_link_str}\n\n📂 <code>{dest_display}</code>",
+                            "<b>{header}</b>\n\n<b>{display_title}</b>{year_str}{episode_str}{specs_str}{size_str}{rating_str}{overview_str}{tmdb_link_str}\n\n📂 <code>{dest_display}</code>",
                         );
 
                         let poster_url = tmdb_data.as_ref()
