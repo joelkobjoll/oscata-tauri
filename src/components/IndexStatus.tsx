@@ -8,6 +8,7 @@ export default function IndexStatus({
   isIndexing,
   completionSummary,
   onDismissCompletion,
+  onCancelIndex,
   activityLogOpen,
   language,
   tmdbProgress,
@@ -16,6 +17,7 @@ export default function IndexStatus({
   isIndexing: boolean;
   completionSummary: { newItems: number; removed: number } | null;
   onDismissCompletion: () => void;
+  onCancelIndex?: () => void;
   activityLogOpen: boolean;
   language: AppLanguage;
   tmdbProgress?: { done: number; total: number } | null;
@@ -186,75 +188,106 @@ export default function IndexStatus({
 
   if (collapsed) {
     return (
-      <button
-        onClick={() => setCollapsed(false)}
-        title={t(language, "toast.expand")}
+      <div
         style={{
           position: "fixed",
           right: 18,
           bottom: bottomOffset,
           display: "flex",
           alignItems: "center",
-          gap: 10,
-          minHeight: 44,
-          padding: "0.7rem 0.85rem",
-          borderRadius: 999,
-          border:
-            "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
-          background:
-            "linear-gradient(155deg, color-mix(in srgb, var(--color-surface) 96%, transparent), color-mix(in srgb, var(--color-surface-2) 88%, transparent))",
-          boxShadow: "0 14px 34px color-mix(in srgb, black 24%, transparent)",
-          color: "var(--color-text)",
-          cursor: "pointer",
+          gap: 4,
           zIndex: 52,
         }}
       >
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 28,
-            height: 28,
-            borderRadius: 999,
-            background: isTmdbPhase
-              ? "color-mix(in srgb, var(--color-teal) 18%, transparent)"
-              : "color-mix(in srgb, var(--color-primary) 18%, transparent)",
-            color: isTmdbPhase ? "var(--color-teal)" : "var(--color-primary)",
-          }}
-        >
-          <AppIcon name="refresh-cw" size={15} strokeWidth={2.1} />
-        </span>
-        <span
+        <button
+          onClick={() => setCollapsed(false)}
+          title={t(language, "toast.expand")}
           style={{
             display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-start",
-            gap: 2,
+            alignItems: "center",
+            gap: 10,
+            minHeight: 44,
+            padding: "0.7rem 0.85rem",
+            borderRadius: 999,
+            border:
+              "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+            background:
+              "linear-gradient(155deg, color-mix(in srgb, var(--color-surface) 96%, transparent), color-mix(in srgb, var(--color-surface-2) 88%, transparent))",
+            boxShadow: "0 14px 34px color-mix(in srgb, black 24%, transparent)",
+            color: "var(--color-text)",
+            cursor: "pointer",
           }}
         >
           <span
             style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              color: "var(--color-text-muted)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              borderRadius: 999,
+              background: isTmdbPhase
+                ? "color-mix(in srgb, var(--color-teal) 18%, transparent)"
+                : "color-mix(in srgb, var(--color-primary) 18%, transparent)",
+              color: isTmdbPhase ? "var(--color-teal)" : "var(--color-primary)",
             }}
           >
-            {isTmdbPhase
-              ? t(language, "toast.tmdb")
-              : t(language, "toast.refresh")}
+            <AppIcon name="refresh-cw" size={15} strokeWidth={2.1} />
           </span>
-          <span style={{ fontSize: 13, fontWeight: 800 }}>
-            {isTmdbPhase
-              ? `${tmdbProgress!.done}/${tmdbProgress!.total}`
-              : progress
-                ? `${percent}%`
-                : t(language, "toast.starting")}
+          <span
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 2,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "var(--color-text-muted)",
+              }}
+            >
+              {isTmdbPhase
+                ? t(language, "toast.tmdb")
+                : t(language, "toast.refresh")}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 800 }}>
+              {isTmdbPhase
+                ? `${tmdbProgress!.done}/${tmdbProgress!.total}`
+                : progress
+                  ? `${percent}%`
+                  : t(language, "toast.starting")}
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+        {onCancelIndex && (
+          <button
+            onClick={onCancelIndex}
+            title={language === "es" ? "Cerrar" : "Dismiss"}
+            style={{
+              width: 32,
+              height: 32,
+              border:
+                "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+              borderRadius: 999,
+              background:
+                "linear-gradient(155deg, color-mix(in srgb, var(--color-surface) 96%, transparent), color-mix(in srgb, var(--color-surface-2) 88%, transparent))",
+              boxShadow:
+                "0 14px 34px color-mix(in srgb, black 24%, transparent)",
+              color: "var(--color-text-muted)",
+              cursor: "pointer",
+              fontSize: 16,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -343,25 +376,48 @@ export default function IndexStatus({
             </div>
           </div>
         </div>
-        <button
-          onClick={() => setCollapsed(true)}
-          style={{
-            width: 30,
-            height: 30,
-            border:
-              "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
-            borderRadius: 999,
-            background:
-              "color-mix(in srgb, var(--color-surface) 96%, transparent)",
-            color: "var(--color-text-muted)",
-            cursor: "pointer",
-            fontSize: 16,
-            lineHeight: 1,
-          }}
-          title={t(language, "toast.minimize")}
-        >
-          ×
-        </button>
+        <div style={{ display: "flex", gap: 4 }}>
+          <button
+            onClick={() => setCollapsed(true)}
+            style={{
+              width: 30,
+              height: 30,
+              border:
+                "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+              borderRadius: 999,
+              background:
+                "color-mix(in srgb, var(--color-surface) 96%, transparent)",
+              color: "var(--color-text-muted)",
+              cursor: "pointer",
+              fontSize: 14,
+              lineHeight: 1,
+            }}
+            title={t(language, "toast.minimize")}
+          >
+            −
+          </button>
+          {onCancelIndex && (
+            <button
+              onClick={onCancelIndex}
+              title={language === "es" ? "Cerrar" : "Dismiss"}
+              style={{
+                width: 30,
+                height: 30,
+                border:
+                  "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                borderRadius: 999,
+                background:
+                  "color-mix(in srgb, var(--color-surface) 96%, transparent)",
+                color: "var(--color-text-muted)",
+                cursor: "pointer",
+                fontSize: 16,
+                lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
       </div>
 
       <div

@@ -42,6 +42,23 @@ export interface WatchlistCoverageItem {
   filename: string;
   resolution?: string;
   ftp_path: string;
+  /** `true` only if explicitly downloaded via the Oscata download queue; `false` for FTP-indexed files. */
+  downloaded: boolean;
+}
+
+export interface TmdbEpisode {
+  episode_number: number;
+  name: string;
+  air_date?: string;
+  overview?: string;
+}
+
+export interface TmdbSeason {
+  season_number: number;
+  name: string;
+  air_date?: string;
+  episode_count: number;
+  episodes: TmdbEpisode[];
 }
 
 export interface AddWatchlistParams {

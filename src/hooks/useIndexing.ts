@@ -282,6 +282,13 @@ export function useIndexing() {
     metaRefreshProgress,
     completionSummary,
     dismissCompletion: () => setCompletionSummary(null),
+    /** Force-clear all indexing/TMDB state. Use when tasks are stuck and never complete. */
+    forceClearIndexing: () => {
+      setIsIndexing(false);
+      setProgress(null);
+      setTmdbProgress(null);
+      setCompletionSummary(null);
+    },
     indexError,
     clearIndexError: () => setIndexError(null),
     retryIndexing: () => call("start_indexing").catch(console.error),

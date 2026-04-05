@@ -96,6 +96,7 @@ const WEB_ROUTES: Record<
   ],
   check_watchlist_item: (a) => ["GET", `/watchlist/check/${a.tmdbId}`],
   get_watchlist_coverage: (a) => ["GET", `/watchlist/${a.tmdbId}/coverage`],
+  get_tv_seasons: (a) => ["GET", `/watchlist/${a.tmdbId}/seasons`],
   get_quality_profiles: ["GET", "/quality-profiles"],
   create_quality_profile: (a) => [
     "POST",

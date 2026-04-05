@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { call } from "../../lib/transport";
 import type {
   AddWatchlistParams,
+  TmdbSeason,
   WatchlistCoverageItem,
   WatchlistItem,
 } from "./types";
@@ -19,6 +20,7 @@ export interface UseWatchlistReturn {
     profileId: number,
   ) => Promise<void>;
   getCoverage: (tmdbId: number) => Promise<WatchlistCoverageItem[]>;
+  getSeasons: (tmdbId: number) => Promise<TmdbSeason[]>;
   refresh: () => Promise<void>;
 }
 
@@ -112,6 +114,13 @@ export function useWatchlist(): UseWatchlistReturn {
     [],
   );
 
+  const getSeasons = useCallback(
+    async (tmdbId: number): Promise<TmdbSeason[]> => {
+      return call<TmdbSeason[]>("get_tv_seasons", { tmdbId });
+    },
+    [],
+  );
+
   return {
     items,
     loading,
@@ -120,6 +129,7 @@ export function useWatchlist(): UseWatchlistReturn {
     remove,
     update,
     getCoverage,
+    getSeasons,
     refresh: fetchItems,
   };
 }

@@ -2265,6 +2265,15 @@ pub async fn get_watchlist_coverage(
     state.get_watchlist_library_coverage(tmdb_id)
 }
 
+#[tauri::command]
+pub async fn get_tv_seasons(
+    state: tauri::State<'_, crate::db::Db>,
+    tmdb_id: i64,
+) -> Result<Vec<crate::tmdb::TmdbSeason>, String> {
+    let config = state.load_config()?;
+    crate::tmdb::fetch_tv_seasons(&config.tmdb_api_key, tmdb_id).await
+}
+
 /// After indexing completes, enqueue FTP files that match a watchlist entry
 /// with `auto_download = 1` and are not already queued or being downloaded.
 pub async fn trigger_watchlist_auto_downloads(

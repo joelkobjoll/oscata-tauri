@@ -147,6 +147,7 @@ pub fn run() {
             commands::update_watchlist_item,
             commands::check_watchlist_item,
             commands::get_watchlist_coverage,
+            commands::get_tv_seasons,
             commands::get_quality_profiles,
             commands::create_quality_profile,
             commands::update_quality_profile,

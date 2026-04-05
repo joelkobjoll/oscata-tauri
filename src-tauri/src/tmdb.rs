@@ -527,6 +527,112 @@ pub async fn fetch_movie_by_id(api_key: &str, tmdb_id: i64, media_type: &str) ->
     })
 }
 
+/// A single episode returned by TMDB season detail.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TmdbEpisode {
+    pub episode_number: i64,
+    pub name: String,
+    pub air_date: Option<String>,
+    pub overview: Option<String>,
+}
+
+/// A TV season with its episodes, as returned by TMDB.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TmdbSeason {
+    pub season_number: i64,
+    pub name: String,
+    pub air_date: Option<String>,
+    pub episode_count: usize,
+    pub episodes: Vec<TmdbEpisode>,
+}
+
+/// Fetch all seasons (excluding season 0 / specials) with their episodes for a
+/// TV show. Uses the TMDB throttle so it's safe to call concurrently with other
+/// tmdb functions.
+pub async fn fetch_tv_seasons(api_key: &str, tmdb_id: i64) -> Result<Vec<TmdbSeason>, String> {
+    // Step 1: fetch show overview to get the season list
+    #[derive(Deserialize)]
+    struct ApiSeason {
+        season_number: i64,
+        name: String,
+        air_date: Option<String>,
+        episode_count: Option<usize>,
+    }
+    #[derive(Deserialize)]
+    struct ShowDetail {
+        seasons: Vec<ApiSeason>,
+    }
+
+    let url = format!(
+        "https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={api_key}&language=es-ES"
+    );
+    let detail: ShowDetail = fetch_json_with_retry(&url, "tv show overview").await?;
+
+    let seasons_meta: Vec<(i64, String, Option<String>, usize)> = detail
+        .seasons
+        .into_iter()
+        .filter(|s| s.season_number > 0)
+        .map(|s| (s.season_number, s.name, s.air_date, s.episode_count.unwrap_or(0)))
+        .collect();
+
+    if seasons_meta.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Step 2: fetch each season's episodes sequentially (respects throttle)
+    #[derive(Deserialize)]
+    struct ApiEpisode {
+        episode_number: i64,
+        name: String,
+        air_date: Option<String>,
+        overview: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct SeasonDetail {
+        episodes: Vec<ApiEpisode>,
+    }
+
+    let mut seasons = Vec::with_capacity(seasons_meta.len());
+    for (season_number, name, air_date, episode_count) in seasons_meta {
+        let ep_url = format!(
+            "https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_number}?api_key={api_key}&language=es-ES"
+        );
+        let ep_count = episode_count; // capture for fallback
+        let episodes = match fetch_json_with_retry::<SeasonDetail>(&ep_url, "tv season detail").await {
+            Ok(s) => s
+                .episodes
+                .into_iter()
+                .map(|e| TmdbEpisode {
+                    episode_number: e.episode_number,
+                    name: e.name,
+                    air_date: e.air_date,
+                    overview: e.overview,
+                })
+                .collect::<Vec<_>>(),
+            Err(_) => {
+                // If season detail fails, return placeholder episode stubs
+                (1..=(ep_count as i64))
+                    .map(|n| TmdbEpisode {
+                        episode_number: n,
+                        name: format!("Episodio {n}"),
+                        air_date: None,
+                        overview: None,
+                    })
+                    .collect()
+            }
+        };
+        seasons.push(TmdbSeason {
+            season_number,
+            name,
+            air_date,
+            episode_count: episodes.len(),
+            episodes,
+        });
+    }
+
+    Ok(seasons)
+}
+
 pub async fn validate_api_key(api_key: &str) -> bool {
     let url = format!("https://api.themoviedb.org/3/configuration?api_key={api_key}");
     reqwest::get(&url)

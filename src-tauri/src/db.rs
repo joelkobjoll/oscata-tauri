@@ -192,6 +192,9 @@ pub struct WatchlistCoverageItem {
     pub filename: String,
     pub resolution: Option<String>,
     pub ftp_path: String,
+    /// `true` only when this file was explicitly transferred via the download queue (status = Done).
+    /// `false` for files that were discovered via FTP index scan but not downloaded through Oscata.
+    pub downloaded: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2294,6 +2297,16 @@ impl Db {
         &self,
         tmdb_id: i64,
     ) -> Result<Vec<WatchlistCoverageItem>, String> {
+        // Build a set of ftp_paths that were explicitly downloaded via the queue (status = Done).
+        let done_paths: std::collections::HashSet<String> = {
+            let downloaded_items = self.load_download_state().unwrap_or_default();
+            downloaded_items
+                .into_iter()
+                .filter(|d| matches!(d.status, crate::downloads::DownloadStatus::Done))
+                .map(|d| d.ftp_path)
+                .collect()
+        };
+
         let conn = self.0.lock().unwrap();
         let mut stmt = conn
             .prepare(
@@ -2305,18 +2318,23 @@ impl Db {
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(params![tmdb_id], |row| {
-                Ok(WatchlistCoverageItem {
-                    season: row.get(0)?,
-                    episode: row.get(1)?,
-                    filename: row.get(2)?,
-                    resolution: row.get(3)?,
-                    ftp_path: row.get(4)?,
-                })
+                let ftp_path: String = row.get(4)?;
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, ftp_path))
             })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
-            out.push(row.map_err(|e| e.to_string())?);
+            let (season, episode, filename, resolution, ftp_path) =
+                row.map_err(|e| e.to_string())?;
+            let downloaded = done_paths.contains(&ftp_path);
+            out.push(WatchlistCoverageItem {
+                season,
+                episode,
+                filename,
+                resolution,
+                ftp_path,
+                downloaded,
+            });
         }
         Ok(out)
     }

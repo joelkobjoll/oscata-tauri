@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
-import type { WatchlistCoverageItem, WatchlistItem } from "./types";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarClock, Check, Download, Server } from "lucide-react";
+import type { TmdbSeason, WatchlistCoverageItem, WatchlistItem } from "./types";
 import type { AppLanguage } from "../../utils/mediaLanguage";
 import { t } from "../../utils/i18n";
+import { call } from "../../lib/transport";
 import { useQualityProfiles } from "./useQualityProfiles";
 import Toggle from "../../components/Toggle";
 
@@ -38,6 +39,7 @@ interface WatchlistDetailPanelProps {
     profileId: number,
   ) => Promise<void>;
   getCoverage: (tmdbId: number) => Promise<WatchlistCoverageItem[]>;
+  getSeasons: (tmdbId: number) => Promise<TmdbSeason[]>;
 }
 
 const TMDB_IMG_W = "https://image.tmdb.org/t/p/w300";
@@ -49,6 +51,7 @@ export default function WatchlistDetailPanel({
   onRemove,
   onUpdate,
   getCoverage,
+  getSeasons,
 }: WatchlistDetailPanelProps) {
   const [scope, setScope] = useState<"all" | "latest">(
     (item.scope as "all" | "latest") ?? "all",
@@ -58,8 +61,45 @@ export default function WatchlistDetailPanel({
   const [saving, setSaving] = useState(false);
   const { profiles } = useQualityProfiles();
   const [coverage, setCoverage] = useState<WatchlistCoverageItem[]>([]);
-  const [coverageOpen, setCoverageOpen] = useState(false);
-  const [loadingCoverage, setLoadingCoverage] = useState(false);
+  const [seasons, setSeasons] = useState<TmdbSeason[]>([]);
+  const [loadingSeasons, setLoadingSeasons] = useState(false);
+  const [downloadingPaths, setDownloadingPaths] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const handleDownload = async (c: WatchlistCoverageItem) => {
+    if (downloadingPaths.has(c.ftp_path)) return;
+    setDownloadingPaths((prev) => new Set(prev).add(c.ftp_path));
+    try {
+      await call<number>("queue_download", {
+        ftpPath: c.ftp_path,
+        filename: c.filename,
+        mediaTitle: item.title ?? undefined,
+      });
+    } catch {
+      // download manager shows errors
+    } finally {
+      setDownloadingPaths((prev) => {
+        const next = new Set(prev);
+        next.delete(c.ftp_path);
+        return next;
+      });
+    }
+  };
+
+  // Build a map of "season,episode" → coverage items (all versions, downloaded or FTP-only)
+  const coverageByEp = useMemo(() => {
+    const map = new Map<string, WatchlistCoverageItem[]>();
+    for (const c of coverage) {
+      if (c.season != null && c.episode != null) {
+        const key = `${c.season},${c.episode}`;
+        const arr = map.get(key) ?? [];
+        arr.push(c);
+        map.set(key, arr);
+      }
+    }
+    return map;
+  }, [coverage]);
 
   const poster = item.poster
     ? item.poster.startsWith("http")
@@ -86,40 +126,19 @@ export default function WatchlistDetailPanel({
     }
   };
 
-  const loadCoverage = async () => {
-    if (coverage.length > 0) {
-      setCoverageOpen((o) => !o);
-      return;
-    }
-    setLoadingCoverage(true);
-    setCoverageOpen(true);
-    try {
-      const c = await getCoverage(item.tmdb_id);
-      setCoverage(c);
-    } finally {
-      setLoadingCoverage(false);
-    }
-  };
-
-  // Group coverage by season
-  const bySeason = coverage.reduce<Record<number, WatchlistCoverageItem[]>>(
-    (acc, ep) => {
-      if (ep.season == null) return acc;
-      if (!acc[ep.season]) acc[ep.season] = [];
-      acc[ep.season].push(ep);
-      return acc;
-    },
-    {},
-  );
-
-  // Auto-load coverage when panel opens if items already in library
+  // Auto-load coverage + TMDB seasons when panel opens
   useEffect(() => {
-    if (item.library_count > 0) {
-      setLoadingCoverage(true);
-      setCoverageOpen(true);
-      getCoverage(item.tmdb_id)
-        .then(setCoverage)
-        .finally(() => setLoadingCoverage(false));
+    // Always fetch coverage (in-library items)
+    getCoverage(item.tmdb_id)
+      .then(setCoverage)
+      .catch(() => {});
+    // For TV shows, also fetch full TMDB season/episode data
+    if (item.tmdb_type === "tv") {
+      setLoadingSeasons(true);
+      getSeasons(item.tmdb_id)
+        .then(setSeasons)
+        .catch(() => {})
+        .finally(() => setLoadingSeasons(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id]);
@@ -324,6 +343,138 @@ export default function WatchlistDetailPanel({
             </p>
           )}
 
+          {/* Movie: list of available versions with download actions */}
+          {item.tmdb_type === "movie" && coverage.length > 0 && (
+            <div>
+              <label
+                style={{
+                  fontSize: 12,
+                  color: "var(--color-text-muted)",
+                  fontWeight: 500,
+                }}
+              >
+                {language === "es" ? "Archivos disponibles" : "Available files"}
+              </label>
+              <div
+                style={{
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius)",
+                  overflow: "hidden",
+                  marginTop: 6,
+                }}
+              >
+                {coverage.map((c, i) => {
+                  const isQueued = downloadingPaths.has(c.ftp_path);
+                  return (
+                    <div
+                      key={c.ftp_path}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "7px 10px",
+                        borderBottom:
+                          i < coverage.length - 1
+                            ? "1px solid var(--color-border)"
+                            : "none",
+                        background: c.downloaded
+                          ? "color-mix(in srgb, var(--color-success) 6%, transparent)"
+                          : "transparent",
+                      }}
+                    >
+                      {/* Status icon */}
+                      {c.downloaded ? (
+                        <Check
+                          size={13}
+                          strokeWidth={2.5}
+                          style={{
+                            color: "var(--color-success)",
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : (
+                        <Server
+                          size={13}
+                          strokeWidth={2}
+                          style={{ color: "var(--color-teal)", flexShrink: 0 }}
+                        />
+                      )}
+                      {/* Resolution badge */}
+                      {c.resolution && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 600,
+                            background: "var(--color-surface-2)",
+                            color: c.downloaded
+                              ? "var(--color-success)"
+                              : "var(--color-text-muted)",
+                            borderRadius: "var(--radius-full)",
+                            padding: "2px 6px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {c.resolution}
+                        </span>
+                      )}
+                      {/* Filename */}
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: c.downloaded
+                            ? "var(--color-text)"
+                            : "var(--color-text-muted)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          flex: 1,
+                          minWidth: 0,
+                        }}
+                        title={c.filename}
+                      >
+                        {c.filename}
+                      </span>
+                      {/* Download button (only for FTP-available, not yet downloaded) */}
+                      {!c.downloaded && (
+                        <button
+                          onClick={() => void handleDownload(c)}
+                          disabled={isQueued}
+                          title={language === "es" ? "Descargar" : "Download"}
+                          style={{
+                            flexShrink: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 26,
+                            height: 26,
+                            border:
+                              "1px solid color-mix(in srgb, var(--color-primary) 60%, transparent)",
+                            borderRadius: "var(--radius-full)",
+                            background: isQueued
+                              ? "var(--color-surface-2)"
+                              : "color-mix(in srgb, var(--color-primary) 15%, transparent)",
+                            color: isQueued
+                              ? "var(--color-text-muted)"
+                              : "var(--color-primary)",
+                            cursor: isQueued ? "default" : "pointer",
+                            transition: "background 0.15s ease",
+                            padding: 0,
+                          }}
+                        >
+                          {isQueued ? (
+                            <span style={{ fontSize: 10 }}>…</span>
+                          ) : (
+                            <Download size={12} strokeWidth={2.2} />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* TV scope */}
           {item.tmdb_type === "tv" && (
             <div>
@@ -426,138 +577,57 @@ export default function WatchlistDetailPanel({
             </button>
           )}
 
-          {/* Episode coverage accordion */}
+          {/* Episode coverage — full TMDB season view */}
           {item.tmdb_type === "tv" && (
             <div>
-              <button
-                onClick={() => void loadCoverage()}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  background: "transparent",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: "var(--radius)",
-                  color: "var(--color-text-muted)",
-                  padding: "7px 12px",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  width: "100%",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span>
-                  {t(language, "watchlist.episodesInLibrary")}
-                  {coverage.length > 0 && ` (${coverage.length})`}
-                </span>
-                <span style={{ fontSize: 10 }}>{coverageOpen ? "▲" : "▼"}</span>
-              </button>
-
-              {coverageOpen && (
+              {loadingSeasons ? (
                 <div
                   style={{
-                    marginTop: 4,
+                    padding: "12px 0",
+                    color: "var(--color-text-muted)",
+                    fontSize: 13,
+                  }}
+                >
+                  {language === "es"
+                    ? "Cargando episodios…"
+                    : "Loading episodes…"}
+                </div>
+              ) : seasons.length === 0 ? (
+                <div
+                  style={{
+                    padding: "12px 0",
+                    color: "var(--color-text-muted)",
+                    fontSize: 13,
+                  }}
+                >
+                  {language === "es"
+                    ? "Sin datos de episodios"
+                    : "No episode data"}
+                </div>
+              ) : (
+                <div
+                  style={{
                     border: "1px solid var(--color-border)",
                     borderRadius: "var(--radius)",
                     overflow: "hidden",
                   }}
                 >
-                  {loadingCoverage ? (
-                    <div
-                      style={{
-                        padding: "12px 16px",
-                        color: "var(--color-text-muted)",
-                        fontSize: 13,
-                      }}
-                    >
-                      {t(language, "watchlist.loadingCoverage")}
-                    </div>
-                  ) : coverage.length === 0 ? (
-                    <div
-                      style={{
-                        padding: "12px 16px",
-                        color: "var(--color-text-muted)",
-                        fontSize: 13,
-                      }}
-                    >
-                      {t(language, "watchlist.noEpisodesInLibrary")}
-                    </div>
-                  ) : (
-                    Object.entries(bySeason).map(([season, episodes]) => (
-                      <div key={season}>
-                        <div
-                          style={{
-                            padding: "6px 12px",
-                            background: "var(--color-surface-2)",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: "var(--color-text-muted)",
-                            borderBottom: "1px solid var(--color-border)",
-                          }}
-                        >
-                          {t(language, "watchlist.season")} {season}
-                        </div>
-                        {episodes.map((ep, i) => (
-                          <div
-                            key={i}
-                            style={{
-                              padding: "6px 12px",
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              borderBottom:
-                                i < episodes.length - 1
-                                  ? "1px solid var(--color-border)"
-                                  : "none",
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: 12,
-                                color: "var(--color-text)",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 5,
-                              }}
-                            >
-                              <Check
-                                size={13}
-                                strokeWidth={2.5}
-                                style={{
-                                  color: "var(--color-success)",
-                                  flexShrink: 0,
-                                }}
-                                aria-hidden="true"
-                              />
-                              E{String(ep.episode).padStart(2, "0")}{" "}
-                              <span
-                                style={{ color: "var(--color-text-muted)" }}
-                              >
-                                {ep.filename}
-                              </span>
-                            </span>
-                            {ep.resolution && (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  background: "var(--color-surface-2)",
-                                  color: "var(--color-text-muted)",
-                                  borderRadius: "var(--radius-full)",
-                                  padding: "2px 6px",
-                                }}
-                              >
-                                {ep.resolution}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ))
-                  )}
+                  {seasons.map((season) => (
+                    <SeasonSection
+                      key={season.season_number}
+                      season={season}
+                      coverageByEp={coverageByEp}
+                      downloadingPaths={downloadingPaths}
+                      onDownload={handleDownload}
+                      language={language}
+                    />
+                  ))}
                 </div>
               )}
             </div>
           )}
+
+          {/* Movie in-library indicator — bottom fallback removed (shown above) */}
         </div>
 
         {/* Footer: remove */}
@@ -586,5 +656,269 @@ export default function WatchlistDetailPanel({
         </div>
       </div>
     </>
+  );
+}
+
+// ── SeasonSection helper ─────────────────────────────────────────────────────
+
+interface SeasonSectionProps {
+  season: TmdbSeason;
+  coverageByEp: Map<string, WatchlistCoverageItem[]>;
+  downloadingPaths: Set<string>;
+  onDownload: (c: WatchlistCoverageItem) => void;
+  language: AppLanguage;
+}
+
+function SeasonSection({
+  season,
+  coverageByEp,
+  downloadingPaths,
+  onDownload,
+  language,
+}: SeasonSectionProps) {
+  const [open, setOpen] = useState(true);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const downloadedCount = season.episodes.filter((ep) => {
+    const files =
+      coverageByEp.get(`${season.season_number},${ep.episode_number}`) ?? [];
+    return files.some((c) => c.downloaded);
+  }).length;
+
+  return (
+    <div>
+      {/* Season header */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          width: "100%",
+          padding: "7px 12px",
+          background: "var(--color-surface-2)",
+          border: "none",
+          borderBottom: open ? "1px solid var(--color-border)" : "none",
+          color: "var(--color-text-muted)",
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 600,
+          textAlign: "left",
+        }}
+      >
+        <span>
+          {language === "es" ? "Temporada" : "Season"} {season.season_number}
+          {season.name && season.name !== `Season ${season.season_number}` && (
+            <span
+              style={{
+                fontWeight: 400,
+                marginLeft: 6,
+                color: "var(--color-text-muted)",
+              }}
+            >
+              — {season.name}
+            </span>
+          )}
+        </span>
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          {downloadedCount > 0 && (
+            <span style={{ color: "var(--color-success)", fontSize: 11 }}>
+              {downloadedCount}/{season.episodes.length}
+            </span>
+          )}
+          <span style={{ fontSize: 10 }}>{open ? "▲" : "▼"}</span>
+        </span>
+      </button>
+
+      {/* Episodes */}
+      {open && (
+        <div>
+          {season.episodes.map((ep, i) => {
+            const key = `${season.season_number},${ep.episode_number}`;
+            const epFiles = coverageByEp.get(key) ?? [];
+            const downloadedFiles = epFiles.filter((c) => c.downloaded);
+            const ftpFiles = epFiles.filter((c) => !c.downloaded);
+            const inLibrary = downloadedFiles.length > 0;
+            const hasOnServer = ftpFiles.length > 0 && !inLibrary;
+            const resolution =
+              downloadedFiles[0]?.resolution ?? ftpFiles[0]?.resolution;
+            const isFuture = ep.air_date != null && ep.air_date > today;
+            // Best FTP file to download (take highest resolution if multiple)
+            const bestFtpFile = ftpFiles[0];
+            const isQueued =
+              bestFtpFile != null && downloadingPaths.has(bestFtpFile.ftp_path);
+
+            return (
+              <div
+                key={ep.episode_number}
+                style={{
+                  padding: "5px 10px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  borderBottom:
+                    i < season.episodes.length - 1
+                      ? "1px solid var(--color-border)"
+                      : "none",
+                  background: inLibrary
+                    ? "color-mix(in srgb, var(--color-success) 6%, transparent)"
+                    : hasOnServer
+                      ? "color-mix(in srgb, var(--color-teal) 4%, transparent)"
+                      : "transparent",
+                }}
+              >
+                {/* Left: status icon + episode label */}
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    minWidth: 0,
+                    flex: 1,
+                  }}
+                >
+                  {inLibrary ? (
+                    <Check
+                      size={13}
+                      strokeWidth={2.5}
+                      style={{ color: "var(--color-success)", flexShrink: 0 }}
+                      aria-hidden="true"
+                    />
+                  ) : hasOnServer ? (
+                    <Server
+                      size={13}
+                      strokeWidth={2}
+                      style={{ color: "var(--color-teal)", flexShrink: 0 }}
+                      aria-hidden="true"
+                    />
+                  ) : isFuture ? (
+                    <CalendarClock
+                      size={13}
+                      strokeWidth={2}
+                      style={{ color: "var(--color-warning)", flexShrink: 0 }}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <span
+                      style={{
+                        width: 13,
+                        height: 13,
+                        borderRadius: "50%",
+                        border: "1.5px solid var(--color-border)",
+                        flexShrink: 0,
+                        display: "inline-block",
+                      }}
+                    />
+                  )}
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: inLibrary
+                        ? "var(--color-text)"
+                        : hasOnServer
+                          ? "var(--color-text)"
+                          : isFuture
+                            ? "var(--color-warning)"
+                            : "var(--color-text-muted)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, marginRight: 4 }}>
+                      E{String(ep.episode_number).padStart(2, "0")}
+                    </span>
+                    {ep.name}
+                  </span>
+                </span>
+
+                {/* Right: resolution badge, air date, download button */}
+                <span
+                  style={{
+                    flexShrink: 0,
+                    marginLeft: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  {resolution && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        background: "var(--color-surface-2)",
+                        color: inLibrary
+                          ? "var(--color-success)"
+                          : "var(--color-text-muted)",
+                        borderRadius: "var(--radius-full)",
+                        padding: "2px 6px",
+                      }}
+                    >
+                      {resolution}
+                    </span>
+                  )}
+                  {!inLibrary && !hasOnServer && ep.air_date && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        color: isFuture
+                          ? "var(--color-warning)"
+                          : "var(--color-text-muted)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {new Date(ep.air_date + "T12:00:00").toLocaleDateString(
+                        language === "es" ? "es-ES" : "en-US",
+                        { day: "numeric", month: "short", year: "numeric" },
+                      )}
+                    </span>
+                  )}
+                  {/* Download button — only for FTP-available, not yet downloaded */}
+                  {hasOnServer && bestFtpFile && (
+                    <button
+                      onClick={() => onDownload(bestFtpFile)}
+                      disabled={isQueued}
+                      title={language === "es" ? "Descargar" : "Download"}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: 24,
+                        height: 24,
+                        border:
+                          "1px solid color-mix(in srgb, var(--color-primary) 60%, transparent)",
+                        borderRadius: "var(--radius-full)",
+                        background: isQueued
+                          ? "var(--color-surface-2)"
+                          : "color-mix(in srgb, var(--color-primary) 15%, transparent)",
+                        color: isQueued
+                          ? "var(--color-text-muted)"
+                          : "var(--color-primary)",
+                        cursor: isQueued ? "default" : "pointer",
+                        transition: "background 0.15s ease",
+                        padding: 0,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {isQueued ? (
+                        <span style={{ fontSize: 9 }}>…</span>
+                      ) : (
+                        <Download size={11} strokeWidth={2.2} />
+                      )}
+                    </button>
+                  )}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

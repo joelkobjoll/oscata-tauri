@@ -257,6 +257,7 @@ export default function WatchlistTab({
           onRemove={handleRemove}
           onUpdate={handleUpdate}
           getCoverage={watchlist.getCoverage}
+          getSeasons={watchlist.getSeasons}
         />
       )}
     </div>

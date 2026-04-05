@@ -225,6 +225,7 @@ export default function Library({
     metaRefreshProgress,
     completionSummary,
     dismissCompletion,
+    forceClearIndexing,
     indexError,
     clearIndexError,
     retryIndexing,
@@ -1627,7 +1628,10 @@ export default function Library({
                     marginLeft: 10,
                   }}
                 >
-                  {filtered.length} titles
+                  {activeTab === "watchlist"
+                    ? watchlist.items.length
+                    : filtered.length}{" "}
+                  titles
                 </span>
               )}
             </h1>
@@ -2137,6 +2141,7 @@ export default function Library({
         isIndexing={isIndexing}
         completionSummary={completionSummary}
         onDismissCompletion={dismissCompletion}
+        onCancelIndex={forceClearIndexing}
         activityLogOpen={showLog}
         language={language}
         tmdbProgress={tmdbProgress}
