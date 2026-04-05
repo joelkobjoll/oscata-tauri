@@ -1,5 +1,29 @@
 # Novedades de Oscata
 
+## Versión 0.7.0 — 5 de abril de 2026
+
+### 📤 Subidas que sobreviven a un cierre inesperado
+
+Si la app se cierra de golpe o el sistema se apaga mientras hay archivos en cola, Oscata recuerda exactamente qué estaba pendiente y lo retoma solo al volver a abrirla. Las subidas queued o en curso se reanudan automáticamente; los completados, fallidos y cancelados siguen visibles en el historial.
+
+### 🗂️ Vista previa del plan de subida para episodios individuales
+
+Al subir un episodio suelto ahora ves el mismo panel «Plan de subida» que aparece en las temporadas completas: la carpeta de destino y el nombre final del archivo, calculado al momento a partir de los campos de calidad.
+
+### ✏️ Renombrar también en series
+
+El toggle «Renombrar archivo» aparece tanto para episodios individuales como para temporadas completas (antes solo salía en películas). Desactívalo si quieres subir el archivo con su nombre original sin tocar.
+
+### 📣 Notificación Telegram mejorada
+
+La resolución, el códec, los idiomas y el tamaño ahora aparecen justo debajo del título, antes que la valoración y la sinopsis, para que la información técnica sea lo primero que veas.
+
+### 🔒 Ajustes de destinos FTP solo para administradores
+
+En el modo web, la sección de carpetas de destino (películas, series, documentales, reglas por género) solo es visible para usuarios con rol administrador o editor. Los usuarios normales ven el resto de ajustes sin problema.
+
+---
+
 ## Versión 0.6.3 — 5 de abril de 2026
 
 ### 💼 La versión portátil de Windows ya funciona bien
