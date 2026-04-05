@@ -1678,11 +1678,21 @@ pub async fn delete_download(
     queue: tauri::State<'_, crate::downloads::SharedQueue>,
     id: u64,
 ) -> Result<(), String> {
-    let mut queue = queue.lock().unwrap();
-    queue.delete(id);
-    let snapshot = queue.items.clone();
-    drop(queue);
-    db.save_download_state(&snapshot).ok();
+    let local_path = {
+        let mut queue = queue.lock().unwrap();
+        // Cancel any in-progress transfer first so the file handle is released.
+        queue.cancel(id);
+        let path = queue.items.iter().find(|i| i.id == id).map(|i| i.local_path.clone());
+        queue.delete(id);
+        let snapshot = queue.items.clone();
+        drop(queue);
+        db.save_download_state(&snapshot).ok();
+        path
+    };
+    // Delete the file from disk. Ignore errors (file may not exist yet).
+    if let Some(path) = local_path {
+        std::fs::remove_file(&path).ok();
+    }
     Ok(())
 }
 
