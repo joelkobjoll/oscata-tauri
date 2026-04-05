@@ -73,6 +73,76 @@ fn persist_download_state(
     db.save_download_state(&snapshot).ok();
 }
 
+fn persist_upload_state(
+    db: &crate::db::Db,
+    queue: &crate::uploads::SharedUploadQueue,
+) {
+    let snapshot = {
+        let queue = queue.lock().unwrap();
+        queue.items.clone()
+    };
+    db.save_upload_state(&snapshot).ok();
+}
+
+pub fn restore_upload_queue(
+    db: crate::db::Db,
+    queue_state: crate::uploads::SharedUploadQueue,
+) {
+    let restored = db.load_upload_state().unwrap_or_default();
+    if restored.is_empty() {
+        return;
+    }
+    {
+        let mut queue = queue_state.lock().unwrap();
+        queue.restore(restored);
+    }
+    persist_upload_state(&db, &queue_state);
+}
+
+pub async fn resume_pending_uploads(
+    db: crate::db::Db,
+    queue_state: crate::uploads::SharedUploadQueue,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let pending = {
+        let queue = queue_state.lock().unwrap();
+        queue.items
+            .iter()
+            .filter(|i| matches!(i.status, crate::uploads::UploadStatus::Queued))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+
+    for item in pending {
+        let (semaphore, cancel_flag) = {
+            let mut queue = queue_state.lock().unwrap();
+            let (_, semaphore, cancel_flag) = queue.retry(item.id)?;
+            (semaphore, cancel_flag)
+        };
+        persist_upload_state(&db, &queue_state);
+        spawn_upload_job(
+            db.clone(),
+            queue_state.clone(),
+            app.clone(),
+            item.id,
+            item.local_path,
+            item.ftp_dest_path,
+            item.filename,
+            item.media_title,
+            item.tmdb_id,
+            item.bytes_total,
+            item.resolution,
+            item.hdr,
+            item.languages,
+            item.codec,
+            item.group_id,
+            semaphore,
+            cancel_flag,
+        );
+    }
+    Ok(())
+}
+
 pub(crate) fn spawn_download_job_pub(
     db: crate::db::Db,
     queue_state: crate::downloads::SharedQueue,
@@ -3170,8 +3240,11 @@ fn spawn_upload_job(
         };
 
         if cancel_flag.load(Ordering::SeqCst) {
-            let mut q = upload_queue.lock().unwrap();
-            q.mark_cancelled(id);
+            {
+                let mut q = upload_queue.lock().unwrap();
+                q.mark_cancelled(id);
+            }
+            persist_upload_state(&db, &upload_queue);
             return;
         }
 
@@ -3179,6 +3252,7 @@ fn spawn_upload_job(
             let mut q = upload_queue.lock().unwrap();
             q.mark_started(id);
         }
+        persist_upload_state(&db, &upload_queue);
 
         app.emit("upload:update", serde_json::json!({
             "id": id,
@@ -3188,8 +3262,11 @@ fn spawn_upload_job(
         let config = match db.load_config() {
             Ok(c) => c,
             Err(e) => {
-                let mut q = upload_queue.lock().unwrap();
-                q.mark_error(id, e.clone());
+                {
+                    let mut q = upload_queue.lock().unwrap();
+                    q.mark_error(id, e.clone());
+                }
+                persist_upload_state(&db, &upload_queue);
                 app.emit("upload:update", serde_json::json!({
                     "id": id, "status": "error", "error": e
                 })).ok();
@@ -3232,6 +3309,7 @@ fn spawn_upload_job(
                     let mut q = upload_queue.lock().unwrap();
                     q.mark_done(id);
                 }
+                persist_upload_state(&db, &upload_queue);
                 app.emit("upload:update", serde_json::json!({
                     "id": id, "status": "done",
                 })).ok();
@@ -3398,8 +3476,11 @@ fn spawn_upload_job(
                 }
             }
             Err(e) if e == "Cancelled" => {
-                let mut q = upload_queue.lock().unwrap();
-                q.mark_cancelled(id);
+                {
+                    let mut q = upload_queue.lock().unwrap();
+                    q.mark_cancelled(id);
+                }
+                persist_upload_state(&db, &upload_queue);
                 app.emit("upload:update", serde_json::json!({
                     "id": id, "status": "cancelled",
                 })).ok();
@@ -3409,6 +3490,7 @@ fn spawn_upload_job(
                     let mut q = upload_queue.lock().unwrap();
                     q.mark_error(id, e.clone());
                 }
+                persist_upload_state(&db, &upload_queue);
                 app.emit("upload:update", serde_json::json!({
                     "id": id, "status": "error", "error": e
                 })).ok();
@@ -3460,6 +3542,9 @@ pub async fn queue_upload(
         app.emit("upload:added", &item).ok();
     }
 
+    // Persist immediately so new items survive a crash before upload completes
+    persist_upload_state(db.inner(), upload_queue.inner());
+
     let (item_media_title, item_tmdb_id) = {
         let q = upload_queue.lock().unwrap();
         q.items.iter().find(|i| i.id == id)
@@ -3501,8 +3586,10 @@ pub fn get_uploads(
 pub fn cancel_upload(
     id: u64,
     upload_queue: tauri::State<'_, crate::uploads::SharedUploadQueue>,
+    db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
     upload_queue.lock().unwrap().cancel(id);
+    persist_upload_state(db.inner(), upload_queue.inner());
     Ok(())
 }
 
@@ -3537,6 +3624,7 @@ pub async fn retry_upload(
         semaphore,
         cancel_flag,
     );
+    persist_upload_state(db.inner(), upload_queue.inner());
     Ok(())
 }
 
@@ -3571,14 +3659,17 @@ pub async fn delete_upload(
     }
 
     upload_queue.lock().unwrap().delete(id);
+    persist_upload_state(db.inner(), upload_queue.inner());
     Ok(())
 }
 
 #[tauri::command]
 pub fn clear_completed_uploads(
     upload_queue: tauri::State<'_, crate::uploads::SharedUploadQueue>,
+    db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
     upload_queue.lock().unwrap().clear_completed();
+    persist_upload_state(db.inner(), upload_queue.inner());
     Ok(())
 }
 

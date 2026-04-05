@@ -171,6 +171,26 @@ impl UploadQueue {
         self.cancel_flags.remove(&id);
     }
 
+    /// Restore persisted items from a previous session.
+    /// Items that were mid-upload are reset to Queued so they restart.
+    /// Done / Error / Cancelled items are restored as-is for history.
+    pub fn restore(&mut self, mut items: Vec<UploadItem>) {
+        for item in &mut items {
+            if item.status == UploadStatus::Uploading {
+                item.status = UploadStatus::Queued;
+                item.bytes_done = 0;
+                item.started_at_ms = None;
+            }
+            // Ensure cancel flags exist for items that may be retried
+            let flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            self.cancel_flags.insert(item.id, flag);
+            if item.id >= self.next_id {
+                self.next_id = item.id + 1;
+            }
+        }
+        self.items = items;
+    }
+
     /// Sum of `bytes_total` for all items in a group.
     pub fn group_total_bytes(&self, group_id: &str) -> u64 {
         self.items.iter()

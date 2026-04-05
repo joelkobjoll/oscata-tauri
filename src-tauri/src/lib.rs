@@ -360,10 +360,12 @@ pub fn run() {
                     }
                 }
                 commands::restore_download_queue(db.clone(), queue.clone());
+                commands::restore_upload_queue(db.clone(), handle.state::<uploads::SharedUploadQueue>().inner().clone());
 
                 if let Some(window) = visible_main_window(&handle) {
                     commands::resume_pending_downloads(db.clone(), queue.clone(), window).await.ok();
                 }
+                commands::resume_pending_uploads(db.clone(), handle.state::<uploads::SharedUploadQueue>().inner().clone(), handle.clone()).await.ok();
                 if let Some(window) = visible_main_window(&handle) {
                     commands::refresh_all_metadata_internal(db.clone(), Some(window)).await.ok();
                 }

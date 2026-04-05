@@ -1689,6 +1689,34 @@ impl Db {
         }
     }
 
+    pub fn save_upload_state(&self, items: &[crate::uploads::UploadItem]) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        let json = serde_json::to_string(items).map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR REPLACE INTO app_config (key, value) VALUES ('uploads_state', ?1)",
+            params![json],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn load_upload_state(&self) -> Result<Vec<crate::uploads::UploadItem>, String> {
+        let conn = self.conn.lock().unwrap();
+        let json = conn
+            .query_row(
+                "SELECT value FROM app_config WHERE key = 'uploads_state'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+
+        match json {
+            Some(value) => serde_json::from_str(&value).map_err(|e| e.to_string()),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn load_config(&self) -> Result<AppConfig, String> {
         let conn = self.conn.lock().unwrap();
         let get = |key: &str| -> Result<String, String> {
