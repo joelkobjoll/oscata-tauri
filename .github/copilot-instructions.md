@@ -3,6 +3,10 @@
 > These instructions apply to all AI-assisted work on this repository.
 > Follow them consistently to keep the codebase coherent, maintainable, and scalable.
 
+## Language
+
+All user-facing text written by Copilot — changelog entries, UI strings, error messages, tooltips, and any other copy shown to the user — must be written in **Spanish (Spain)**. Use natural, everyday Spain Spanish: informal "tú" address, Castilian vocabulary, and a direct conversational tone. Avoid Latin American variants, overly formal register, and literal translations from English.
+
 ---
 
 ## Project Overview

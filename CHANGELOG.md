@@ -1,5 +1,21 @@
 # Novedades de Oscata
 
+## Versión 0.6.0 — 5 de abril de 2026
+
+### 📋 Lista de seguimiento
+
+Oscata estrena una pestaña donde apuntas las películas y series que quieres tener. Busca en TMDB, añade lo que te interese y ve de un vistazo qué ya tienes en la biblioteca y qué sigue pendiente. Activa la descarga automática título a título y Oscata se encarga en cuanto aparezca en el FTP.
+
+### ⭐ Perfiles de calidad para la lista de seguimiento
+
+Al añadir un título puedes asignarle un perfil de calidad: resolución mínima y preferida, HDR, códecs y límite de tamaño. Si tienes la descarga automática activada, Oscata lo usará para decidir qué archivos merece la pena bajar y cuáles no.
+
+### 📺 Cuánto tienes de cada serie
+
+Abre el detalle de una serie en tu lista de seguimiento y verás qué temporadas y episodios tienes ya en la biblioteca, con qué calidad, y qué te sigue faltando.
+
+---
+
 ## Versión 0.5.5 — 5 de abril de 2026
 
 ### 📊 Cuánto falta para enriquecer los metadatos
