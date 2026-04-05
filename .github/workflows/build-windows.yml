@@ -80,12 +80,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build frontend
-        run: npm run build
-
-      - name: Build portable exe (cargo only)
-        run: cargo build --release
-        working-directory: src-tauri
+      - name: Build Tauri portable (no installer bundles)
+        run: npm run tauri build -- --bundles none
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
@@ -93,12 +89,14 @@ jobs:
       - name: Bundle portable zip
         shell: pwsh
         run: |
-          $exePath = Get-ChildItem -Path "src-tauri/target/release" -Filter "oscata-tauri.exe" | Select-Object -First 1
+          $exePath = "src-tauri/target/release/oscata-tauri.exe"
           $outDir = "portable-dist"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          Copy-Item $exePath.FullName "$outDir/Oscata.exe"
+          Copy-Item $exePath "$outDir/Oscata.exe"
           New-Item -ItemType File -Force -Path "$outDir/.oscata-portable" | Out-Null
-          Compress-Archive -Path "$outDir/*" -DestinationPath "oscata-windows-portable.zip"
+          # Use Get-ChildItem to include dotfiles that the "*" glob may miss
+          $files = Get-ChildItem -Path $outDir -Force | Select-Object -ExpandProperty FullName
+          Compress-Archive -Path $files -DestinationPath "oscata-windows-portable.zip"
 
       - name: Upload artifact (main branch)
         if: github.ref == 'refs/heads/main'
