@@ -4,6 +4,8 @@ import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import type { MediaItem } from "../hooks/useIndexing";
 import type { DownloadItem } from "../hooks/useDownloads";
 import AppIcon from "./AppIcon";
+import WatchlistButton from "../features/watchlist/WatchlistButton";
+import type { AddWatchlistParams } from "../features/watchlist/types";
 import {
   AppLanguage,
   getLocalizedOverview,
@@ -776,6 +778,9 @@ export default function TVShowPanel({
   onDownloadSeason,
   onFixMatch,
   onDevCheckInLibrary,
+  watchlistedTmdbIds,
+  onAddToWatchlist,
+  onOpenWatchlist,
   downloadMap,
   isDownloadPending,
   downloadedBadgeMap,
@@ -788,6 +793,9 @@ export default function TVShowPanel({
   onDownloadSeason: (episodes: MediaItem[]) => void;
   onFixMatch: (items: MediaItem[]) => void;
   onDevCheckInLibrary?: (item: MediaItem) => Promise<void>;
+  watchlistedTmdbIds?: Set<number>;
+  onAddToWatchlist?: (params: AddWatchlistParams) => Promise<void>;
+  onOpenWatchlist?: () => void;
   downloadMap: Map<string, DownloadItem>;
   isDownloadPending: (ftpPath: string) => boolean;
   downloadedBadgeMap: Record<
@@ -1093,6 +1101,32 @@ export default function TVShowPanel({
                 </div>
 
                 <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  {show.tmdb_id != null &&
+                    watchlistedTmdbIds &&
+                    onAddToWatchlist && (
+                      <WatchlistButton
+                        tmdbId={show.tmdb_id}
+                        tmdbType="tv"
+                        title={showTitle}
+                        titleEn={
+                          show.tmdb_title_en ??
+                          show.tmdb_title ??
+                          show.title ??
+                          showTitle
+                        }
+                        poster={show.tmdb_poster}
+                        year={
+                          show.year ??
+                          (show.tmdb_release_date
+                            ? new Date(show.tmdb_release_date).getFullYear()
+                            : undefined)
+                        }
+                        language={language}
+                        watchlistedTmdbIds={watchlistedTmdbIds}
+                        onAdd={onAddToWatchlist}
+                        onNavigateToWatchlist={onOpenWatchlist}
+                      />
+                    )}
                   <IconActionButton
                     title={t(language, "tv.downloadAllVisible")}
                     icon="download"

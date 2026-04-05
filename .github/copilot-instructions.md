@@ -143,7 +143,24 @@ export default function MediaCard({ item, onDownload, onSelect }: MediaCardProps
 **4. Reusable shared components**
 Before building a new button, badge, modal, or spinner: check `src/components/`. If a shared primitive doesn't exist yet, extract one with a clean prop API. Never inline the same visual pattern in more than one place.
 
-**5. Avoid prop drilling beyond 2 levels**
+**5. Always use `Toggle` instead of checkboxes**
+Never use `<input type="checkbox">` for boolean settings or preferences. Always use the `Toggle` component from `src/components/Toggle.tsx`. Pattern for inline label + toggle:
+
+```tsx
+// ❌ Bad
+<label>
+  <input type="checkbox" checked={value} onChange={(e) => setValue(e.target.checked)} />
+  Label text
+</label>
+
+// ✅ Good
+<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+  <span style={{ fontSize: 13, color: "var(--color-text)" }}>Label text</span>
+  <Toggle checked={value} onChange={setValue} />
+</div>
+```
+
+**6. Avoid prop drilling beyond 2 levels**
 If a value needs to go more than 2 levels deep, promote it to a hook or a React context.
 
 ---

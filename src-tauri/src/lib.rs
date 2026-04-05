@@ -141,6 +141,16 @@ pub fn run() {
             commands::ftp_list_root_dirs_preview,
             commands::watchdog_pong,
             commands::quit_app,
+            commands::get_watchlist,
+            commands::add_to_watchlist,
+            commands::remove_from_watchlist,
+            commands::update_watchlist_item,
+            commands::check_watchlist_item,
+            commands::get_watchlist_coverage,
+            commands::get_quality_profiles,
+            commands::create_quality_profile,
+            commands::update_quality_profile,
+            commands::delete_quality_profile,
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {
@@ -344,6 +354,7 @@ pub fn run() {
                 if should_run_now {
                     let window = visible_main_window(&handle);
                     commands::start_indexing_internal(db.clone(), window.clone()).await.ok();
+                    commands::trigger_watchlist_auto_downloads(db.clone(), queue.clone(), None).await;
                     commands::refresh_all_metadata_internal(db.clone(), window).await.ok();
                 } else if let Some(value) = last_indexed_at
                     .as_deref()
@@ -388,6 +399,7 @@ pub fn run() {
 
                     let window = visible_main_window(&handle);
                     commands::start_indexing_internal(db.clone(), window.clone()).await.ok();
+                    commands::trigger_watchlist_auto_downloads(db.clone(), queue.clone(), None).await;
                     commands::refresh_all_metadata_internal(db.clone(), window).await.ok();
                 }
             });

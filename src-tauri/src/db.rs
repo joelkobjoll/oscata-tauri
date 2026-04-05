@@ -141,6 +141,79 @@ pub struct AppliedMigration {
     pub applied_at: String,
 }
 
+// ── Quality profiles ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityProfile {
+    pub id: i64,
+    pub name: String,
+    pub min_resolution: Option<String>,       // "720P" | "1080P" | "2160P" | null
+    pub preferred_resolution: Option<String>, // target resolution
+    pub prefer_hdr: bool,
+    pub preferred_codecs: String,             // JSON array e.g. '["HEVC","AVC"]'
+    pub preferred_audio_codecs: String,       // JSON array
+    pub preferred_release_types: String,      // JSON array
+    pub min_size_gb: Option<f64>,
+    pub max_size_gb: Option<f64>,
+    pub is_builtin: bool,
+    pub created_at: String,
+}
+
+// ── Watchlist ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchlistItem {
+    pub id: i64,
+    pub user_id: i64,
+    pub tmdb_id: i64,
+    pub tmdb_type: String,
+    pub title: String,
+    pub title_en: Option<String>,
+    pub poster: Option<String>,
+    pub overview: Option<String>,
+    pub overview_en: Option<String>,
+    pub status: Option<String>,
+    pub release_date: Option<String>,
+    pub year: Option<i64>,
+    pub latest_season: Option<i64>,
+    pub next_episode_date: Option<String>,
+    pub scope: String,
+    pub auto_download: i64,
+    pub profile_id: i64,  // references quality_profiles.id; 1 = "Any" (default)
+    pub added_at: String,
+    pub library_count: i64,
+    pub library_status: String,  // "pending" | "available"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchlistCoverageItem {
+    pub season: Option<i64>,
+    pub episode: Option<i64>,
+    pub filename: String,
+    pub resolution: Option<String>,
+    pub ftp_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchlistAutoItem {
+    pub ftp_path: String,
+    pub filename: String,
+    pub tmdb_id: i64,
+    pub media_type: Option<String>,
+    pub tmdb_genres: Option<String>,
+    pub media_title: Option<String>,
+    pub resolution: Option<String>,
+    pub release_type: Option<String>,
+    pub hdr: Option<String>,
+    pub codec: Option<String>,
+    pub audio_codec: Option<String>,
+    pub size_bytes: Option<i64>,
+    pub profile_id: i64,  // from watchlist.profile_id
+    pub season: Option<i64>,
+    pub episode: Option<i64>,
+}
+
+
 impl Db {
     fn default_folder_types() -> String {
         DEFAULT_FOLDER_TYPES.to_string()
@@ -387,6 +460,74 @@ impl Db {
         // Data repair for clock-skewed FTP dates previously persisted into indexed_at.
         // Rule: if indexed_at is in the future, subtract one year.
         Self::repair_future_indexed_timestamps(conn);
+
+        // Watchlist table (additive migration)
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS watchlist (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id           INTEGER NOT NULL DEFAULT 0,
+                tmdb_id           INTEGER NOT NULL,
+                tmdb_type         TEXT    NOT NULL,
+                title             TEXT    NOT NULL,
+                title_en          TEXT,
+                poster            TEXT,
+                overview          TEXT,
+                overview_en       TEXT,
+                status            TEXT,
+                release_date      TEXT,
+                year              INTEGER,
+                latest_season     INTEGER,
+                next_episode_date TEXT,
+                scope             TEXT NOT NULL DEFAULT 'all',
+                auto_download     INTEGER NOT NULL DEFAULT 0,
+                added_at          TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(user_id, tmdb_id)
+             );",
+        ).ok();
+        // Additive column for quality tier (no-op if already exists)
+        conn.execute_batch(
+            "ALTER TABLE watchlist ADD COLUMN quality_tier TEXT NOT NULL DEFAULT 'any';",
+        ).ok();
+
+        // Quality profiles table
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS quality_profiles (
+                id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+                name                   TEXT    NOT NULL,
+                min_resolution         TEXT,
+                preferred_resolution   TEXT,
+                prefer_hdr             INTEGER NOT NULL DEFAULT 0,
+                preferred_codecs       TEXT    NOT NULL DEFAULT '[]',
+                preferred_audio_codecs TEXT    NOT NULL DEFAULT '[]',
+                preferred_release_types TEXT   NOT NULL DEFAULT '[]',
+                max_size_gb            REAL,
+                is_builtin             INTEGER NOT NULL DEFAULT 0,
+                created_at             TEXT    NOT NULL DEFAULT (datetime('now'))
+             );",
+        ).ok();
+
+        // Additive column for min_size_gb (no-op if already exists)
+        conn.execute_batch(
+            "ALTER TABLE quality_profiles ADD COLUMN min_size_gb REAL;",
+        ).ok();
+
+        // Add profile_id to watchlist (references quality_profiles; default=1=Any)
+        conn.execute_batch(
+            "ALTER TABLE watchlist ADD COLUMN profile_id INTEGER NOT NULL DEFAULT 1;",
+        ).ok();
+
+        // Migrate old quality_tier values to profile_id (runs once; safe if profile_id already set)
+        conn.execute_batch(
+            "UPDATE watchlist SET profile_id =
+               CASE quality_tier
+                 WHEN 'hd'  THEN 2
+                 WHEN 'fhd' THEN 3
+                 WHEN '4k'  THEN 4
+                 ELSE 1
+               END
+             WHERE profile_id = 1;",
+        ).ok();
+
         Ok(())
     }
 
@@ -1751,9 +1892,11 @@ impl Db {
         let existing_missing_metadata = existing
             .as_ref()
             .map(|row| {
+                // metadata_at is the canonical "we already fetched TMDB" flag.
+                // tmdb_id being NULL with metadata_at set means no match was found — don't retry.
+                // imdb_id is intentionally excluded: TV episodes and many TMDB items have no IMDb ID,
+                // so checking it caused every re-index to re-queue all existing items.
                 row.metadata_at.is_none()
-                    || row.tmdb_id.is_none()
-                    || row.imdb_id.as_deref().unwrap_or("").trim().is_empty()
             })
             .unwrap_or(false);
 
@@ -1985,6 +2128,368 @@ impl Db {
         )
         .map_err(|e| e.to_string())?;
         Ok(count)
+    }
+
+    // ── Watchlist ─────────────────────────────────────────────────────────────
+
+    pub fn add_watchlist_item(
+        &self,
+        user_id: i64,
+        tmdb_id: i64,
+        tmdb_type: &str,
+        title: &str,
+        title_en: Option<&str>,
+        poster: Option<&str>,
+        overview: Option<&str>,
+        overview_en: Option<&str>,
+        status: Option<&str>,
+        release_date: Option<&str>,
+        year: Option<i64>,
+        latest_season: Option<i64>,
+        scope: &str,
+        auto_download: bool,
+        profile_id: i64,
+    ) -> Result<i64, String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO watchlist
+                (user_id, tmdb_id, tmdb_type, title, title_en, poster, overview, overview_en,
+                 status, release_date, year, latest_season, scope, auto_download, profile_id, added_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,datetime('now'))",
+            params![
+                user_id, tmdb_id, tmdb_type, title, title_en, poster, overview, overview_en,
+                status, release_date, year, latest_season, scope, auto_download as i64, profile_id,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        let id = conn.last_insert_rowid();
+        Ok(id)
+    }
+
+    pub fn get_watchlist(&self, user_id: i64) -> Result<Vec<WatchlistItem>, String> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT w.id, w.user_id, w.tmdb_id, w.tmdb_type, w.title, w.title_en,
+                        w.poster, w.overview, w.overview_en, w.status, w.release_date,
+                        w.year, w.latest_season, w.next_episode_date, w.scope, w.auto_download,
+                        w.profile_id, w.added_at,
+                        COUNT(m.id) AS library_count,
+                        CASE WHEN COUNT(m.id) > 0 THEN 'available' ELSE 'pending' END AS library_status
+                 FROM watchlist w
+                 LEFT JOIN media_items m ON m.tmdb_id = w.tmdb_id
+                 WHERE w.user_id = ?1
+                 GROUP BY w.id
+                 ORDER BY w.added_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![user_id], |row| {
+                Ok(WatchlistItem {
+                    id: row.get(0)?,
+                    user_id: row.get(1)?,
+                    tmdb_id: row.get(2)?,
+                    tmdb_type: row.get(3)?,
+                    title: row.get(4)?,
+                    title_en: row.get(5)?,
+                    poster: row.get(6)?,
+                    overview: row.get(7)?,
+                    overview_en: row.get(8)?,
+                    status: row.get(9)?,
+                    release_date: row.get(10)?,
+                    year: row.get(11)?,
+                    latest_season: row.get(12)?,
+                    next_episode_date: row.get(13)?,
+                    scope: row.get(14)?,
+                    auto_download: row.get(15)?,
+                    profile_id: row.get(16)?,
+                    added_at: row.get(17)?,
+                    library_count: row.get(18)?,
+                    library_status: row.get(19)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    pub fn remove_watchlist_item(&self, id: i64, user_id: i64) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "DELETE FROM watchlist WHERE id=?1 AND user_id=?2",
+            params![id, user_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn update_watchlist_item(
+        &self,
+        id: i64,
+        user_id: i64,
+        scope: &str,
+        auto_download: bool,
+        profile_id: i64,
+    ) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE watchlist SET scope=?3, auto_download=?4, profile_id=?5 WHERE id=?1 AND user_id=?2",
+            params![id, user_id, scope, auto_download as i64, profile_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn check_watchlist_item(
+        &self,
+        tmdb_id: i64,
+        user_id: i64,
+    ) -> Result<Option<WatchlistItem>, String> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT w.id, w.user_id, w.tmdb_id, w.tmdb_type, w.title, w.title_en,
+                    w.poster, w.overview, w.overview_en, w.status, w.release_date,
+                    w.year, w.latest_season, w.next_episode_date, w.scope, w.auto_download,
+                    w.profile_id, w.added_at,
+                    COUNT(m.id) AS library_count,
+                    CASE WHEN COUNT(m.id) > 0 THEN 'available' ELSE 'pending' END AS library_status
+             FROM watchlist w
+             LEFT JOIN media_items m ON m.tmdb_id = w.tmdb_id
+             WHERE w.tmdb_id=?1 AND w.user_id=?2
+             GROUP BY w.id",
+            params![tmdb_id, user_id],
+            |row| {
+                Ok(WatchlistItem {
+                    id: row.get(0)?,
+                    user_id: row.get(1)?,
+                    tmdb_id: row.get(2)?,
+                    tmdb_type: row.get(3)?,
+                    title: row.get(4)?,
+                    title_en: row.get(5)?,
+                    poster: row.get(6)?,
+                    overview: row.get(7)?,
+                    overview_en: row.get(8)?,
+                    status: row.get(9)?,
+                    release_date: row.get(10)?,
+                    year: row.get(11)?,
+                    latest_season: row.get(12)?,
+                    next_episode_date: row.get(13)?,
+                    scope: row.get(14)?,
+                    auto_download: row.get(15)?,
+                    profile_id: row.get(16)?,
+                    added_at: row.get(17)?,
+                    library_count: row.get(18)?,
+                    library_status: row.get(19)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| e.to_string())
+    }
+
+    pub fn get_watchlist_library_coverage(
+        &self,
+        tmdb_id: i64,
+    ) -> Result<Vec<WatchlistCoverageItem>, String> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT season, episode, filename, resolution, ftp_path
+                 FROM media_items
+                 WHERE tmdb_id=?1
+                 ORDER BY season, episode",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![tmdb_id], |row| {
+                Ok(WatchlistCoverageItem {
+                    season: row.get(0)?,
+                    episode: row.get(1)?,
+                    filename: row.get(2)?,
+                    resolution: row.get(3)?,
+                    ftp_path: row.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    /// Returns all media_items that match an auto_download=1 watchlist entry.
+    /// Used by the post-indexing trigger to auto-queue new files.
+    pub fn get_watchlist_auto_download_candidates(&self) -> Result<Vec<WatchlistAutoItem>, String> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT m.ftp_path, m.filename, m.tmdb_id,
+                        m.media_type, m.tmdb_genres, COALESCE(m.tmdb_title, m.title),
+                        m.resolution, m.release_type, m.hdr, m.codec, m.audio_codec,
+                        m.size_bytes, w.profile_id, m.season, m.episode
+                 FROM media_items m
+                 INNER JOIN watchlist w ON w.tmdb_id = m.tmdb_id AND w.auto_download = 1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(WatchlistAutoItem {
+                    ftp_path: row.get(0)?,
+                    filename: row.get(1)?,
+                    tmdb_id: row.get(2)?,
+                    media_type: row.get(3)?,
+                    tmdb_genres: row.get(4)?,
+                    media_title: row.get(5)?,
+                    resolution: row.get(6)?,
+                    release_type: row.get(7)?,
+                    hdr: row.get(8)?,
+                    codec: row.get(9)?,
+                    audio_codec: row.get(10)?,
+                    size_bytes: row.get(11)?,
+                    profile_id: row.get(12)?,
+                    season: row.get(13)?,
+                    episode: row.get(14)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    // ── Quality Profiles ─────────────────────────────────────────────────────
+
+    pub fn get_quality_profiles(&self) -> Result<Vec<QualityProfile>, String> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, min_resolution, preferred_resolution, prefer_hdr,
+                        preferred_codecs, preferred_audio_codecs, preferred_release_types,
+                        min_size_gb, max_size_gb, is_builtin, created_at
+                 FROM quality_profiles ORDER BY id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(QualityProfile {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    min_resolution: row.get(2)?,
+                    preferred_resolution: row.get(3)?,
+                    prefer_hdr: row.get::<_, i64>(4)? != 0,
+                    preferred_codecs: row.get(5)?,
+                    preferred_audio_codecs: row.get(6)?,
+                    preferred_release_types: row.get(7)?,
+                    min_size_gb: row.get(8)?,
+                    max_size_gb: row.get(9)?,
+                    is_builtin: row.get::<_, i64>(10)? != 0,
+                    created_at: row.get(11)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    pub fn create_quality_profile(
+        &self,
+        name: &str,
+        min_resolution: Option<&str>,
+        preferred_resolution: Option<&str>,
+        prefer_hdr: bool,
+        preferred_codecs: &str,
+        preferred_audio_codecs: &str,
+        preferred_release_types: &str,
+        min_size_gb: Option<f64>,
+        max_size_gb: Option<f64>,
+    ) -> Result<QualityProfile, String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO quality_profiles
+                (name, min_resolution, preferred_resolution, prefer_hdr,
+                 preferred_codecs, preferred_audio_codecs, preferred_release_types,
+                 min_size_gb, max_size_gb)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            params![
+                name, min_resolution, preferred_resolution, prefer_hdr as i64,
+                preferred_codecs, preferred_audio_codecs, preferred_release_types,
+                min_size_gb, max_size_gb
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        let id = conn.last_insert_rowid();
+        conn.query_row(
+            "SELECT id, name, min_resolution, preferred_resolution, prefer_hdr,
+                    preferred_codecs, preferred_audio_codecs, preferred_release_types,
+                    min_size_gb, max_size_gb, is_builtin, created_at
+             FROM quality_profiles WHERE id=?1",
+            params![id],
+            |row| Ok(QualityProfile {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                min_resolution: row.get(2)?,
+                preferred_resolution: row.get(3)?,
+                prefer_hdr: row.get::<_, i64>(4)? != 0,
+                preferred_codecs: row.get(5)?,
+                preferred_audio_codecs: row.get(6)?,
+                preferred_release_types: row.get(7)?,
+                min_size_gb: row.get(8)?,
+                max_size_gb: row.get(9)?,
+                is_builtin: row.get::<_, i64>(10)? != 0,
+                created_at: row.get(11)?,
+            }),
+        )
+        .map_err(|e| e.to_string())
+    }
+
+    pub fn update_quality_profile(
+        &self,
+        id: i64,
+        name: &str,
+        min_resolution: Option<&str>,
+        preferred_resolution: Option<&str>,
+        prefer_hdr: bool,
+        preferred_codecs: &str,
+        preferred_audio_codecs: &str,
+        preferred_release_types: &str,
+        min_size_gb: Option<f64>,
+        max_size_gb: Option<f64>,
+    ) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "UPDATE quality_profiles SET name=?2, min_resolution=?3, preferred_resolution=?4,
+             prefer_hdr=?5, preferred_codecs=?6, preferred_audio_codecs=?7,
+             preferred_release_types=?8, min_size_gb=?9, max_size_gb=?10 WHERE id=?1",
+            params![
+                id, name, min_resolution, preferred_resolution, prefer_hdr as i64,
+                preferred_codecs, preferred_audio_codecs, preferred_release_types,
+                min_size_gb, max_size_gb
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn delete_quality_profile(&self, id: i64) -> Result<(), String> {
+        let conn = self.0.lock().unwrap();
+        // Reset any watchlist items referencing this profile to 0 (no profile)
+        conn.execute(
+            "UPDATE watchlist SET profile_id=0 WHERE profile_id=?1",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM quality_profiles WHERE id=?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 }
 

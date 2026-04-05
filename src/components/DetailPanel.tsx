@@ -14,6 +14,8 @@ import {
 import { t } from "../utils/i18n";
 import { GENRE_MAP } from "../utils/genres";
 import { formatBytes } from "../lib/format";
+import WatchlistButton from "../features/watchlist/WatchlistButton";
+import type { AddWatchlistParams } from "../features/watchlist/types";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w342";
 
@@ -46,6 +48,9 @@ export default function DetailPanel({
   isDownloadPending,
   onRetry,
   onDevCheckInLibrary,
+  watchlistedTmdbIds,
+  onAddToWatchlist,
+  onOpenWatchlist,
 }: {
   item: MediaItem;
   language: AppLanguage;
@@ -72,6 +77,9 @@ export default function DetailPanel({
   isDownloadPending: (ftpPath: string) => boolean;
   onRetry?: (id: number) => void;
   onDevCheckInLibrary?: (item: MediaItem) => Promise<void>;
+  watchlistedTmdbIds?: Set<number>;
+  onAddToWatchlist?: (params: AddWatchlistParams) => Promise<void>;
+  onOpenWatchlist?: () => void;
 }) {
   const [showFix, setShowFix] = useState(false);
   const [openingUrl, setOpeningUrl] = useState<string | null>(null);
@@ -774,6 +782,27 @@ export default function DetailPanel({
               onDownload,
               onRetry,
               language,
+            )}
+          {item.tmdb_id != null &&
+            watchlistedTmdbIds !== undefined &&
+            onAddToWatchlist !== undefined && (
+              <WatchlistButton
+                tmdbId={item.tmdb_id}
+                tmdbType={
+                  item.tmdb_type === "tv" || item.media_type === "tv"
+                    ? "tv"
+                    : "movie"
+                }
+                title={item.tmdb_title ?? item.title ?? item.filename}
+                titleEn={item.tmdb_title ?? undefined}
+                poster={item.tmdb_poster ?? undefined}
+                year={item.year ?? undefined}
+                language={language}
+                watchlistedTmdbIds={watchlistedTmdbIds}
+                onAdd={onAddToWatchlist}
+                onNavigateToWatchlist={onOpenWatchlist}
+                fullWidth
+              />
             )}
           <button
             onClick={() => setShowFix(true)}

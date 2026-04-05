@@ -6,6 +6,7 @@ const messages = {
   "nav.tv": { es: "Series", en: "TV Shows" },
   "nav.docs": { es: "Documentales", en: "Documentaries" },
   "nav.downloads": { es: "Descargas", en: "Downloads" },
+  "nav.watchlist": { es: "Seguimiento", en: "Watchlist" },
 
   "common.loading": { es: "Cargando…", en: "Loading…" },
   "common.search": { es: "Buscar", en: "Search" },
@@ -917,6 +918,100 @@ const messages = {
     es: "Actualizando metadatos · {done}/{total}",
     en: "Updating metadata · {done}/{total}",
   },
+
+  // Watchlist
+  "watchlist.addToWatchlist": {
+    es: "Agregar a seguimiento",
+    en: "Add to watchlist",
+  },
+  "watchlist.inWatchlist": { es: "En seguimiento", en: "In watchlist" },
+  "watchlist.addTitle": { es: "Agregar a Seguimiento", en: "Add to Watchlist" },
+  "watchlist.back": { es: "Volver", en: "Back" },
+  "watchlist.coverage": { es: "Cobertura", en: "Coverage" },
+  "watchlist.allSeasons": { es: "Todas las temporadas", en: "All seasons" },
+  "watchlist.latestSeason": { es: "Última temporada", en: "Latest season" },
+  "watchlist.autoDownload": {
+    es: "Auto-descarga al indexar",
+    en: "Auto-download on indexing",
+  },
+  "watchlist.qualityProfile": {
+    es: "Perfil de calidad",
+    en: "Quality profile",
+  },
+  "watchlist.cancel": { es: "Cancelar", en: "Cancel" },
+  "watchlist.adding": { es: "Añadiendo…", en: "Adding…" },
+  "watchlist.add": { es: "Agregar", en: "Add" },
+  "watchlist.detail": { es: "Detalle", en: "Detail" },
+  "watchlist.available": { es: "Disponible", en: "Available" },
+  "watchlist.pending": { es: "Pendiente", en: "Pending" },
+  "watchlist.filesInLibrary": {
+    es: "archivo(s) en librería",
+    en: "file(s) in library",
+  },
+  "watchlist.saving": { es: "Guardando…", en: "Saving…" },
+  "watchlist.saveChanges": { es: "Guardar cambios", en: "Save changes" },
+  "watchlist.noResults": { es: "Sin resultados.", en: "No results." },
+  "watchlist.searchPlaceholder": { es: "Buscar título…", en: "Search title…" },
+  "watchlist.searching": { es: "Buscando…", en: "Searching…" },
+  "watchlist.search": { es: "Buscar", en: "Search" },
+  "watchlist.movie": { es: "Película", en: "Movie" },
+  "watchlist.episodesInLibrary": {
+    es: "Episodios en librería",
+    en: "Episodes in library",
+  },
+  "watchlist.loadingCoverage": { es: "Cargando…", en: "Loading…" },
+  "watchlist.noEpisodesInLibrary": {
+    es: "Ningún episodio en librería.",
+    en: "No episodes in library.",
+  },
+  "watchlist.season": { es: "Temporada", en: "Season" },
+  "watchlist.removeFromWatchlist": {
+    es: "Quitar del seguimiento",
+    en: "Remove from watchlist",
+  },
+  "watchlist.alreadyAdded": { es: "Ya añadido", en: "Already added" },
+
+  // Quality Profiles (Settings section)
+  "qualityProfile.title": { es: "Perfiles de Calidad", en: "Quality Profiles" },
+  "qualityProfile.description": {
+    es: "Define perfiles personalizados para resolución, codecs, tipo de fuente y tamaño de archivo usados al auto-descargar.",
+    en: "Define custom profiles for resolution, codecs, release type, and file size used during auto-downloads.",
+  },
+  "qualityProfile.newProfile": { es: "Nuevo perfil", en: "New profile" },
+  "qualityProfile.name": { es: "Nombre", en: "Name" },
+  "qualityProfile.namePlaceholder": {
+    es: "Mi perfil personalizado",
+    en: "My Custom Profile",
+  },
+  "qualityProfile.minResolution": {
+    es: "Resolución mínima",
+    en: "Min resolution",
+  },
+  "qualityProfile.preferredResolution": {
+    es: "Resolución preferida",
+    en: "Preferred resolution",
+  },
+  "qualityProfile.anyResolution": { es: "Cualquiera", en: "Any" },
+  "qualityProfile.preferredCodecs": {
+    es: "Codecs preferidos (ordenados)",
+    en: "Preferred codecs (ordered)",
+  },
+  "qualityProfile.preferredAudio": {
+    es: "Codecs de audio preferidos (ordenados)",
+    en: "Preferred audio codecs (ordered)",
+  },
+  "qualityProfile.preferredRelease": {
+    es: "Tipos de fuente preferidos (ordenados)",
+    en: "Preferred release types (ordered)",
+  },
+  "qualityProfile.preferHdr": { es: "Preferir HDR", en: "Prefer HDR" },
+  "qualityProfile.maxSizeGb": { es: "Tamaño máximo (GB)", en: "Max size (GB)" },
+  "qualityProfile.minSizeGb": { es: "Tamaño mínimo (GB)", en: "Min size (GB)" },
+  "qualityProfile.cancel": { es: "Cancelar", en: "Cancel" },
+  "qualityProfile.save": { es: "Guardar", en: "Save" },
+  "qualityProfile.edit": { es: "Editar", en: "Edit" },
+  "qualityProfile.delete": { es: "Eliminar", en: "Delete" },
+  "qualityProfile.confirmDelete": { es: "¿Confirmar?", en: "Confirm?" },
 } as const;
 
 export function t(

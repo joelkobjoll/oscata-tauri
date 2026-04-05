@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import AppIcon from "../components/AppIcon";
+import Toggle from "../components/Toggle";
+import { useQualityProfiles } from "../features/watchlist/useQualityProfiles";
+import type { QualityProfile } from "../features/watchlist/types";
 import type { AppLanguage } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 import {
@@ -257,6 +260,553 @@ function SectionCard({
       </button>
       {open && children}
     </section>
+  );
+}
+
+// ── Quality Profiles Section ──────────────────────────────────────────────────
+
+const RESOLUTION_OPTIONS = ["", "720P", "1080P", "2160P"];
+const CODEC_OPTIONS = ["HEVC", "AVC", "AV1", "VC-1"];
+const AUDIO_OPTIONS = [
+  "DTS-X",
+  "Atmos",
+  "TrueHD",
+  "DTS-HD MA",
+  "DTS",
+  "AAC",
+  "AC3",
+  "EAC3",
+];
+const RELEASE_OPTIONS = [
+  "BDREMUX",
+  "BluRay",
+  "WEB-DL",
+  "WEBRip",
+  "HDTV",
+  "CAM",
+];
+
+interface ProfileFormState {
+  name: string;
+  min_resolution: string;
+  preferred_resolution: string;
+  prefer_hdr: boolean;
+  preferred_codecs: string[];
+  preferred_audio_codecs: string[];
+  preferred_release_types: string[];
+  min_size_gb: string;
+  max_size_gb: string;
+}
+
+const emptyForm = (): ProfileFormState => ({
+  name: "",
+  min_resolution: "",
+  preferred_resolution: "",
+  prefer_hdr: false,
+  preferred_codecs: [],
+  preferred_audio_codecs: [],
+  preferred_release_types: [],
+  min_size_gb: "",
+  max_size_gb: "",
+});
+
+function profileToForm(p: QualityProfile): ProfileFormState {
+  return {
+    name: p.name,
+    min_resolution: p.min_resolution ?? "",
+    preferred_resolution: p.preferred_resolution ?? "",
+    prefer_hdr: p.prefer_hdr,
+    preferred_codecs: JSON.parse(p.preferred_codecs) as string[],
+    preferred_audio_codecs: JSON.parse(p.preferred_audio_codecs) as string[],
+    preferred_release_types: JSON.parse(p.preferred_release_types) as string[],
+    min_size_gb: p.min_size_gb != null ? String(p.min_size_gb) : "",
+    max_size_gb: p.max_size_gb != null ? String(p.max_size_gb) : "",
+  };
+}
+
+function toggleArr(arr: string[], val: string): string[] {
+  return arr.includes(val) ? arr.filter((v) => v !== val) : [...arr, val];
+}
+
+function MultiChipPicker({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 12,
+          color: "var(--color-text-muted)",
+          fontWeight: 500,
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {options.map((opt) => {
+          const active = selected.includes(opt);
+          return (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onChange(toggleArr(selected, opt))}
+              style={{
+                border: active ? "none" : "1px solid var(--color-border)",
+                borderRadius: "var(--radius-full)",
+                padding: "3px 10px",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 500,
+                background: active ? "var(--color-primary)" : "transparent",
+                color: active ? "#fff" : "var(--color-text-muted)",
+                transition: "background 0.15s ease, color 0.15s ease",
+              }}
+            >
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProfileEditor({
+  form,
+  onChange,
+  language,
+}: {
+  form: ProfileFormState;
+  onChange: (f: ProfileFormState) => void;
+  language: AppLanguage;
+}) {
+  const set = (key: keyof ProfileFormState, val: unknown) =>
+    onChange({ ...form, [key]: val });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div>
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--color-text-muted)",
+            fontWeight: 500,
+            marginBottom: 4,
+          }}
+        >
+          {t(language, "qualityProfile.name")}
+        </div>
+        <input
+          style={inputStyle}
+          value={form.name}
+          onChange={(e) => set("name", e.target.value)}
+          placeholder={t(language, "qualityProfile.namePlaceholder")}
+        />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--color-text-muted)",
+              fontWeight: 500,
+              marginBottom: 4,
+            }}
+          >
+            {t(language, "qualityProfile.minResolution")}
+          </div>
+          <select
+            value={form.min_resolution}
+            onChange={(e) => set("min_resolution", e.target.value)}
+            style={selectStyle}
+          >
+            <option value="">
+              {t(language, "qualityProfile.anyResolution")}
+            </option>
+            {RESOLUTION_OPTIONS.filter(Boolean).map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--color-text-muted)",
+              fontWeight: 500,
+              marginBottom: 4,
+            }}
+          >
+            {t(language, "qualityProfile.preferredResolution")}
+          </div>
+          <select
+            value={form.preferred_resolution}
+            onChange={(e) => set("preferred_resolution", e.target.value)}
+            style={selectStyle}
+          >
+            <option value="">
+              {t(language, "qualityProfile.anyResolution")}
+            </option>
+            {RESOLUTION_OPTIONS.filter(Boolean).map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <MultiChipPicker
+        label={t(language, "qualityProfile.preferredCodecs")}
+        options={CODEC_OPTIONS}
+        selected={form.preferred_codecs}
+        onChange={(v) => set("preferred_codecs", v)}
+      />
+      <MultiChipPicker
+        label={t(language, "qualityProfile.preferredAudio")}
+        options={AUDIO_OPTIONS}
+        selected={form.preferred_audio_codecs}
+        onChange={(v) => set("preferred_audio_codecs", v)}
+      />
+      <MultiChipPicker
+        label={t(language, "qualityProfile.preferredRelease")}
+        options={RELEASE_OPTIONS}
+        selected={form.preferred_release_types}
+        onChange={(v) => set("preferred_release_types", v)}
+      />
+      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 13,
+            color: "var(--color-text)",
+          }}
+        >
+          <Toggle
+            checked={form.prefer_hdr}
+            onChange={(v) => set("prefer_hdr", v)}
+          />
+          {t(language, "qualityProfile.preferHdr")}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--color-text-muted)",
+              fontWeight: 500,
+              marginBottom: 4,
+            }}
+          >
+            {t(language, "qualityProfile.minSizeGb")}
+          </div>
+          <input
+            style={{ ...inputStyle, width: 100 }}
+            type="number"
+            min={0}
+            step={0.5}
+            value={form.min_size_gb}
+            onChange={(e) => set("min_size_gb", e.target.value)}
+            placeholder="0"
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--color-text-muted)",
+              fontWeight: 500,
+              marginBottom: 4,
+            }}
+          >
+            {t(language, "qualityProfile.maxSizeGb")}
+          </div>
+          <input
+            style={{ ...inputStyle, width: 100 }}
+            type="number"
+            min={0}
+            step={0.5}
+            value={form.max_size_gb}
+            onChange={(e) => set("max_size_gb", e.target.value)}
+            placeholder="∞"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QualityProfilesSection({ language }: { language: AppLanguage }) {
+  const { profiles, createProfile, updateProfile, deleteProfile } =
+    useQualityProfiles();
+  const [editing, setEditing] = useState<QualityProfile | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState<ProfileFormState>(emptyForm());
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+
+  const formToParams = () => ({
+    name: form.name,
+    min_resolution: form.min_resolution || undefined,
+    preferred_resolution: form.preferred_resolution || undefined,
+    prefer_hdr: form.prefer_hdr,
+    preferred_codecs: JSON.stringify(form.preferred_codecs),
+    preferred_audio_codecs: JSON.stringify(form.preferred_audio_codecs),
+    preferred_release_types: JSON.stringify(form.preferred_release_types),
+    min_size_gb: form.min_size_gb ? parseFloat(form.min_size_gb) : undefined,
+    max_size_gb: form.max_size_gb ? parseFloat(form.max_size_gb) : undefined,
+  });
+
+  const startCreate = () => {
+    setForm(emptyForm());
+    setCreating(true);
+    setEditing(null);
+  };
+
+  const startEdit = (p: QualityProfile) => {
+    setForm(profileToForm(p));
+    setEditing(p);
+    setCreating(false);
+  };
+
+  const cancel = () => {
+    setCreating(false);
+    setEditing(null);
+    setConfirmDelete(null);
+  };
+
+  const save = async () => {
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      if (creating) {
+        await createProfile(formToParams());
+        setCreating(false);
+      } else if (editing) {
+        await updateProfile({ id: editing.id, ...formToParams() });
+        setEditing(null);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (confirmDelete !== id) {
+      setConfirmDelete(id);
+      return;
+    }
+    setDeleting(id);
+    try {
+      await deleteProfile(id);
+    } finally {
+      setDeleting(null);
+      setConfirmDelete(null);
+    }
+  };
+
+  return (
+    <SectionCard
+      icon="activity"
+      title={t(language, "qualityProfile.title")}
+      description={t(language, "qualityProfile.description")}
+      defaultOpen={false}
+    >
+      {/* Profile list */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          marginBottom: 12,
+        }}
+      >
+        {profiles.map((p) => (
+          <div
+            key={p.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 12px",
+              background: "var(--color-surface-2)",
+              borderRadius: "var(--radius)",
+              border:
+                editing?.id === p.id
+                  ? "1px solid var(--color-primary)"
+                  : "1px solid transparent",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: "var(--color-text)",
+                }}
+              >
+                {p.name}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--color-text-muted)",
+                  marginTop: 2,
+                }}
+              >
+                {[
+                  p.min_resolution ? `≥${p.min_resolution}` : null,
+                  p.prefer_hdr ? "HDR" : null,
+                  p.min_size_gb ? `≥${p.min_size_gb}GB` : null,
+                  p.max_size_gb ? `≤${p.max_size_gb}GB` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => startEdit(p)}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius)",
+                color: "var(--color-text-muted)",
+                padding: "3px 10px",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              {t(language, "qualityProfile.edit")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDelete(p.id)}
+              disabled={deleting === p.id}
+              style={{
+                background:
+                  confirmDelete === p.id
+                    ? "var(--color-danger)"
+                    : "transparent",
+                border: `1px solid ${confirmDelete === p.id ? "var(--color-danger)" : "var(--color-border)"}`,
+                borderRadius: "var(--radius)",
+                color: confirmDelete === p.id ? "#fff" : "var(--color-danger)",
+                padding: "3px 10px",
+                cursor: "pointer",
+                fontSize: 12,
+                transition: "background 0.15s ease",
+              }}
+            >
+              {deleting === p.id
+                ? "…"
+                : confirmDelete === p.id
+                  ? t(language, "qualityProfile.confirmDelete")
+                  : t(language, "qualityProfile.delete")}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Inline editor */}
+      {(creating || editing) && (
+        <div
+          style={{
+            padding: 14,
+            background: "var(--color-surface-2)",
+            borderRadius: "var(--radius-lg)",
+            border: "1px solid var(--color-border)",
+            marginBottom: 12,
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 600,
+              fontSize: 13,
+              color: "var(--color-text)",
+              marginBottom: 12,
+            }}
+          >
+            {creating
+              ? t(language, "qualityProfile.newProfile")
+              : `${t(language, "qualityProfile.edit")}: ${editing?.name}`}
+          </div>
+          <ProfileEditor form={form} onChange={setForm} language={language} />
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginTop: 14,
+              justifyContent: "flex-end",
+            }}
+          >
+            <button
+              type="button"
+              onClick={cancel}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius)",
+                color: "var(--color-text-muted)",
+                padding: "6px 14px",
+                cursor: "pointer",
+                fontSize: 13,
+              }}
+            >
+              {t(language, "qualityProfile.cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving || !form.name.trim()}
+              style={{
+                background: "var(--color-primary)",
+                border: "none",
+                borderRadius: "var(--radius)",
+                color: "#fff",
+                padding: "6px 14px",
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              {saving ? "…" : t(language, "qualityProfile.save")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Create button */}
+      {!creating && !editing && (
+        <button
+          type="button"
+          onClick={startCreate}
+          style={{
+            background: "var(--color-primary)",
+            border: "none",
+            borderRadius: "var(--radius)",
+            color: "#fff",
+            padding: "7px 14px",
+            cursor: "pointer",
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          + {t(language, "qualityProfile.newProfile")}
+        </button>
+      )}
+    </SectionCard>
   );
 }
 
@@ -886,6 +1436,9 @@ export default function Settings({
                     : t(language, "settings.themeLightDesc")}
               </div>
             </SectionCard>
+
+            {/* ── Quality Profiles ──────────────────────────────────────────── */}
+            <QualityProfilesSection language={language} />
 
             <SectionCard
               icon="folder"
@@ -1972,23 +2525,14 @@ export default function Settings({
                   style={{ display: "flex", flexDirection: "column", gap: 14 }}
                 >
                   {/* Enable toggle */}
-                  <label
+                  <div
                     style={{
                       display: "flex",
                       alignItems: "center",
+                      justifyContent: "space-between",
                       gap: 10,
-                      cursor: "pointer",
                     }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={webGuiConfig.enabled}
-                      onChange={(e) =>
-                        setWebGuiConfig((c) =>
-                          c ? { ...c, enabled: e.target.checked } : c,
-                        )
-                      }
-                    />
                     <span
                       style={{
                         fontSize: 14,
@@ -1998,7 +2542,13 @@ export default function Settings({
                     >
                       {t(language, "settings.webInterfaceEnable")}
                     </span>
-                  </label>
+                    <Toggle
+                      checked={webGuiConfig.enabled}
+                      onChange={(v) =>
+                        setWebGuiConfig((c) => (c ? { ...c, enabled: v } : c))
+                      }
+                    />
+                  </div>
 
                   {webGuiConfig.enabled && (
                     <div
@@ -2107,23 +2657,14 @@ export default function Settings({
                       </div>
 
                       {/* OTP / SMTP */}
-                      <label
+                      <div
                         style={{
                           display: "flex",
                           alignItems: "center",
+                          justifyContent: "space-between",
                           gap: 10,
-                          cursor: "pointer",
                         }}
                       >
-                        <input
-                          type="checkbox"
-                          checked={webGuiConfig.otp_enabled}
-                          onChange={(e) =>
-                            setWebGuiConfig((c) =>
-                              c ? { ...c, otp_enabled: e.target.checked } : c,
-                            )
-                          }
-                        />
                         <span
                           style={{
                             fontSize: 13,
@@ -2133,7 +2674,15 @@ export default function Settings({
                         >
                           {t(language, "settings.webInterfaceOtp")}
                         </span>
-                      </label>
+                        <Toggle
+                          checked={webGuiConfig.otp_enabled}
+                          onChange={(v) =>
+                            setWebGuiConfig((c) =>
+                              c ? { ...c, otp_enabled: v } : c,
+                            )
+                          }
+                        />
+                      </div>
 
                       {webGuiConfig.otp_enabled && (
                         <div

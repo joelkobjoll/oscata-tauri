@@ -19,6 +19,8 @@ import ActivityLog from "../components/ActivityLog";
 import DetailPanel from "../components/DetailPanel";
 import FixMatchModal from "../components/FixMatchModal";
 import DownloadsTab from "../components/DownloadsTab";
+import WatchlistTab from "../features/watchlist/WatchlistTab";
+import { useWatchlist } from "../features/watchlist/useWatchlist";
 import DownloadFeedbackToast from "../components/DownloadFeedbackToast";
 import IndexErrorToast from "../components/IndexErrorToast";
 import TVShowPanel from "../components/TVShowPanel";
@@ -29,8 +31,8 @@ import { AppLanguage, getLocalizedTitle } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 import { formatBytes } from "../lib/format";
 
-type TabId = "all" | "movie" | "tv" | "documentary" | "downloads";
-type TabIcon = "grid" | "movie" | "tv" | "docs" | "download";
+type TabId = "all" | "movie" | "tv" | "documentary" | "downloads" | "watchlist";
+type TabIcon = "grid" | "movie" | "tv" | "docs" | "download" | "bookmark";
 
 const TABS: { id: TabId; labelKey: string; icon: TabIcon }[] = [
   { id: "all", labelKey: "nav.all", icon: "grid" },
@@ -38,6 +40,7 @@ const TABS: { id: TabId; labelKey: string; icon: TabIcon }[] = [
   { id: "tv", labelKey: "nav.tv", icon: "tv" },
   { id: "documentary", labelKey: "nav.docs", icon: "docs" },
   { id: "downloads", labelKey: "nav.downloads", icon: "download" },
+  { id: "watchlist", labelKey: "nav.watchlist", icon: "bookmark" },
 ];
 
 const defaultFilters = (): Filters => ({
@@ -221,6 +224,7 @@ export default function Library({
     openDownloadFolder,
     deleteDownload,
   } = useDownloads();
+  const watchlist = useWatchlist();
   const downloadMap = useMemo(
     () => new Map(downloads.map((d) => [d.ftp_path, d])),
     [downloads],
@@ -733,6 +737,7 @@ export default function Library({
     tv: t(language, "nav.tv"),
     documentary: t(language, "nav.docs"),
     downloads: t(language, "nav.downloads"),
+    watchlist: t(language, "nav.watchlist"),
   };
 
   useEffect(() => {
@@ -916,7 +921,7 @@ export default function Library({
   ]);
 
   useEffect(() => {
-    if (activeTab === "downloads") return;
+    if (activeTab === "downloads" || activeTab === "watchlist") return;
 
     const triggerRefresh = () => setBadgeRefreshTick((prev) => prev + 1);
     const intervalId = window.setInterval(triggerRefresh, 30000);
@@ -942,7 +947,12 @@ export default function Library({
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeTab === "downloads" || badgePayload.length === 0) return;
+    if (
+      activeTab === "downloads" ||
+      activeTab === "watchlist" ||
+      badgePayload.length === 0
+    )
+      return;
     const startedAt = Date.now();
     const requestId = ++badgeRequestIdRef.current;
     const run = async () => {
@@ -1686,16 +1696,19 @@ export default function Library({
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {/* Filter button — mobile only, opens the filter drawer */}
-            {isMobile && activeTab !== "downloads" && (
-              <button
-                onClick={() => setFilterDrawerOpen(true)}
-                title={t(language, "filter.filters" as never)}
-                style={ghostBtn}
-              >
-                <AppIcon name="filter" size={14} strokeWidth={2.2} />
-              </button>
-            )}
-            {activeTab === "downloads" ? null : selecting ? (
+            {isMobile &&
+              activeTab !== "downloads" &&
+              activeTab !== "watchlist" && (
+                <button
+                  onClick={() => setFilterDrawerOpen(true)}
+                  title={t(language, "filter.filters" as never)}
+                  style={ghostBtn}
+                >
+                  <AppIcon name="filter" size={14} strokeWidth={2.2} />
+                </button>
+              )}
+            {activeTab === "downloads" ||
+            activeTab === "watchlist" ? null : selecting ? (
               <>
                 <span
                   style={{ color: "var(--color-text-muted)", fontSize: 13 }}
@@ -2029,6 +2042,8 @@ export default function Library({
                   deleteDownload={deleteDownload}
                 />
               </div>
+            ) : activeTab === "watchlist" ? (
+              <WatchlistTab watchlist={watchlist} language={language} />
             ) : (
               <>
                 {mediaContent}
@@ -2232,6 +2247,9 @@ export default function Library({
           isDownloadPending={isDownloadPending}
           onRetry={retryDownload}
           onDevCheckInLibrary={recheckBadgeForItem}
+          watchlistedTmdbIds={watchlist.watchlistedTmdbIds}
+          onAddToWatchlist={watchlist.add}
+          onOpenWatchlist={() => setActiveTab("watchlist")}
         />
       )}
 
@@ -2247,6 +2265,9 @@ export default function Library({
           isDownloadPending={isDownloadPending}
           downloadedBadgeMap={badgeMap}
           onDevCheckInLibrary={recheckBadgeForItem}
+          watchlistedTmdbIds={watchlist.watchlistedTmdbIds}
+          onAddToWatchlist={watchlist.add}
+          onOpenWatchlist={() => setActiveTab("watchlist")}
           onFixMatch={(episodes) => {
             const [first] = episodes;
             setFixMatchRequest({

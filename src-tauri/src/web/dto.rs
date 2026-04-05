@@ -136,4 +136,57 @@ pub struct ApplyMatchRequest {
 
 // ── Media actions ────────────────────────────────────────────────────────────
 
+// ── Watchlist ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct AddWatchlistRequest {
+    pub tmdb_id: i64,
+    pub tmdb_type: String,
+    pub title: String,
+    pub title_en: Option<String>,
+    pub poster: Option<String>,
+    pub overview: Option<String>,
+    pub overview_en: Option<String>,
+    pub status: Option<String>,
+    pub release_date: Option<String>,
+    pub year: Option<i64>,
+    pub latest_season: Option<i64>,
+    pub scope: Option<String>,
+    pub auto_download: Option<bool>,
+    pub profile_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateWatchlistRequest {
+    pub scope: String,
+    pub auto_download: bool,
+    pub profile_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateQualityProfileRequest {
+    pub name: String,
+    pub min_resolution: Option<String>,
+    pub preferred_resolution: Option<String>,
+    pub prefer_hdr: bool,
+    pub preferred_codecs: String,
+    pub preferred_audio_codecs: String,
+    pub preferred_release_types: String,
+    pub min_size_gb: Option<f64>,
+    pub max_size_gb: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateQualityProfileRequest {
+    pub name: String,
+    pub min_resolution: Option<String>,
+    pub preferred_resolution: Option<String>,
+    pub prefer_hdr: bool,
+    pub preferred_codecs: String,
+    pub preferred_audio_codecs: String,
+    pub preferred_release_types: String,
+    pub min_size_gb: Option<f64>,
+    pub max_size_gb: Option<f64>,
+}
+
 

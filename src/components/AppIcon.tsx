@@ -1,5 +1,6 @@
 import {
   Activity,
+  Bookmark,
   Check,
   CheckSquare,
   ChevronDown,
@@ -54,7 +55,8 @@ export type IconName =
   | "moon"
   | "sun"
   | "monitor"
-  | "filter";
+  | "filter"
+  | "bookmark";
 
 const ICON_MAP: Record<IconName, React.ComponentType<LucideProps>> = {
   grid: LayoutGrid,
@@ -83,6 +85,7 @@ const ICON_MAP: Record<IconName, React.ComponentType<LucideProps>> = {
   sun: Sun,
   monitor: Monitor,
   filter: Filter,
+  bookmark: Bookmark,
 };
 
 export default function AppIcon({

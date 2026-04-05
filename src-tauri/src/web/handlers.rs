@@ -491,10 +491,12 @@ pub async fn start_indexing_handler(
         return Ok(Json(serde_json::json!({"running": true, "message": "Already in progress"})));
     }
     let db = state.db.clone();
+    let queue = state.queue.clone();
     let window = state.app_handle.get_webview_window("main");
     tauri::async_runtime::spawn(async move {
         crate::INDEXING_RUNNING.store(true, Ordering::SeqCst);
-        crate::commands::start_indexing_internal(db, window).await.ok();
+        crate::commands::start_indexing_internal(db.clone(), window.clone()).await.ok();
+        crate::commands::trigger_watchlist_auto_downloads(db, queue, window).await;
         crate::INDEXING_RUNNING.store(false, Ordering::SeqCst);
     });
     Ok(Json(serde_json::json!({"running": true, "message": "Indexing started"})))
@@ -592,6 +594,148 @@ pub async fn search_tmdb_handler(
     ).await.map_err(ApiError::from)?;
     let _ = year; // year filtering can be added client-side
     Ok(Json(results))
+}
+
+// ── Watchlist ─────────────────────────────────────────────────────────────────
+
+pub async fn get_watchlist_handler(
+    AuthUser(u): AuthUser,
+    State(state): State<AppState>,
+) -> ApiResult<Json<Vec<crate::db::WatchlistItem>>> {
+    let items = state.db.get_watchlist(u.id).map_err(ApiError::from)?;
+    Ok(Json(items))
+}
+
+pub async fn add_watchlist_handler(
+    AuthUser(u): AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<AddWatchlistRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let auto_download = body.auto_download.unwrap_or(false);
+    let id = state.db.add_watchlist_item(
+        u.id,
+        body.tmdb_id,
+        &body.tmdb_type,
+        &body.title,
+        body.title_en.as_deref(),
+        body.poster.as_deref(),
+        body.overview.as_deref(),
+        body.overview_en.as_deref(),
+        body.status.as_deref(),
+        body.release_date.as_deref(),
+        body.year,
+        body.latest_season,
+        body.scope.as_deref().unwrap_or("all"),
+        auto_download,
+        body.profile_id.unwrap_or(1),
+    ).map_err(ApiError::from)?;
+
+    // If auto-download is on, check already-indexed files for matches immediately.
+    if auto_download {
+        let db = state.db.clone();
+        let queue = state.queue.clone();
+        let window = state.app_handle.get_webview_window("main")
+            .filter(|w| w.is_visible().ok().unwrap_or(false));
+        tokio::spawn(async move {
+            crate::commands::trigger_watchlist_auto_downloads(db, queue, window).await;
+        });
+    }
+
+    Ok(Json(serde_json::json!({ "id": id })))
+}
+
+pub async fn remove_watchlist_handler(
+    AuthUser(u): AuthUser,
+    Path(id): Path<i64>,
+    State(state): State<AppState>,
+) -> ApiResult<Json<Value>> {
+    state.db.remove_watchlist_item(id, u.id).map_err(ApiError::from)?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+pub async fn update_watchlist_handler(
+    AuthUser(u): AuthUser,
+    Path(id): Path<i64>,
+    State(state): State<AppState>,
+    Json(body): Json<UpdateWatchlistRequest>,
+) -> ApiResult<Json<Value>> {
+    state.db.update_watchlist_item(id, u.id, &body.scope, body.auto_download, body.profile_id.unwrap_or(1)).map_err(ApiError::from)?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+pub async fn check_watchlist_handler(
+    AuthUser(u): AuthUser,
+    Path(tmdb_id): Path<i64>,
+    State(state): State<AppState>,
+) -> ApiResult<Json<Option<crate::db::WatchlistItem>>> {
+    let item = state.db.check_watchlist_item(tmdb_id, u.id).map_err(ApiError::from)?;
+    Ok(Json(item))
+}
+
+pub async fn watchlist_coverage_handler(
+    AuthUser(_u): AuthUser,
+    Path(tmdb_id): Path<i64>,
+    State(state): State<AppState>,
+) -> ApiResult<Json<Vec<crate::db::WatchlistCoverageItem>>> {
+    let items = state.db.get_watchlist_library_coverage(tmdb_id).map_err(ApiError::from)?;
+    Ok(Json(items))
+}
+
+pub async fn get_profiles_handler(
+    AuthUser(_u): AuthUser,
+    State(state): State<AppState>,
+) -> ApiResult<Json<Vec<crate::db::QualityProfile>>> {
+    let profiles = state.db.get_quality_profiles().map_err(ApiError::from)?;
+    Ok(Json(profiles))
+}
+
+pub async fn create_profile_handler(
+    AuthUser(_u): AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<CreateQualityProfileRequest>,
+) -> ApiResult<Json<crate::db::QualityProfile>> {
+    let profile = state.db.create_quality_profile(
+        &body.name,
+        body.min_resolution.as_deref(),
+        body.preferred_resolution.as_deref(),
+        body.prefer_hdr,
+        &body.preferred_codecs,
+        &body.preferred_audio_codecs,
+        &body.preferred_release_types,
+        body.min_size_gb,
+        body.max_size_gb,
+    ).map_err(ApiError::from)?;;
+    Ok(Json(profile))
+}
+
+pub async fn update_profile_handler(
+    AuthUser(_u): AuthUser,
+    Path(id): Path<i64>,
+    State(state): State<AppState>,
+    Json(body): Json<UpdateQualityProfileRequest>,
+) -> ApiResult<Json<Value>> {
+    state.db.update_quality_profile(
+        id,
+        &body.name,
+        body.min_resolution.as_deref(),
+        body.preferred_resolution.as_deref(),
+        body.prefer_hdr,
+        &body.preferred_codecs,
+        &body.preferred_audio_codecs,
+        &body.preferred_release_types,
+        body.min_size_gb,
+        body.max_size_gb,
+    ).map_err(ApiError::from)?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+pub async fn delete_profile_handler(
+    AuthUser(_u): AuthUser,
+    Path(id): Path<i64>,
+    State(state): State<AppState>,
+) -> ApiResult<Json<Value>> {
+    state.db.delete_quality_profile(id).map_err(ApiError::from)?;
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 // ── SMTP test ─────────────────────────────────────────────────────────────────

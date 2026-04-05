@@ -10,6 +10,8 @@ import {
   getLocalizedTitle,
 } from "../utils/mediaLanguage";
 import { formatBytes } from "../lib/format";
+import WatchlistButton from "../features/watchlist/WatchlistButton";
+import type { AddWatchlistParams } from "../features/watchlist/types";
 
 interface Props {
   item: MediaItem;
@@ -25,6 +27,9 @@ interface Props {
   showFileSize?: boolean;
   onDownload: (item: MediaItem) => void;
   onSelect?: (item: MediaItem) => void;
+  watchlistedTmdbIds?: Set<number>;
+  onAddToWatchlist?: (params: AddWatchlistParams) => Promise<void>;
+  onOpenWatchlist?: () => void;
 }
 
 const RELEASE_TYPE_COLORS: Record<string, string> = {
@@ -148,6 +153,9 @@ function MediaCard({
   showFileSize = false,
   onDownload: _onDownload,
   onSelect,
+  watchlistedTmdbIds,
+  onAddToWatchlist,
+  onOpenWatchlist,
 }: Props) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const isTV =
@@ -313,6 +321,37 @@ function MediaCard({
             )}
           </div>
         )}
+
+        {/* Watchlist button — top-right when no other badges */}
+        {item.tmdb_id != null &&
+          watchlistedTmdbIds !== undefined &&
+          onAddToWatchlist !== undefined && (
+            <div
+              style={{
+                position: "absolute",
+                top: "0.4rem",
+                right: "0.4rem",
+                zIndex: 5,
+              }}
+            >
+              <WatchlistButton
+                tmdbId={item.tmdb_id}
+                tmdbType={
+                  item.tmdb_type === "tv" || item.media_type === "tv"
+                    ? "tv"
+                    : "movie"
+                }
+                title={item.tmdb_title ?? item.title ?? item.filename}
+                titleEn={item.tmdb_title ?? undefined}
+                poster={item.tmdb_poster ?? undefined}
+                year={item.year ?? undefined}
+                language={language}
+                watchlistedTmdbIds={watchlistedTmdbIds}
+                onAdd={onAddToWatchlist}
+                onNavigateToWatchlist={onOpenWatchlist}
+              />
+            </div>
+          )}
 
         {/* Resolution + HDR badges bottom-right */}
         <div

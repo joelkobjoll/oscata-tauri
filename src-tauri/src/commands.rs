@@ -2093,6 +2093,440 @@ pub async fn init_webgui_now(
     Ok(())
 }
 
+// ── Watchlist commands ───────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_watchlist(
+    state: tauri::State<'_, crate::db::Db>,
+) -> Result<Vec<crate::db::WatchlistItem>, String> {
+    state.get_watchlist(0)
+}
+
+#[tauri::command]
+pub async fn add_to_watchlist(
+    state: tauri::State<'_, crate::db::Db>,
+    queue_state: tauri::State<'_, crate::downloads::SharedQueue>,
+    app: tauri::AppHandle,
+    tmdb_id: i64,
+    tmdb_type: String,
+    title: String,
+    title_en: Option<String>,
+    poster: Option<String>,
+    overview: Option<String>,
+    overview_en: Option<String>,
+    status: Option<String>,
+    release_date: Option<String>,
+    year: Option<i64>,
+    latest_season: Option<i64>,
+    scope: String,
+    auto_download: bool,
+    profile_id: Option<i64>,
+) -> Result<i64, String> {
+    let resolved_profile_id = profile_id.unwrap_or_else(|| {
+        state.get_quality_profiles().ok()
+            .and_then(|ps| ps.into_iter().next())
+            .map(|p| p.id)
+            .unwrap_or(1)
+    });
+    let id = state.add_watchlist_item(
+        0,
+        tmdb_id,
+        &tmdb_type,
+        &title,
+        title_en.as_deref(),
+        poster.as_deref(),
+        overview.as_deref(),
+        overview_en.as_deref(),
+        status.as_deref(),
+        release_date.as_deref(),
+        year,
+        latest_season,
+        &scope,
+        auto_download,
+        resolved_profile_id,
+    )?;
+
+    // If auto-download is enabled, immediately check whether any already-indexed
+    // files match this new watchlist entry and queue them.
+    if auto_download {
+        let db = state.inner().clone();
+        let queue = queue_state.inner().clone();
+        let window = app.get_webview_window("main")
+            .filter(|w| w.is_visible().ok().unwrap_or(false));
+        tokio::spawn(async move {
+            trigger_watchlist_auto_downloads(db, queue, window).await;
+        });
+    }
+
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn remove_from_watchlist(
+    state: tauri::State<'_, crate::db::Db>,
+    id: i64,
+) -> Result<(), String> {
+    state.remove_watchlist_item(id, 0)
+}
+
+#[tauri::command]
+pub async fn update_watchlist_item(
+    state: tauri::State<'_, crate::db::Db>,
+    id: i64,
+    scope: String,
+    auto_download: bool,
+    profile_id: Option<i64>,
+) -> Result<(), String> {
+    state.update_watchlist_item(id, 0, &scope, auto_download, profile_id.unwrap_or(1))
+}
+
+#[tauri::command]
+pub async fn get_quality_profiles(
+    state: tauri::State<'_, crate::db::Db>,
+) -> Result<Vec<crate::db::QualityProfile>, String> {
+    state.get_quality_profiles()
+}
+
+#[tauri::command]
+pub async fn create_quality_profile(
+    state: tauri::State<'_, crate::db::Db>,
+    name: String,
+    min_resolution: Option<String>,
+    preferred_resolution: Option<String>,
+    prefer_hdr: bool,
+    preferred_codecs: String,
+    preferred_audio_codecs: String,
+    preferred_release_types: String,
+    min_size_gb: Option<f64>,
+    max_size_gb: Option<f64>,
+) -> Result<crate::db::QualityProfile, String> {
+    state.create_quality_profile(
+        &name,
+        min_resolution.as_deref(),
+        preferred_resolution.as_deref(),
+        prefer_hdr,
+        &preferred_codecs,
+        &preferred_audio_codecs,
+        &preferred_release_types,
+        min_size_gb,
+        max_size_gb,
+    )
+}
+
+#[tauri::command]
+pub async fn update_quality_profile(
+    state: tauri::State<'_, crate::db::Db>,
+    id: i64,
+    name: String,
+    min_resolution: Option<String>,
+    preferred_resolution: Option<String>,
+    prefer_hdr: bool,
+    preferred_codecs: String,
+    preferred_audio_codecs: String,
+    preferred_release_types: String,
+    min_size_gb: Option<f64>,
+    max_size_gb: Option<f64>,
+) -> Result<(), String> {
+    state.update_quality_profile(
+        id,
+        &name,
+        min_resolution.as_deref(),
+        preferred_resolution.as_deref(),
+        prefer_hdr,
+        &preferred_codecs,
+        &preferred_audio_codecs,
+        &preferred_release_types,
+        min_size_gb,
+        max_size_gb,
+    )
+}
+
+#[tauri::command]
+pub async fn delete_quality_profile(
+    state: tauri::State<'_, crate::db::Db>,
+    id: i64,
+) -> Result<(), String> {
+    state.delete_quality_profile(id)
+}
+
+#[tauri::command]
+pub async fn check_watchlist_item(
+    state: tauri::State<'_, crate::db::Db>,
+    tmdb_id: i64,
+) -> Result<Option<crate::db::WatchlistItem>, String> {
+    state.check_watchlist_item(tmdb_id, 0)
+}
+
+#[tauri::command]
+pub async fn get_watchlist_coverage(
+    state: tauri::State<'_, crate::db::Db>,
+    tmdb_id: i64,
+) -> Result<Vec<crate::db::WatchlistCoverageItem>, String> {
+    state.get_watchlist_library_coverage(tmdb_id)
+}
+
+/// After indexing completes, enqueue FTP files that match a watchlist entry
+/// with `auto_download = 1` and are not already queued or being downloaded.
+pub async fn trigger_watchlist_auto_downloads(
+    db: crate::db::Db,
+    queue: crate::downloads::SharedQueue,
+    window: Option<tauri::WebviewWindow>,
+) {
+    // ── Quality helpers ────────────────────────────────────────────────────
+    fn resolution_score(res: Option<&str>) -> u32 {
+        let r = res.unwrap_or("").to_lowercase();
+        if r.contains("2160") || r.contains("4k") || r.contains("uhd") { 4 }
+        else if r.contains("1080") { 3 }
+        else if r.contains("720") { 2 }
+        else if !r.is_empty() { 1 }
+        else { 0 }
+    }
+
+    fn base_release_score(rt: Option<&str>) -> u32 {
+        let r = rt.unwrap_or("");
+        if r.contains("REMUX") || r.contains("BDREMUX") { 5 }
+        else if r.contains("BluRay") || r.contains("Blu-ray") { 4 }
+        else if r.contains("WEB-DL") { 3 }
+        else if r.contains("WEBRip") { 2 }
+        else if r.contains("HDTV") { 1 }
+        else { 0 }
+    }
+
+    fn meets_min_resolution(res: Option<&str>, min: Option<&str>) -> bool {
+        match min {
+            None | Some("") => true,
+            // Unknown resolution → give benefit of the doubt rather than hard-reject.
+            Some(_) if res.map(|r| r.is_empty()).unwrap_or(true) => true,
+            Some(min_res) => resolution_score(res) >= resolution_score(Some(min_res)),
+        }
+    }
+
+    fn score_candidate(
+        item: &crate::db::WatchlistAutoItem,
+        profile: &crate::db::QualityProfile,
+    ) -> Option<u32> {
+        // Hard filter: minimum resolution
+        if !meets_min_resolution(item.resolution.as_deref(), profile.min_resolution.as_deref()) {
+            return None;
+        }
+        // Hard filter: min file size
+        if let (Some(min_gb), Some(bytes)) = (profile.min_size_gb, item.size_bytes) {
+            if bytes < (min_gb * 1024.0 * 1024.0 * 1024.0) as i64 {
+                return None;
+            }
+        }
+        // Hard filter: max file size
+        if let (Some(max_gb), Some(bytes)) = (profile.max_size_gb, item.size_bytes) {
+            if bytes > (max_gb * 1024.0 * 1024.0 * 1024.0) as i64 {
+                return None;
+            }
+        }
+
+        let mut score: u32 = 0;
+
+        // Resolution scoring
+        if let Some(ref pref) = profile.preferred_resolution {
+            if item.resolution.as_deref()
+                .map(|r| r.eq_ignore_ascii_case(pref))
+                .unwrap_or(false)
+            {
+                score += 1000;
+            } else {
+                score += resolution_score(item.resolution.as_deref()) * 100;
+            }
+        } else {
+            score += resolution_score(item.resolution.as_deref()) * 100;
+        }
+
+        // HDR preference
+        if profile.prefer_hdr && item.hdr.is_some() {
+            score += 200;
+        }
+
+        // Preferred release types (ordered list — earlier = better)
+        let rel_types: Vec<String> =
+            serde_json::from_str(&profile.preferred_release_types).unwrap_or_default();
+        if !rel_types.is_empty() {
+            if let Some(pos) = rel_types.iter().position(|t| {
+                item.release_type
+                    .as_deref()
+                    .map(|r| r.contains(t.as_str()))
+                    .unwrap_or(false)
+            }) {
+                score += (rel_types.len() - pos) as u32 * 50;
+            }
+        } else {
+            score += base_release_score(item.release_type.as_deref()) * 50;
+        }
+
+        // Preferred codecs
+        let codecs: Vec<String> =
+            serde_json::from_str(&profile.preferred_codecs).unwrap_or_default();
+        if !codecs.is_empty() {
+            if let Some(pos) = codecs.iter().position(|c| {
+                item.codec
+                    .as_deref()
+                    .map(|k| k.eq_ignore_ascii_case(c))
+                    .unwrap_or(false)
+            }) {
+                score += (codecs.len() - pos) as u32 * 30;
+            }
+        }
+
+        // Preferred audio codecs
+        let audio: Vec<String> =
+            serde_json::from_str(&profile.preferred_audio_codecs).unwrap_or_default();
+        if !audio.is_empty() {
+            if let Some(pos) = audio.iter().position(|a| {
+                item.audio_codec
+                    .as_deref()
+                    .map(|k| k.eq_ignore_ascii_case(a))
+                    .unwrap_or(false)
+            }) {
+                score += (audio.len() - pos) as u32 * 20;
+            }
+        }
+
+        Some(score)
+    }
+
+    let profiles: std::collections::HashMap<i64, crate::db::QualityProfile> =
+        match db.get_quality_profiles() {
+            Ok(ps) => ps.into_iter().map(|p| (p.id, p)).collect(),
+            Err(e) => {
+                eprintln!("[watchlist] auto-download: could not load profiles: {e}");
+                return;
+            }
+        };
+    // "Any" fallback profile (id=1 or bare minimum)
+    let fallback_profile = crate::db::QualityProfile {
+        id: 0, name: "Any".into(), min_resolution: None, preferred_resolution: None,
+        prefer_hdr: false, preferred_codecs: "[]".into(), preferred_audio_codecs: "[]".into(),
+        preferred_release_types: "[]".into(), min_size_gb: None, max_size_gb: None, is_builtin: false,
+        created_at: String::new(),
+    };
+
+    let config = match db.load_config() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[watchlist] auto-download: could not load config: {e}");
+            return;
+        }
+    };
+    let candidates = match db.get_watchlist_auto_download_candidates() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[watchlist] auto-download: could not get candidates: {e}");
+            return;
+        }
+    };
+    println!("[watchlist] auto-download: {} candidate file(s) matched watchlist entries", candidates.len());
+
+    // Group candidates by (tmdb_id, season, episode) so we pick the best
+    // quality version for each distinct piece of content.
+    use std::collections::HashMap;
+    type GroupKey = (i64, Option<i64>, Option<i64>);
+    let mut groups: HashMap<GroupKey, Vec<crate::db::WatchlistAutoItem>> = HashMap::new();
+    for item in candidates {
+        let key = (item.tmdb_id, item.season, item.episode);
+        groups.entry(key).or_default().push(item);
+    }
+
+    for (_key, group) in groups {
+        // All items in a group share the same watchlist entry → same profile.
+        let profile_id = group[0].profile_id;
+        let profile = profiles.get(&profile_id).unwrap_or(&fallback_profile);
+
+        // Score every candidate; discard those that fail hard filters.
+        let mut scored: Vec<(u32, usize)> = group
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| {
+                let s = score_candidate(c, profile);
+                if s.is_none() {
+                    println!("[watchlist] auto-download: '{}' rejected by quality profile '{}' (res={:?})",
+                        c.filename, profile.name, c.resolution);
+                }
+                s.map(|score| (score, i))
+            })
+            .collect();
+        if scored.is_empty() {
+            continue;
+        }
+        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        let item = &group[scored[0].1];
+
+        // Skip if already Queued or Downloading
+        {
+            let q = queue.lock().unwrap();
+            if q.find_active_by_ftp_path(&item.ftp_path).is_some() {
+                println!("[watchlist] auto-download: '{}' already in queue, skipping", item.filename);
+                continue;
+            }
+        }
+
+        let local_path = match compute_local_path(
+            &config,
+            &item.ftp_path,
+            &item.filename,
+            item.media_type.as_deref(),
+            item.tmdb_genres.as_deref(),
+        ) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[watchlist] auto-download: local_path error for {}: {e}", item.ftp_path);
+                continue;
+            }
+        };
+
+        // Skip if file already exists at destination
+        if local_path.exists() {
+            println!("[watchlist] auto-download: '{}' already exists at '{}', skipping",
+                item.filename, local_path.display());
+            continue;
+        }
+
+        if let Some(parent) = local_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+
+        let local_str = local_path.to_string_lossy().to_string();
+        let (id, semaphore, cancel_flag) = {
+            let mut q = queue.lock().unwrap();
+            q.add(
+                item.ftp_path.clone(),
+                item.filename.clone(),
+                local_str.clone(),
+                item.media_title.clone(),
+            )
+        };
+
+        persist_download_state(&db, &queue);
+
+        if let Some(ref w) = window {
+            let q = queue.lock().unwrap();
+            if let Some(download_item) = q.items.iter().find(|i| i.id == id).cloned() {
+                drop(q);
+                w.emit("download:added", &download_item).ok();
+            }
+        }
+
+        spawn_download_job_pub(
+            db.clone(),
+            queue.clone(),
+            window.clone(),
+            config.clone(),
+            id,
+            item.ftp_path.clone(),
+            local_str,
+            semaphore,
+            cancel_flag,
+        );
+
+        println!("[watchlist] auto-queued (profile_id={profile_id}): {}", item.ftp_path);
+    }
+}
+
 // ── Fix 4: indexing loop decoupling tests ────────────────────────────────────
 //
 // `start_indexing_internal` requires a live FTP connection and a Tauri

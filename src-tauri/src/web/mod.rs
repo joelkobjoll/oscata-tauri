@@ -115,6 +115,12 @@ fn build_router(state: AppState) -> Router {
         .route("/settings/smtp-test",      post(handlers::smtp_test_handler))
         .route("/webgui/config",           get(handlers::get_webgui_config_handler).put(handlers::put_webgui_config_handler))
         .route("/tmdb/search",             post(handlers::search_tmdb_handler))
+        .route("/watchlist",               get(handlers::get_watchlist_handler).post(handlers::add_watchlist_handler))
+        .route("/watchlist/{id}",          delete(handlers::remove_watchlist_handler).put(handlers::update_watchlist_handler))
+        .route("/watchlist/check/{tmdb_id}", get(handlers::check_watchlist_handler))
+        .route("/watchlist/{tmdb_id}/coverage", get(handlers::watchlist_coverage_handler))
+        .route("/quality-profiles",             get(handlers::get_profiles_handler).post(handlers::create_profile_handler))
+        .route("/quality-profiles/{id}",        put(handlers::update_profile_handler).delete(handlers::delete_profile_handler))
         .layer(auth_mw)
         .with_state(api_state);
 
