@@ -419,6 +419,13 @@ export default function Library({
     }
   };
 
+  const handleNavigateFromWatchlist = (tmdbId: number, mediaType: string) => {
+    const targetTab = mediaType === "movie" ? "movie" : "tv";
+    setActiveTab(targetTab);
+    const found = items.find((i) => i.tmdb_id === tmdbId);
+    if (found) handleCardSelect(found);
+  };
+
   const handleDownloadSeason = async (episodes: MediaItem[]) => {
     for (const ep of episodes) {
       const existingDownload = downloadMap.get(ep.ftp_path);
@@ -2098,7 +2105,11 @@ export default function Library({
                 />
               </div>
             ) : activeTab === "watchlist" ? (
-              <WatchlistTab watchlist={watchlist} language={language} />
+              <WatchlistTab
+                watchlist={watchlist}
+                language={language}
+                onNavigateToItem={handleNavigateFromWatchlist}
+              />
             ) : (
               <>
                 {mediaContent}

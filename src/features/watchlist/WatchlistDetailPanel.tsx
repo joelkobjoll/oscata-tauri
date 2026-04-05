@@ -3,7 +3,6 @@ import { CalendarClock, Check, ExternalLink, Server } from "lucide-react";
 import type { TmdbSeason, WatchlistCoverageItem, WatchlistItem } from "./types";
 import type { AppLanguage } from "../../utils/mediaLanguage";
 import { t } from "../../utils/i18n";
-import { call } from "../../lib/transport";
 import { useQualityProfiles } from "./useQualityProfiles";
 import Toggle from "../../components/Toggle";
 
@@ -55,8 +54,12 @@ function resolutionRank(res: string | null | undefined): number {
   return 0; // SD / unknown
 }
 
-function sortByResolution(items: WatchlistCoverageItem[]): WatchlistCoverageItem[] {
-  return [...items].sort((a, b) => resolutionRank(a.resolution) - resolutionRank(b.resolution));
+function sortByResolution(
+  items: WatchlistCoverageItem[],
+): WatchlistCoverageItem[] {
+  return [...items].sort(
+    (a, b) => resolutionRank(a.resolution) - resolutionRank(b.resolution),
+  );
 }
 
 export default function WatchlistDetailPanel({
@@ -609,8 +612,9 @@ export default function WatchlistDetailPanel({
                       key={season.season_number}
                       season={season}
                       coverageByEp={coverageByEp}
-                      downloadingPaths={downloadingPaths}
-                      onDownload={handleDownload}
+                      onNavigateToItem={onNavigateToItem}
+                      tmdbId={item.tmdb_id}
+                      mediaType={item.tmdb_type ?? "tv"}
                       language={language}
                     />
                   ))}
@@ -656,16 +660,18 @@ export default function WatchlistDetailPanel({
 interface SeasonSectionProps {
   season: TmdbSeason;
   coverageByEp: Map<string, WatchlistCoverageItem[]>;
-  downloadingPaths: Set<string>;
-  onDownload: (c: WatchlistCoverageItem) => void;
+  onNavigateToItem?: (tmdbId: number, mediaType: string) => void;
+  tmdbId: number;
+  mediaType: string;
   language: AppLanguage;
 }
 
 function SeasonSection({
   season,
   coverageByEp,
-  downloadingPaths,
-  onDownload,
+  onNavigateToItem,
+  tmdbId,
+  mediaType,
   language,
 }: SeasonSectionProps) {
   const [open, setOpen] = useState(true);
@@ -734,8 +740,12 @@ function SeasonSection({
           {season.episodes.map((ep, i) => {
             const key = `${season.season_number},${ep.episode_number}`;
             const epFiles = coverageByEp.get(key) ?? [];
-            const downloadedFiles = sortByResolution(epFiles.filter((c) => c.downloaded));
-            const ftpFiles = sortByResolution(epFiles.filter((c) => !c.downloaded));
+            const downloadedFiles = sortByResolution(
+              epFiles.filter((c) => c.downloaded),
+            );
+            const ftpFiles = sortByResolution(
+              epFiles.filter((c) => !c.downloaded),
+            );
             const inLibrary = downloadedFiles.length > 0;
             const hasOnServer = ftpFiles.length > 0 && !inLibrary;
             const isFuture = ep.air_date != null && ep.air_date > today;
@@ -861,51 +871,51 @@ function SeasonSection({
                       style={{
                         fontSize: 10,
                         fontWeight: 600,
-                        background: "color-mix(in srgb, var(--color-success) 18%, transparent)",
+                        background:
+                          "color-mix(in srgb, var(--color-success) 18%, transparent)",
                         color: "var(--color-success)",
                         borderRadius: "var(--radius-full)",
                         padding: "2px 7px",
                         whiteSpace: "nowrap",
-                        border: "1px solid color-mix(in srgb, var(--color-success) 35%, transparent)",
+                        border:
+                          "1px solid color-mix(in srgb, var(--color-success) 35%, transparent)",
                       }}
                     >
                       ✓ {c.resolution ?? "SD"}
                     </span>
                   ))}
-                  {/* FTP-available version pills — each triggers a targeted download */}
-                  {ftpFiles.map((c) => {
-                    const queued = downloadingPaths.has(c.ftp_path);
-                    return (
-                      <button
-                        key={c.ftp_path}
-                        onClick={() => !queued && onDownload(c)}
-                        disabled={queued}
-                        title={c.filename}
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 600,
-                          background: queued
-                            ? "var(--color-surface-2)"
-                            : "color-mix(in srgb, var(--color-primary) 15%, transparent)",
-                          color: queued
-                            ? "var(--color-text-muted)"
-                            : "var(--color-primary)",
-                          border: `1px solid color-mix(in srgb, var(--color-primary) ${queued ? "20%" : "55%"}, transparent)`,
-                          borderRadius: "var(--radius-full)",
-                          padding: "2px 7px",
-                          cursor: queued ? "default" : "pointer",
-                          whiteSpace: "nowrap",
-                          transition: "background 0.15s ease",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 3,
-                        }}
-                      >
-                        {queued ? "…" : <Download size={9} strokeWidth={2.5} />}
-                        {c.resolution ?? "SD"}
-                      </button>
-                    );
-                  })}
+                  {/* FTP-available version pills — each navigates to library detail */}
+                  {ftpFiles.map((c) => (
+                    <button
+                      key={c.ftp_path}
+                      onClick={() => onNavigateToItem?.(tmdbId, mediaType)}
+                      title={
+                        language === "es"
+                          ? "Ver en biblioteca"
+                          : "View in library"
+                      }
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        background:
+                          "color-mix(in srgb, var(--color-primary) 15%, transparent)",
+                        color: "var(--color-primary)",
+                        border:
+                          "1px solid color-mix(in srgb, var(--color-primary) 55%, transparent)",
+                        borderRadius: "var(--radius-full)",
+                        padding: "2px 7px",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        transition: "background 0.15s ease",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 3,
+                      }}
+                    >
+                      <ExternalLink size={9} strokeWidth={2.5} />
+                      {c.resolution ?? "SD"}
+                    </button>
+                  ))}
                 </span>
               </div>
             );

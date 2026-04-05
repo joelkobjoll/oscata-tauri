@@ -9,6 +9,7 @@ import WatchlistDetailPanel from "./WatchlistDetailPanel";
 interface WatchlistTabProps {
   watchlist: UseWatchlistReturn;
   language: AppLanguage;
+  onNavigateToItem?: (tmdbId: number, mediaType: string) => void;
 }
 
 type TypeFilter = "all" | "movie" | "tv";
@@ -17,6 +18,7 @@ type StatusFilter = "all" | "pending" | "available";
 export default function WatchlistTab({
   watchlist,
   language,
+  onNavigateToItem,
 }: WatchlistTabProps) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -258,6 +260,10 @@ export default function WatchlistTab({
           onUpdate={handleUpdate}
           getCoverage={watchlist.getCoverage}
           getSeasons={watchlist.getSeasons}
+          onNavigateToItem={(tmdbId, mediaType) => {
+            setSelected(null);
+            onNavigateToItem?.(tmdbId, mediaType);
+          }}
         />
       )}
     </div>
