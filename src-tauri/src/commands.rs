@@ -1744,15 +1744,15 @@ pub async fn refresh_all_metadata_internal(
             if item.tmdb_id.is_none() {
                 return true;
             }
-            // Include matched items that are missing any metadata field
+            // Include matched items that are missing core display fields.
+            // imdb_id, tmdb_title_en, tmdb_overview_en, tmdb_poster_en are intentionally
+            // excluded: they are legitimately absent for many items (TV shows have no IMDb ID,
+            // non-English originals have no _en variant). Including them caused the same
+            // items to be re-fetched every 15 minutes in an infinite loop.
             item.tmdb_title.as_deref().unwrap_or("").is_empty()
-                || item.tmdb_title_en.as_deref().unwrap_or("").is_empty()
-                || item.tmdb_overview.as_deref().unwrap_or("").is_empty()
-                || item.tmdb_overview_en.as_deref().unwrap_or("").is_empty()
                 || item.tmdb_poster.as_deref().unwrap_or("").is_empty()
-                || item.tmdb_poster_en.as_deref().unwrap_or("").is_empty()
+                || item.tmdb_overview.as_deref().unwrap_or("").is_empty()
                 || item.tmdb_release_date.as_deref().unwrap_or("").is_empty()
-                || item.imdb_id.as_deref().unwrap_or("").is_empty()
                 || item.tmdb_rating.is_none()
                 || item.tmdb_genres.as_deref().unwrap_or("").is_empty()
         })
