@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Check, Download, Server } from "lucide-react";
+import { CalendarClock, Check, ExternalLink, Server } from "lucide-react";
 import type { TmdbSeason, WatchlistCoverageItem, WatchlistItem } from "./types";
 import type { AppLanguage } from "../../utils/mediaLanguage";
 import { t } from "../../utils/i18n";
@@ -40,9 +40,24 @@ interface WatchlistDetailPanelProps {
   ) => Promise<void>;
   getCoverage: (tmdbId: number) => Promise<WatchlistCoverageItem[]>;
   getSeasons: (tmdbId: number) => Promise<TmdbSeason[]>;
+  onNavigateToItem?: (tmdbId: number, mediaType: string) => void;
 }
 
 const TMDB_IMG_W = "https://image.tmdb.org/t/p/w300";
+
+/** Numeric rank for sorting: lower number = lower resolution. */
+function resolutionRank(res: string | null | undefined): number {
+  const s = (res ?? "").toUpperCase();
+  if (s.includes("2160") || s === "4K" || s === "UHD") return 4;
+  if (s.includes("1080")) return 3;
+  if (s.includes("720")) return 2;
+  if (s.includes("480") || s.includes("576")) return 1;
+  return 0; // SD / unknown
+}
+
+function sortByResolution(items: WatchlistCoverageItem[]): WatchlistCoverageItem[] {
+  return [...items].sort((a, b) => resolutionRank(a.resolution) - resolutionRank(b.resolution));
+}
 
 export default function WatchlistDetailPanel({
   item,
@@ -52,6 +67,7 @@ export default function WatchlistDetailPanel({
   onUpdate,
   getCoverage,
   getSeasons,
+  onNavigateToItem,
 }: WatchlistDetailPanelProps) {
   const [scope, setScope] = useState<"all" | "latest">(
     (item.scope as "all" | "latest") ?? "all",
@@ -63,30 +79,6 @@ export default function WatchlistDetailPanel({
   const [coverage, setCoverage] = useState<WatchlistCoverageItem[]>([]);
   const [seasons, setSeasons] = useState<TmdbSeason[]>([]);
   const [loadingSeasons, setLoadingSeasons] = useState(false);
-  const [downloadingPaths, setDownloadingPaths] = useState<Set<string>>(
-    new Set(),
-  );
-
-  const handleDownload = async (c: WatchlistCoverageItem) => {
-    if (downloadingPaths.has(c.ftp_path)) return;
-    setDownloadingPaths((prev) => new Set(prev).add(c.ftp_path));
-    try {
-      await call<number>("queue_download", {
-        ftpPath: c.ftp_path,
-        filename: c.filename,
-        mediaTitle: item.title ?? undefined,
-      });
-    } catch {
-      // download manager shows errors
-    } finally {
-      setDownloadingPaths((prev) => {
-        const next = new Set(prev);
-        next.delete(c.ftp_path);
-        return next;
-      });
-    }
-  };
-
   // Build a map of "season,episode" → coverage items (all versions, downloaded or FTP-only)
   const coverageByEp = useMemo(() => {
     const map = new Map<string, WatchlistCoverageItem[]>();
@@ -363,8 +355,7 @@ export default function WatchlistDetailPanel({
                   marginTop: 6,
                 }}
               >
-                {coverage.map((c, i) => {
-                  const isQueued = downloadingPaths.has(c.ftp_path);
+                {sortByResolution(coverage).map((c, i) => {
                   return (
                     <div
                       key={c.ftp_path}
@@ -434,12 +425,20 @@ export default function WatchlistDetailPanel({
                       >
                         {c.filename}
                       </span>
-                      {/* Download button (only for FTP-available, not yet downloaded) */}
+                      {/* Navigate button (only for FTP-available, not yet downloaded) */}
                       {!c.downloaded && (
                         <button
-                          onClick={() => void handleDownload(c)}
-                          disabled={isQueued}
-                          title={language === "es" ? "Descargar" : "Download"}
+                          onClick={() =>
+                            onNavigateToItem?.(
+                              item.tmdb_id,
+                              item.tmdb_type ?? "movie",
+                            )
+                          }
+                          title={
+                            language === "es"
+                              ? "Ver en biblioteca"
+                              : "View in library"
+                          }
                           style={{
                             flexShrink: 0,
                             display: "flex",
@@ -450,22 +449,15 @@ export default function WatchlistDetailPanel({
                             border:
                               "1px solid color-mix(in srgb, var(--color-primary) 60%, transparent)",
                             borderRadius: "var(--radius-full)",
-                            background: isQueued
-                              ? "var(--color-surface-2)"
-                              : "color-mix(in srgb, var(--color-primary) 15%, transparent)",
-                            color: isQueued
-                              ? "var(--color-text-muted)"
-                              : "var(--color-primary)",
-                            cursor: isQueued ? "default" : "pointer",
+                            background:
+                              "color-mix(in srgb, var(--color-primary) 15%, transparent)",
+                            color: "var(--color-primary)",
+                            cursor: "pointer",
                             transition: "background 0.15s ease",
                             padding: 0,
                           }}
                         >
-                          {isQueued ? (
-                            <span style={{ fontSize: 10 }}>…</span>
-                          ) : (
-                            <Download size={12} strokeWidth={2.2} />
-                          )}
+                          <ExternalLink size={12} strokeWidth={2.2} />
                         </button>
                       )}
                     </div>
@@ -742,17 +734,11 @@ function SeasonSection({
           {season.episodes.map((ep, i) => {
             const key = `${season.season_number},${ep.episode_number}`;
             const epFiles = coverageByEp.get(key) ?? [];
-            const downloadedFiles = epFiles.filter((c) => c.downloaded);
-            const ftpFiles = epFiles.filter((c) => !c.downloaded);
+            const downloadedFiles = sortByResolution(epFiles.filter((c) => c.downloaded));
+            const ftpFiles = sortByResolution(epFiles.filter((c) => !c.downloaded));
             const inLibrary = downloadedFiles.length > 0;
             const hasOnServer = ftpFiles.length > 0 && !inLibrary;
-            const resolution =
-              downloadedFiles[0]?.resolution ?? ftpFiles[0]?.resolution;
             const isFuture = ep.air_date != null && ep.air_date > today;
-            // Best FTP file to download (take highest resolution if multiple)
-            const bestFtpFile = ftpFiles[0];
-            const isQueued =
-              bestFtpFile != null && downloadingPaths.has(bestFtpFile.ftp_path);
 
             return (
               <div
@@ -838,31 +824,19 @@ function SeasonSection({
                   </span>
                 </span>
 
-                {/* Right: resolution badge, air date, download button */}
+                {/* Right: per-version resolution pills (downloaded = green, FTP = clickable download) */}
                 <span
                   style={{
                     flexShrink: 0,
                     marginLeft: 8,
                     display: "flex",
                     alignItems: "center",
-                    gap: 4,
+                    flexWrap: "wrap",
+                    gap: 3,
+                    justifyContent: "flex-end",
+                    maxWidth: 160,
                   }}
                 >
-                  {resolution && (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        background: "var(--color-surface-2)",
-                        color: inLibrary
-                          ? "var(--color-success)"
-                          : "var(--color-text-muted)",
-                        borderRadius: "var(--radius-full)",
-                        padding: "2px 6px",
-                      }}
-                    >
-                      {resolution}
-                    </span>
-                  )}
                   {!inLibrary && !hasOnServer && ep.air_date && (
                     <span
                       style={{
@@ -879,40 +853,59 @@ function SeasonSection({
                       )}
                     </span>
                   )}
-                  {/* Download button — only for FTP-available, not yet downloaded */}
-                  {hasOnServer && bestFtpFile && (
-                    <button
-                      onClick={() => onDownload(bestFtpFile)}
-                      disabled={isQueued}
-                      title={language === "es" ? "Descargar" : "Download"}
+                  {/* Downloaded version badges (non-interactive) */}
+                  {downloadedFiles.map((c) => (
+                    <span
+                      key={c.ftp_path}
+                      title={c.filename}
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        width: 24,
-                        height: 24,
-                        border:
-                          "1px solid color-mix(in srgb, var(--color-primary) 60%, transparent)",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        background: "color-mix(in srgb, var(--color-success) 18%, transparent)",
+                        color: "var(--color-success)",
                         borderRadius: "var(--radius-full)",
-                        background: isQueued
-                          ? "var(--color-surface-2)"
-                          : "color-mix(in srgb, var(--color-primary) 15%, transparent)",
-                        color: isQueued
-                          ? "var(--color-text-muted)"
-                          : "var(--color-primary)",
-                        cursor: isQueued ? "default" : "pointer",
-                        transition: "background 0.15s ease",
-                        padding: 0,
-                        flexShrink: 0,
+                        padding: "2px 7px",
+                        whiteSpace: "nowrap",
+                        border: "1px solid color-mix(in srgb, var(--color-success) 35%, transparent)",
                       }}
                     >
-                      {isQueued ? (
-                        <span style={{ fontSize: 9 }}>…</span>
-                      ) : (
-                        <Download size={11} strokeWidth={2.2} />
-                      )}
-                    </button>
-                  )}
+                      ✓ {c.resolution ?? "SD"}
+                    </span>
+                  ))}
+                  {/* FTP-available version pills — each triggers a targeted download */}
+                  {ftpFiles.map((c) => {
+                    const queued = downloadingPaths.has(c.ftp_path);
+                    return (
+                      <button
+                        key={c.ftp_path}
+                        onClick={() => !queued && onDownload(c)}
+                        disabled={queued}
+                        title={c.filename}
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 600,
+                          background: queued
+                            ? "var(--color-surface-2)"
+                            : "color-mix(in srgb, var(--color-primary) 15%, transparent)",
+                          color: queued
+                            ? "var(--color-text-muted)"
+                            : "var(--color-primary)",
+                          border: `1px solid color-mix(in srgb, var(--color-primary) ${queued ? "20%" : "55%"}, transparent)`,
+                          borderRadius: "var(--radius-full)",
+                          padding: "2px 7px",
+                          cursor: queued ? "default" : "pointer",
+                          whiteSpace: "nowrap",
+                          transition: "background 0.15s ease",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 3,
+                        }}
+                      >
+                        {queued ? "…" : <Download size={9} strokeWidth={2.5} />}
+                        {c.resolution ?? "SD"}
+                      </button>
+                    );
+                  })}
                 </span>
               </div>
             );
