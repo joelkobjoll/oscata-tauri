@@ -1,5 +1,25 @@
 # Novedades de Oscata
 
+## Versión 0.5.5 — 5 de abril de 2026
+
+### 📊 Cuánto falta para enriquecer los metadatos
+
+Mientras Oscata consulta TMDB, ahora puedes ver el avance: barra de progreso, porcentaje y título en curso.
+
+### ⏸️ Oscata te avisa si cierras con descargas en marcha
+
+Si intentas cerrar con descargas activas, Oscata te pregunta antes de salir para que no pierdas ninguna transferencia.
+
+### 📥 Minimizar a la bandeja en lugar de cerrar
+
+En Ajustes puedes hacer que el botón de cierre envíe Oscata a la bandeja en vez de cerrarlo, para que las descargas sigan en segundo plano.
+
+### 🔽 Panel de filtros rediseñado
+
+Las opciones ahora son etiquetas compactas que se resaltan en morado al activarse. Los grupos se pueden plegar y desplegar, e iluminan su título cuando hay filtros activos dentro.
+
+---
+
 ## Versión 0.5.4 — 4 de abril de 2026
 
 ### 🎯 Tipo de contenido correcto tras el emparejamiento con TMDB
