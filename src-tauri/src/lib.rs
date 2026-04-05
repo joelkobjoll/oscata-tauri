@@ -354,8 +354,7 @@ pub fn run() {
 
                 if should_run_now {
                     let window = visible_main_window(&handle);
-                    commands::start_indexing_internal(db.clone(), window.clone()).await.ok();
-                    commands::trigger_watchlist_auto_downloads(db.clone(), queue.clone(), None).await;
+                    commands::start_indexing_internal(db.clone(), window.clone(), Some(queue.clone())).await.ok();
                     commands::refresh_all_metadata_internal(db.clone(), window).await.ok();
                 } else if let Some(value) = last_indexed_at
                     .as_deref()
@@ -399,8 +398,7 @@ pub fn run() {
                     }
 
                     let window = visible_main_window(&handle);
-                    commands::start_indexing_internal(db.clone(), window.clone()).await.ok();
-                    commands::trigger_watchlist_auto_downloads(db.clone(), queue.clone(), None).await;
+                    commands::start_indexing_internal(db.clone(), window.clone(), Some(queue.clone())).await.ok();
                     commands::refresh_all_metadata_internal(db.clone(), window).await.ok();
                 }
             });

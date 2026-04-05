@@ -1038,9 +1038,14 @@ pub async fn get_all_media(
 #[tauri::command]
 pub async fn start_indexing(
     state: tauri::State<'_, crate::db::Db>,
+    queue_state: tauri::State<'_, crate::downloads::SharedQueue>,
     window: WebviewWindow,
 ) -> Result<(), String> {
-    start_indexing_internal(state.inner().clone(), Some(window)).await
+    start_indexing_internal(
+        state.inner().clone(),
+        Some(window.clone()),
+        Some(queue_state.inner().clone()),
+    ).await
 }
 
 #[tauri::command]
@@ -1138,6 +1143,7 @@ pub async fn rematch_all_internal(
 pub async fn start_indexing_internal(
     db: crate::db::Db,
     window: Option<tauri::WebviewWindow>,
+    queue: Option<crate::downloads::SharedQueue>,
 ) -> Result<(), String> {
     let config = db.load_config()?;
 
@@ -1411,6 +1417,12 @@ pub async fn start_indexing_internal(
     }
 
     db.save_last_indexed_at(&chrono::Utc::now().to_rfc3339()).ok();
+
+    // Trigger watchlist auto-downloads now that tmdb_ids are fully written.
+    if let Some(q) = queue {
+        trigger_watchlist_auto_downloads(db, q, window).await;
+    }
+
     Ok(())
 }
 
@@ -2172,12 +2184,25 @@ pub async fn remove_from_watchlist(
 #[tauri::command]
 pub async fn update_watchlist_item(
     state: tauri::State<'_, crate::db::Db>,
+    queue_state: tauri::State<'_, crate::downloads::SharedQueue>,
+    app: tauri::AppHandle,
     id: i64,
     scope: String,
     auto_download: bool,
     profile_id: Option<i64>,
 ) -> Result<(), String> {
-    state.update_watchlist_item(id, 0, &scope, auto_download, profile_id.unwrap_or(1))
+    state.update_watchlist_item(id, 0, &scope, auto_download, profile_id.unwrap_or(1))?;
+    // If auto-download was just enabled, immediately scan for matching indexed files.
+    if auto_download {
+        let db = state.inner().clone();
+        let queue = queue_state.inner().clone();
+        let window = app.get_webview_window("main")
+            .filter(|w| w.is_visible().ok().unwrap_or(false));
+        tokio::spawn(async move {
+            trigger_watchlist_auto_downloads(db, queue, window).await;
+        });
+    }
+    Ok(())
 }
 
 #[tauri::command]

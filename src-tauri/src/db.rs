@@ -2155,10 +2155,14 @@ impl Db {
     ) -> Result<i64, String> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "INSERT OR IGNORE INTO watchlist
+            "INSERT INTO watchlist
                 (user_id, tmdb_id, tmdb_type, title, title_en, poster, overview, overview_en,
                  status, release_date, year, latest_season, scope, auto_download, profile_id, added_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,datetime('now'))",
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,datetime('now'))
+             ON CONFLICT(user_id, tmdb_id) DO UPDATE SET
+                scope         = excluded.scope,
+                auto_download = excluded.auto_download,
+                profile_id    = excluded.profile_id",
             params![
                 user_id, tmdb_id, tmdb_type, title, title_en, poster, overview, overview_en,
                 status, release_date, year, latest_season, scope, auto_download as i64, profile_id,

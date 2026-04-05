@@ -495,8 +495,7 @@ pub async fn start_indexing_handler(
     let window = state.app_handle.get_webview_window("main");
     tauri::async_runtime::spawn(async move {
         crate::INDEXING_RUNNING.store(true, Ordering::SeqCst);
-        crate::commands::start_indexing_internal(db.clone(), window.clone()).await.ok();
-        crate::commands::trigger_watchlist_auto_downloads(db, queue, window).await;
+        crate::commands::start_indexing_internal(db.clone(), window.clone(), Some(queue)).await.ok();
         crate::INDEXING_RUNNING.store(false, Ordering::SeqCst);
     });
     Ok(Json(serde_json::json!({"running": true, "message": "Indexing started"})))
@@ -660,6 +659,16 @@ pub async fn update_watchlist_handler(
     Json(body): Json<UpdateWatchlistRequest>,
 ) -> ApiResult<Json<Value>> {
     state.db.update_watchlist_item(id, u.id, &body.scope, body.auto_download, body.profile_id.unwrap_or(1)).map_err(ApiError::from)?;
+    // If auto-download was just enabled, immediately scan for matching indexed files.
+    if body.auto_download {
+        let db = state.db.clone();
+        let queue = state.queue.clone();
+        let window = state.app_handle.get_webview_window("main")
+            .filter(|w| w.is_visible().ok().unwrap_or(false));
+        tokio::spawn(async move {
+            crate::commands::trigger_watchlist_auto_downloads(db, queue, window).await;
+        });
+    }
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
