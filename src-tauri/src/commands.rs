@@ -1028,6 +1028,55 @@ pub async fn import_library_backup(
     state.import_database_from(&source_path)
 }
 
+// ── Storage / portable-mode commands ─────────────────────────────────────────
+
+/// Returns the directory that currently holds `library.db`.
+#[tauri::command]
+pub async fn get_db_path(
+    state: tauri::State<'_, crate::db::Db>,
+) -> Result<String, String> {
+    Ok(state.data_dir().to_string_lossy().to_string())
+}
+
+/// First-run only: record the desired data directory in bootstrap.json without
+/// performing a VACUUM (the DB hasn't been used yet, so nothing to migrate).
+#[tauri::command]
+pub async fn init_db_path(
+    _state: tauri::State<'_, crate::db::Db>,
+    dir: String,
+) -> Result<(), String> {
+    crate::db::Db::write_bootstrap(Some(std::path::Path::new(&dir)));
+    Ok(())
+}
+
+/// Migrate the live database to a new directory and persist the path in
+/// bootstrap.json. The caller must prompt the user to restart the app.
+#[tauri::command]
+pub async fn set_db_path(
+    state: tauri::State<'_, crate::db::Db>,
+    dir: String,
+) -> Result<(), String> {
+    state.migrate_to(std::path::Path::new(&dir))
+}
+
+/// Whether the app booted in portable mode (`.oscata-portable` marker found).
+#[tauri::command]
+pub async fn is_portable_mode(
+    state: tauri::State<'_, crate::db::Db>,
+) -> Result<bool, String> {
+    Ok(state.is_portable())
+}
+
+/// Remove the custom path from bootstrap.json so the next launch uses the
+/// default app-data location. The caller must prompt the user to restart.
+#[tauri::command]
+pub async fn reset_db_path(
+    _state: tauri::State<'_, crate::db::Db>,
+) -> Result<(), String> {
+    crate::db::Db::write_bootstrap(None);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn get_all_media(
     state: tauri::State<'_, crate::db::Db>,

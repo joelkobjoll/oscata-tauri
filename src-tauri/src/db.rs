@@ -127,7 +127,11 @@ pub struct MediaItem {
 }
 
 #[derive(Clone)]
-pub struct Db(Arc<Mutex<Connection>>);
+pub struct Db {
+    conn: Arc<Mutex<Connection>>,
+    data_dir: std::path::PathBuf,
+    is_portable: bool,
+}
 
 pub struct UpsertMediaResult {
     pub id: i64,
@@ -336,14 +340,78 @@ impl Db {
         }
     }
 
-    fn app_data_dir() -> std::path::PathBuf {
+    // ── Path resolution ──────────────────────────────────────────────────────
+
+    /// The fixed system-level data dir — used to find bootstrap.json regardless
+    /// of any custom location configured there.
+    fn default_data_dir() -> std::path::PathBuf {
         dirs_next::data_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
             .join("oscata-tauri")
     }
 
-    fn db_path() -> std::path::PathBuf {
-        Self::app_data_dir().join("library.db")
+    /// Detect portable mode: look for `.oscata-portable` next to the executable.
+    /// On macOS the binary lives inside `Foo.app/Contents/MacOS/` so we walk up
+    /// three levels to reach the folder that contains the `.app` bundle.
+    fn detect_portable() -> Option<std::path::PathBuf> {
+        let exe = std::env::current_exe().ok()?;
+        let exe_dir = exe.parent()?;
+
+        // On macOS bundles: Contents/MacOS → Contents → .app → parent folder
+        let candidates: Vec<std::path::PathBuf> = if exe_dir.ends_with("Contents/MacOS") {
+            vec![
+                exe_dir.to_path_buf(),
+                exe_dir.parent().map(|p| p.to_path_buf()).unwrap_or_default(),
+                exe_dir.parent().and_then(|p| p.parent()).map(|p| p.to_path_buf()).unwrap_or_default(),
+                exe_dir.parent().and_then(|p| p.parent()).and_then(|p| p.parent()).map(|p| p.to_path_buf()).unwrap_or_default(),
+            ]
+        } else {
+            vec![exe_dir.to_path_buf()]
+        };
+
+        for candidate in candidates {
+            if candidate.join(".oscata-portable").exists() {
+                return Some(candidate.join("oscata-data"));
+            }
+        }
+        None
+    }
+
+    /// Read a custom db dir from bootstrap.json stored in the default location.
+    fn read_bootstrap() -> Option<std::path::PathBuf> {
+        let bootstrap = Self::default_data_dir().join("bootstrap.json");
+        let content = std::fs::read_to_string(&bootstrap).ok()?;
+        let val: serde_json::Value = serde_json::from_str(&content).ok()?;
+        let dir = val.get("db_dir")?.as_str()?;
+        if dir.is_empty() { return None; }
+        Some(std::path::PathBuf::from(dir))
+    }
+
+    /// Write (or delete when `None`) the custom db dir to bootstrap.json.
+    pub fn write_bootstrap(dir: Option<&std::path::Path>) {
+        let bootstrap = Self::default_data_dir().join("bootstrap.json");
+        std::fs::create_dir_all(Self::default_data_dir()).ok();
+        match dir {
+            Some(d) => {
+                let json = serde_json::json!({ "db_dir": d.to_string_lossy() });
+                std::fs::write(&bootstrap, json.to_string()).ok();
+            }
+            None => { std::fs::remove_file(&bootstrap).ok(); }
+        }
+    }
+
+    /// Resolve the effective data directory using the priority chain:
+    /// 1. Portable marker next to exe (takes precedence over everything)
+    /// 2. bootstrap.json custom path
+    /// 3. Default system location
+    fn resolve_data_dir() -> (std::path::PathBuf, bool) {
+        if let Some(portable_dir) = Self::detect_portable() {
+            return (portable_dir, true);
+        }
+        if let Some(custom_dir) = Self::read_bootstrap() {
+            return (custom_dir, false);
+        }
+        (Self::default_data_dir(), false)
     }
 
     fn apply_migrations(conn: &Connection) -> SqlResult<()> {
@@ -535,15 +603,41 @@ impl Db {
     }
 
     pub fn new() -> SqlResult<Self> {
-        let data_dir = Self::app_data_dir();
+        let (data_dir, is_portable) = Self::resolve_data_dir();
         std::fs::create_dir_all(&data_dir).ok();
-        let conn = Connection::open(Self::db_path())?;
+        let db_path = data_dir.join("library.db");
+        let conn = Connection::open(&db_path)?;
         Self::apply_migrations(&conn)?;
-        Ok(Self(Arc::new(Mutex::new(conn))))
+        Ok(Self { conn: Arc::new(Mutex::new(conn)), data_dir, is_portable })
+    }
+
+    /// The directory where the database and backups are stored.
+    pub fn data_dir(&self) -> &std::path::Path {
+        &self.data_dir
+    }
+
+    /// Whether the app is running in portable mode (marker file detected).
+    pub fn is_portable(&self) -> bool {
+        self.is_portable
+    }
+
+    /// Copy the live database to `new_dir` using SQLite's VACUUM INTO, then
+    /// persist the new location in bootstrap.json so the next startup finds it.
+    pub fn migrate_to(&self, new_dir: &std::path::Path) -> Result<(), String> {
+        std::fs::create_dir_all(new_dir).map_err(|e| e.to_string())?;
+        let db_path = new_dir.join("library.db");
+        // Escape any single-quotes in the path for the SQL literal.
+        let escaped = db_path.to_string_lossy().replace('\'', "''");
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch(&format!("VACUUM INTO '{}';", escaped))
+            .map_err(|e| e.to_string())?;
+        drop(conn);
+        Self::write_bootstrap(Some(new_dir));
+        Ok(())
     }
 
     fn save_app_value(&self, key: &str, value: &str) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT OR REPLACE INTO app_config (key, value) VALUES (?1, ?2)",
             params![key, value],
@@ -553,7 +647,7 @@ impl Db {
     }
 
     fn load_app_value(&self, key: &str) -> Result<Option<String>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.query_row(
             "SELECT value FROM app_config WHERE key = ?1",
             params![key],
@@ -564,7 +658,7 @@ impl Db {
     }
 
     pub fn list_applied_migrations(&self) -> Result<Vec<AppliedMigration>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare("SELECT id, applied_at FROM schema_migrations ORDER BY applied_at ASC, id ASC")
             .map_err(|e| e.to_string())?;
@@ -640,7 +734,7 @@ impl Db {
         // LENGTH(root) + 2 skips the root prefix AND the following slash.
         let prefix_len = (root.len() + 2) as i64;
         let like_pattern = format!("{}/%", root);
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "UPDATE media_items
              SET ftp_relative_path = SUBSTR(ftp_path, ?1)
@@ -660,7 +754,7 @@ impl Db {
         // Collect all (id, ftp_path, filename) rows first so we can release
         // the mutex lock before running the parser and doing per-row updates.
         let rows: Vec<(i64, String, String)> = {
-            let conn = self.0.lock().unwrap();
+            let conn = self.conn.lock().unwrap();
             let mut stmt = conn
                 .prepare("SELECT id, ftp_path, filename FROM media_items")
                 .map_err(|e| e.to_string())?;
@@ -677,7 +771,7 @@ impl Db {
         let mut updated = 0usize;
         for (id, ftp_path, filename) in rows {
             let parsed = crate::parser::parse_media_path(&ftp_path, &filename);
-            let conn = self.0.lock().unwrap();
+            let conn = self.conn.lock().unwrap();
             let n = conn
                 .execute(
                     "UPDATE media_items SET
@@ -739,7 +833,7 @@ impl Db {
         }
 
         let escaped_seed_path = Self::escape_sqlite_path(seed_path);
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let migration_id = format!("seed:backfill-imdb:{app_version}");
 
         if Self::migration_applied(&conn, &migration_id)? {
@@ -808,7 +902,7 @@ impl Db {
         let migration_id = format!("seed:refresh-library:{app_version}");
 
         let escaped_seed_path = Self::escape_sqlite_path(seed_path);
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
 
         if Self::migration_applied(&conn, &migration_id)? {
             return Ok((0, 0));
@@ -1040,7 +1134,7 @@ impl Db {
 
         let migration_id = format!("seed:override-library:{app_version}");
         let escaped_seed_path = Self::escape_sqlite_path(seed_path);
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
 
         if Self::migration_applied(&conn, &migration_id)? {
             return Ok((0, 0));
@@ -1145,7 +1239,7 @@ impl Db {
             return Ok(None);
         }
 
-        let backups_dir = Self::app_data_dir().join("backups");
+        let backups_dir = self.data_dir.join("backups");
         std::fs::create_dir_all(&backups_dir).map_err(|e| e.to_string())?;
         let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
         let backup_path = backups_dir.join(format!(
@@ -1156,7 +1250,7 @@ impl Db {
         ));
         let escaped_path = backup_path.to_string_lossy().replace('\'', "''");
 
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute_batch(&format!("VACUUM INTO '{}';", escaped_path))
             .map_err(|e| e.to_string())?;
 
@@ -1172,7 +1266,7 @@ impl Db {
             std::fs::remove_file(target).map_err(|e| e.to_string())?;
         }
 
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let mut dest = Connection::open(target).map_err(|e| e.to_string())?;
         let backup =
             rusqlite::backup::Backup::new(&conn, &mut dest).map_err(|e| e.to_string())?;
@@ -1189,7 +1283,7 @@ impl Db {
         }
 
         let source_conn = Connection::open(source).map_err(|e| e.to_string())?;
-        let mut dest_conn = self.0.lock().unwrap();
+        let mut dest_conn = self.conn.lock().unwrap();
         {
             let backup = rusqlite::backup::Backup::new(&source_conn, &mut dest_conn)
                 .map_err(|e| e.to_string())?;
@@ -1204,7 +1298,7 @@ impl Db {
     pub fn save_config(&self, config: &AppConfig) -> Result<(), String> {
         // Detect whether ftp_root is changing so we can rewrite stored paths.
         let old_root = {
-            let conn = self.0.lock().unwrap();
+            let conn = self.conn.lock().unwrap();
             conn.query_row(
                 "SELECT value FROM app_config WHERE key = 'ftp_root'",
                 [],
@@ -1214,7 +1308,7 @@ impl Db {
             .unwrap_or(None)
         };
 
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let pairs = [
             ("ftp_host", config.ftp_host.as_str()),
             ("ftp_user", config.ftp_user.as_str()),
@@ -1350,13 +1444,13 @@ impl Db {
     // ── Web auth ───────────────────────────────────────────────────────────
 
     pub fn web_user_count(&self) -> Result<i64, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.query_row("SELECT COUNT(*) FROM web_users", [], |r| r.get(0))
             .map_err(|e| e.to_string())
     }
 
     pub fn create_web_user(&self, email: &str, hash: &str, role: &str) -> Result<WebUser, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
         conn.execute(
             "INSERT INTO web_users (email, password_hash, role, is_active, created_at) VALUES (?1,?2,?3,1,?4)",
@@ -1367,7 +1461,7 @@ impl Db {
     }
 
     pub fn get_web_user_by_email(&self, email: &str) -> Result<Option<(WebUser, String)>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.query_row(
             "SELECT id, email, role, is_active, created_at, password_hash FROM web_users WHERE email = ?1",
             params![email.trim().to_lowercase()],
@@ -1380,7 +1474,7 @@ impl Db {
     }
 
     pub fn list_web_users(&self) -> Result<Vec<WebUser>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, email, role, is_active, created_at FROM web_users ORDER BY id"
         ).map_err(|e| e.to_string())?;
@@ -1396,7 +1490,7 @@ impl Db {
         &self, id: i64,
         email: Option<&str>, hash: Option<&str>, role: Option<&str>, is_active: Option<bool>,
     ) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         if let Some(e) = email {
             conn.execute("UPDATE web_users SET email=?1 WHERE id=?2",
                 params![e.trim().to_lowercase(), id]).map_err(|e| e.to_string())?;
@@ -1417,7 +1511,7 @@ impl Db {
     }
 
     pub fn delete_web_user(&self, id: i64) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM web_users WHERE id=?1", params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -1426,7 +1520,7 @@ impl Db {
     // Sessions
 
     pub fn create_web_session(&self, user_id: i64, token: &str) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now();
         let expires = (now + chrono::Duration::days(SESSION_EXPIRY_DAYS)).to_rfc3339();
         conn.execute(
@@ -1437,7 +1531,7 @@ impl Db {
     }
 
     pub fn validate_web_session(&self, token: &str) -> Result<Option<WebUser>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
         conn.query_row(
             "SELECT u.id, u.email, u.role, u.is_active, u.created_at
@@ -1452,7 +1546,7 @@ impl Db {
     }
 
     pub fn revoke_web_session(&self, token: &str) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM web_sessions WHERE id=?1", params![token])
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -1461,7 +1555,7 @@ impl Db {
     // OTP challenges
 
     pub fn create_otp_challenge(&self, user_id: i64, code: &str) -> Result<String, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let id = uuid::Uuid::new_v4().to_string();
         let expires = (chrono::Utc::now() + chrono::Duration::minutes(OTP_EXPIRY_MINUTES)).to_rfc3339();
         conn.execute(
@@ -1472,7 +1566,7 @@ impl Db {
     }
 
     pub fn verify_otp_challenge(&self, challenge_id: &str, code: &str) -> Result<Option<i64>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
         let row: Option<(i64, String, i64)> = conn.query_row(
             "SELECT user_id, code, attempts FROM web_otp_challenges WHERE id=?1 AND expires_at > ?2",
@@ -1501,7 +1595,7 @@ impl Db {
     // Invite tokens
 
     pub fn create_web_invite(&self, email: Option<&str>, role: &str) -> Result<(String, String), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let token = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now();
         let expires_at = (now + chrono::Duration::days(INVITE_EXPIRY_DAYS)).to_rfc3339();
@@ -1521,7 +1615,7 @@ impl Db {
         email: &str,
         password_hash: &str,
     ) -> Result<WebUser, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
         let normalized_email = email.trim().to_lowercase();
 
@@ -1562,7 +1656,7 @@ impl Db {
     }
 
     pub fn save_download_state(&self, items: &[crate::downloads::DownloadItem]) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let json = serde_json::to_string(items).map_err(|e| e.to_string())?;
         conn.execute(
             "INSERT OR REPLACE INTO app_config (key, value) VALUES ('downloads_state', ?1)",
@@ -1573,7 +1667,7 @@ impl Db {
     }
 
     pub fn load_download_state(&self) -> Result<Vec<crate::downloads::DownloadItem>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let json = conn
             .query_row(
                 "SELECT value FROM app_config WHERE key = 'downloads_state'",
@@ -1590,7 +1684,7 @@ impl Db {
     }
 
     pub fn load_config(&self) -> Result<AppConfig, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let get = |key: &str| -> Result<String, String> {
             conn.query_row(
                 "SELECT value FROM app_config WHERE key = ?1",
@@ -1641,7 +1735,7 @@ impl Db {
     }
 
     pub fn has_config(&self) -> Result<bool, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM app_config", [], |r| r.get(0))
             .map_err(|e| e.to_string())?;
@@ -1649,14 +1743,14 @@ impl Db {
     }
 
     pub fn clear_app_config(&self) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM app_config", [])
             .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn count_media_items(&self) -> Result<i64, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn
             .query_row("SELECT COUNT(*) FROM media_items", [], |r| r.get(0))
             .map_err(|e| e.to_string())
@@ -1666,7 +1760,7 @@ impl Db {
         &self,
         current_paths: &[String],
     ) -> Result<usize, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
 
         conn.execute_batch(
             "CREATE TEMP TABLE IF NOT EXISTS current_scan_paths (
@@ -1719,19 +1813,19 @@ impl Db {
     /// The caller MUST call `commit_batch` (or `rollback_batch`) before
     /// initiating another batch or any other write.
     pub fn begin_batch(&self) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute_batch("BEGIN").map_err(|e| e.to_string())
     }
 
     /// Commit the transaction opened by `begin_batch`.
     pub fn commit_batch(&self) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute_batch("COMMIT").map_err(|e| e.to_string())
     }
 
     /// Roll back the transaction opened by `begin_batch` (e.g. on error).
     pub fn rollback_batch(&self) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute_batch("ROLLBACK").map_err(|e| e.to_string())
     }
 
@@ -1745,7 +1839,7 @@ impl Db {
         ftp_indexed_at: Option<&str>,
         ftp_root: &str,
     ) -> Result<UpsertMediaResult, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
         let relative_path = Self::compute_relative_path(path, ftp_root);
 
@@ -1957,7 +2051,7 @@ impl Db {
         media_type: &str,
         manual_match: bool,
     ) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
         let genres = serde_json::to_string(&movie.genre_ids).ok();
         conn.execute(
@@ -2018,7 +2112,7 @@ impl Db {
     }
 
     pub fn get_all_media(&self) -> Result<Vec<MediaItem>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare("SELECT id, ftp_path, filename, size_bytes, title, year, season, episode, episode_end, \
                       resolution, codec, audio_codec, languages, hdr, release_type, release_group, \
@@ -2073,7 +2167,7 @@ impl Db {
     }
 
     pub fn get_media_type_by_path(&self, ftp_path: &str) -> SqlResult<Option<String>> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.query_row(
             "SELECT media_type FROM media_items WHERE ftp_path = ?1 LIMIT 1",
             params![ftp_path],
@@ -2082,7 +2176,7 @@ impl Db {
     }
 
     pub fn get_tmdb_genres_by_path(&self, ftp_path: &str) -> SqlResult<Option<String>> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.query_row(
             "SELECT tmdb_genres FROM media_items WHERE ftp_path = ?1 LIMIT 1",
             params![ftp_path],
@@ -2091,7 +2185,7 @@ impl Db {
     }
 
     pub fn clear_item_metadata(&self, id: i64) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "UPDATE media_items SET
                 tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
@@ -2105,7 +2199,7 @@ impl Db {
     }
 
     pub fn clear_all_metadata(&self) -> Result<usize, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let count = conn.execute(
             "UPDATE media_items SET
                 tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
@@ -2120,7 +2214,7 @@ impl Db {
 
     /// Clear metadata for all items sharing the same tmdb_id (all episodes of a show)
     pub fn clear_show_metadata(&self, tmdb_id: i64) -> Result<usize, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let count = conn.execute(
             "UPDATE media_items SET
                 tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
@@ -2153,7 +2247,7 @@ impl Db {
         auto_download: bool,
         profile_id: i64,
     ) -> Result<i64, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO watchlist
                 (user_id, tmdb_id, tmdb_type, title, title_en, poster, overview, overview_en,
@@ -2174,7 +2268,7 @@ impl Db {
     }
 
     pub fn get_watchlist(&self, user_id: i64) -> Result<Vec<WatchlistItem>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare(
                 "SELECT w.id, w.user_id, w.tmdb_id, w.tmdb_type, w.title, w.title_en,
@@ -2224,7 +2318,7 @@ impl Db {
     }
 
     pub fn remove_watchlist_item(&self, id: i64, user_id: i64) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "DELETE FROM watchlist WHERE id=?1 AND user_id=?2",
             params![id, user_id],
@@ -2241,7 +2335,7 @@ impl Db {
         auto_download: bool,
         profile_id: i64,
     ) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "UPDATE watchlist SET scope=?3, auto_download=?4, profile_id=?5 WHERE id=?1 AND user_id=?2",
             params![id, user_id, scope, auto_download as i64, profile_id],
@@ -2255,7 +2349,7 @@ impl Db {
         tmdb_id: i64,
         user_id: i64,
     ) -> Result<Option<WatchlistItem>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.query_row(
             "SELECT w.id, w.user_id, w.tmdb_id, w.tmdb_type, w.title, w.title_en,
                     w.poster, w.overview, w.overview_en, w.status, w.release_date,
@@ -2311,7 +2405,7 @@ impl Db {
                 .collect()
         };
 
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare(
                 "SELECT season, episode, filename, resolution, ftp_path
@@ -2346,7 +2440,7 @@ impl Db {
     /// Returns all media_items that match an auto_download=1 watchlist entry.
     /// Used by the post-indexing trigger to auto-queue new files.
     pub fn get_watchlist_auto_download_candidates(&self) -> Result<Vec<WatchlistAutoItem>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare(
                 "SELECT m.ftp_path, m.filename, m.tmdb_id,
@@ -2388,7 +2482,7 @@ impl Db {
     // ── Quality Profiles ─────────────────────────────────────────────────────
 
     pub fn get_quality_profiles(&self) -> Result<Vec<QualityProfile>, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare(
                 "SELECT id, name, min_resolution, preferred_resolution, prefer_hdr,
@@ -2434,7 +2528,7 @@ impl Db {
         min_size_gb: Option<f64>,
         max_size_gb: Option<f64>,
     ) -> Result<QualityProfile, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO quality_profiles
                 (name, min_resolution, preferred_resolution, prefer_hdr,
@@ -2486,7 +2580,7 @@ impl Db {
         min_size_gb: Option<f64>,
         max_size_gb: Option<f64>,
     ) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "UPDATE quality_profiles SET name=?2, min_resolution=?3, preferred_resolution=?4,
              prefer_hdr=?5, preferred_codecs=?6, preferred_audio_codecs=?7,
@@ -2502,7 +2596,7 @@ impl Db {
     }
 
     pub fn delete_quality_profile(&self, id: i64) -> Result<(), String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.conn.lock().unwrap();
         // Reset any watchlist items referencing this profile to 0 (no profile)
         conn.execute(
             "UPDATE watchlist SET profile_id=0 WHERE profile_id=?1",

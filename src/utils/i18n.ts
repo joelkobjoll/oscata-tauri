@@ -441,6 +441,19 @@ const messages = {
   "wizard.stepFtp": { es: "Servidor FTP", en: "FTP Server" },
   "wizard.stepTmdb": { es: "API de TMDB", en: "TMDB API" },
   "wizard.stepConfirm": { es: "Confirmar", en: "Confirm" },
+  "wizard.stepDataDir": { es: "Almacenamiento", en: "Storage" },
+  "wizard.dataDir": {
+    es: "Ubicación de la base de datos",
+    en: "Database location",
+  },
+  "wizard.dataDirDesc": {
+    es: "Elige dónde guardar la biblioteca. Por defecto se usa la carpeta de datos de la aplicación.",
+    en: "Choose where to store the library. The app data folder is used by default.",
+  },
+  "wizard.dataDirDefault": {
+    es: "Usar ubicación predeterminada",
+    en: "Use default location",
+  },
   "wizard.next": { es: "Siguiente →", en: "Next →" },
   "wizard.host": { es: "Host", en: "Host" },
   "wizard.port": { es: "Puerto", en: "Port" },
@@ -670,6 +683,27 @@ const messages = {
   "settings.backupImportSuccess": {
     es: "Backup importado. Recargando la app…",
     en: "Backup imported. Reloading the app…",
+  },
+  "settings.storage": { es: "Almacenamiento", en: "Storage" },
+  "settings.dbLocation": {
+    es: "Ubicación de la biblioteca",
+    en: "Library location",
+  },
+  "settings.dbLocationDesc": {
+    es: "Directorio donde se guarda library.db. Cambiar la ubicación copiará la base de datos y reiniciará la app.",
+    en: "Directory where library.db is stored. Changing it copies the database and restarts the app.",
+  },
+  "settings.changeLocation": {
+    es: "Cambiar ubicación…",
+    en: "Change location…",
+  },
+  "settings.defaultLocation": {
+    es: "Restablecer predeterminada",
+    en: "Reset to default",
+  },
+  "settings.portableMode": {
+    es: "Modo portátil activo — la ubicación la fija el archivo .oscata-portable.",
+    en: "Portable mode active — location is set by the .oscata-portable marker file.",
   },
   "settings.downloadFolder": {
     es: "Carpeta de descargas",

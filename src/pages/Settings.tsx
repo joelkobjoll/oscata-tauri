@@ -835,6 +835,13 @@ export default function Settings({
   const [backupError, setBackupError] = useState("");
   const [backupBusy, setBackupBusy] = useState(false);
 
+  // Storage section state
+  const [dbDir, setDbDir] = useState<string>("");
+  const [isPortable, setIsPortable] = useState(false);
+  const [storageError, setStorageError] = useState("");
+  const [storageBusy, setStorageBusy] = useState(false);
+  const [storageNeedsRestart, setStorageNeedsRestart] = useState(false);
+
   const [webGuiConfig, setWebGuiConfig] = useState<WebGuiConfig | null>(null);
   const [webGuiSaving, setWebGuiSaving] = useState(false);
   const [webGuiSaved, setWebGuiSaved] = useState(false);
@@ -881,6 +888,58 @@ export default function Settings({
       .then((version) => setAppVersion(version))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    import("@tauri-apps/api/core").then(({ invoke }) => {
+      invoke<string>("get_db_path")
+        .then(setDbDir)
+        .catch(() => {});
+      invoke<boolean>("is_portable_mode")
+        .then(setIsPortable)
+        .catch(() => {});
+    });
+  }, []);
+
+  const changeDbPath = async () => {
+    if (!isTauri()) return;
+    setStorageError("");
+    setStorageBusy(true);
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({ directory: true, multiple: false });
+      if (typeof selected !== "string" || !selected) return;
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("set_db_path", { dir: selected });
+      setDbDir(selected);
+      setStorageNeedsRestart(true);
+    } catch (err: unknown) {
+      setStorageError(String(err));
+    } finally {
+      setStorageBusy(false);
+    }
+  };
+
+  const resetDbPath = async () => {
+    if (!isTauri()) return;
+    setStorageError("");
+    setStorageBusy(true);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("reset_db_path");
+      setStorageNeedsRestart(true);
+    } catch (err: unknown) {
+      setStorageError(String(err));
+    } finally {
+      setStorageBusy(false);
+    }
+  };
+
+  const quitApp = async () => {
+    if (!isTauri()) return;
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("quit_app").catch(() => {});
+  };
 
   const saveWebGuiConfig = async () => {
     if (!webGuiConfig) return;
@@ -2847,6 +2906,124 @@ export default function Settings({
                     >
                       {webGuiError}
                     </div>
+                  )}
+                </div>
+              </SectionCard>
+            )}
+
+            {isTauri() && (
+              <SectionCard
+                icon="folder"
+                title={t(language, "settings.storage")}
+                description={t(language, "settings.dbLocationDesc")}
+              >
+                <div style={{ display: "grid", gap: 12 }}>
+                  {isPortable ? (
+                    <span style={subtextStyle}>
+                      {t(language, "settings.portableMode")}
+                    </span>
+                  ) : (
+                    <>
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            letterSpacing: "0.04em",
+                            textTransform: "uppercase" as const,
+                            color: "var(--color-text-muted)",
+                            marginBottom: 6,
+                          }}
+                        >
+                          {t(language, "settings.dbLocation")}
+                        </div>
+                        <div
+                          style={{
+                            padding: "0.65rem 0.9rem",
+                            borderRadius: "var(--radius)",
+                            border:
+                              "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+                            background:
+                              "color-mix(in srgb, var(--color-surface-2) 84%, transparent)",
+                            color: "var(--color-text)",
+                            fontSize: 13,
+                            fontFamily: "monospace",
+                            wordBreak: "break-all",
+                          }}
+                        >
+                          {dbDir || "…"}
+                        </div>
+                      </div>
+                      <div
+                        style={{ display: "flex", flexWrap: "wrap", gap: 10 }}
+                      >
+                        <button
+                          onClick={changeDbPath}
+                          disabled={storageBusy}
+                          style={ghostBtn}
+                        >
+                          <AppIcon name="folder" size={15} />
+                          {t(language, "settings.changeLocation")}
+                        </button>
+                        <button
+                          onClick={resetDbPath}
+                          disabled={storageBusy}
+                          style={ghostBtn}
+                        >
+                          <AppIcon name="settings" size={15} />
+                          {t(language, "settings.defaultLocation")}
+                        </button>
+                      </div>
+                      {storageError && (
+                        <span
+                          style={{
+                            ...subtextStyle,
+                            color: "var(--color-danger)",
+                          }}
+                        >
+                          {storageError}
+                        </span>
+                      )}
+                      {storageNeedsRestart && (
+                        <div
+                          style={{
+                            padding: "0.75rem 1rem",
+                            borderRadius: "var(--radius)",
+                            background:
+                              "color-mix(in srgb, var(--color-warning) 14%, transparent)",
+                            border:
+                              "1px solid color-mix(in srgb, var(--color-warning) 40%, transparent)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 13,
+                              color: "var(--color-warning)",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Reinicia la app para usar la nueva ubicación.
+                          </span>
+                          <button
+                            onClick={quitApp}
+                            style={{
+                              ...ghostBtn,
+                              color: "var(--color-warning)",
+                              border:
+                                "1px solid color-mix(in srgb, var(--color-warning) 50%, transparent)",
+                            }}
+                          >
+                            <AppIcon name="close" size={14} />
+                            Salir ahora
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </SectionCard>

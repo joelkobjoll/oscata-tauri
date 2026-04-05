@@ -4,7 +4,9 @@ import { invoke } from "@tauri-apps/api/core";
 import AppIcon from "../components/AppIcon";
 import StepFTP from "../components/wizard/StepFTP";
 import StepTMDB from "../components/wizard/StepTMDB";
+import StepDataDir from "../components/wizard/StepDataDir";
 import StepConfirm from "../components/wizard/StepConfirm";
+import { isTauri } from "../lib/transport";
 import { t } from "../utils/i18n";
 import {
   DEFAULT_FOLDER_TYPES_STRING,
@@ -225,6 +227,15 @@ export default function Wizard({
         description: t(language, "settings.metaDescription"),
         icon: "search" as const,
       },
+      ...(isTauri()
+        ? [
+            {
+              label: t(language, "wizard.stepDataDir"),
+              description: t(language, "wizard.dataDirDesc"),
+              icon: "folder" as const,
+            },
+          ]
+        : []),
       {
         label: t(language, "wizard.stepConfirm"),
         description: t(language, "wizard.confirmDescription"),
@@ -384,6 +395,23 @@ export default function Wizard({
                       {t(language, "settings.downloadsDescription")}
                     </p>
                   </div>
+                  {isTauri() && (
+                    <div style={{ ...sectionCard, padding: "1rem" }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: "var(--color-text)",
+                          marginBottom: 4,
+                        }}
+                      >
+                        {t(language, "wizard.stepDataDir")}
+                      </div>
+                      <p style={subtextStyle}>
+                        {t(language, "wizard.dataDirDesc")}
+                      </p>
+                    </div>
+                  )}
                   <div style={{ ...sectionCard, padding: "1rem" }}>
                     <div
                       style={{
@@ -718,7 +746,10 @@ export default function Wizard({
                     onNext={next}
                   />
                 )}
-                {step === 3 && (
+                {step === 3 && isTauri() && (
+                  <StepDataDir language={language} onNext={next} />
+                )}
+                {((step === 3 && !isTauri()) || step === 4) && (
                   <StepConfirm
                     config={config}
                     language={language}

@@ -61,6 +61,14 @@ body {
   color: var(--color-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 html,

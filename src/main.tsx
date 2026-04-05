@@ -4,6 +4,9 @@ import ReactDOM from "react-dom/client";
 import Router from "./router";
 import ThemeProvider from "./components/ThemeProvider";
 
+// Disable right-click context menu for a native app feel.
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+
 async function setupWatchdogBridge() {
   if (!("__TAURI_INTERNALS__" in window)) return;
 
