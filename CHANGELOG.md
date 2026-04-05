@@ -1,5 +1,25 @@
 # Novedades de Oscata
 
+## Versión 0.6.2 — 5 de abril de 2026
+
+### 🗄️ Elige dónde guardar tu biblioteca
+
+Ya puedes decidir en qué carpeta quiere Oscata guardar la base de datos. Tanto en el asistente de configuración inicial como en Ajustes → Almacenamiento encuentras la opción para apuntar a cualquier directorio: un NAS, un disco externo o donde más te convenga. La biblioteca actual se copia sola al nuevo destino (sin perder nada) y Oscata te pide que reinicies para empezar a usarla. Si en algún momento quieres volver a la ubicación por defecto, también puedes restablecerla desde ese mismo apartado.
+
+### 💼 Versión portátil para Windows
+
+Además del instalador NSIS, cada release de GitHub incluye ahora un ZIP portátil para Windows: descomprímelo donde quieras, ejecuta `Oscata.exe` y listo, sin instalación. La biblioteca se guarda junto al ejecutable, así que puedes llevártela en un disco externo.
+
+### 🗑️ Eliminar una descarga borra también el archivo
+
+Hasta ahora, borrar una entrada de la cola de descargas quitaba el registro pero dejaba el archivo a medias en disco. Ahora Oscata cancela la transferencia activa y elimina el fichero local al mismo tiempo, sin rastro.
+
+### 🖥️ Aspecto más nativo
+
+Se desactivan el menú contextual del botón derecho y la selección de texto en toda la interfaz, igual que en una app de escritorio. Los campos de formulario mantienen el comportamiento normal para que puedas escribir y editar con comodidad.
+
+---
+
 ## Versión 0.6.1 — 5 de abril de 2026
 
 ### ⚡ Las descargas automáticas arrancan solas
