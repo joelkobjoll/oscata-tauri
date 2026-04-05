@@ -1,5 +1,13 @@
 # Novedades de Oscata
 
+## Versión 0.6.1 — 5 de abril de 2026
+
+### ⚡ Las descargas automáticas arrancan solas
+
+Hasta ahora, la descarga automática de la lista de seguimiento solo se activaba manualmente. Ahora Oscata lo hace en dos momentos sin que tengas que hacer nada: al terminar el indexado del FTP, y en el momento en que activas la descarga automática en un título. Si el archivo ya estaba indexado, empieza a bajar de inmediato.
+
+---
+
 ## Versión 0.6.0 — 5 de abril de 2026
 
 ### 📋 Lista de seguimiento
