@@ -507,26 +507,31 @@ pub async fn upload_file(
         .await
         .map_err(|e| format!("Cannot open local file: {e}"))?;
 
+    let remote_full = format!("{}/{}", remote_dir.trim_end_matches('/'), filename);
+
+    // Open FTP data stream for writing — progress is reported as bytes are
+    // actually written to the socket, so 100% only fires when the transfer is done.
+    let mut data_stream = ftp
+        .put_with_stream(filename)
+        .await
+        .map_err(|e| format!("Cannot start upload for {remote_full}: {}", clean_ftp_error(e)))?;
+
+    use futures::io::AsyncWriteExt;
+    use tokio::io::AsyncReadExt;
+    let mut reader = local_file;
+    let mut buf = vec![0u8; 256 * 1024]; // 256 KB chunks
     let mut uploaded: u64 = 0;
     let mut cancelled = false;
 
-    // Wrap local file reader with progress tracking.
-    use tokio::io::AsyncReadExt;
-    let mut reader = local_file;
-    let mut buf = vec![0u8; 65536];
-
-    // Build the data to send (suppaFTP's put_file takes a reader).
-    // We collect into a Vec<u8> only when the file is small enough;
-    // for streaming we use put_with_stream.
-    let remote_full = format!("{}/{}", remote_dir.trim_end_matches('/'), filename);
-
-    // Use suppaftp's put_file which takes a Read; bridge via tokio_util compat.
-    // Simpler: read into channel buffer and report progress as we read.
-    let mut data: Vec<u8> = Vec::with_capacity(file_size as usize);
     loop {
         let n = reader.read(&mut buf).await.map_err(|e| format!("Read error: {e}"))?;
-        if n == 0 { break; }
-        data.extend_from_slice(&buf[..n]);
+        if n == 0 {
+            break;
+        }
+        data_stream
+            .write_all(&buf[..n])
+            .await
+            .map_err(|e| format!("Write error for {remote_full}: {e}"))?;
         uploaded += n as u64;
         if !on_progress(uploaded, file_size) {
             cancelled = true;
@@ -535,14 +540,13 @@ pub async fn upload_file(
     }
 
     if cancelled {
+        drop(data_stream);
         ftp.quit().await.ok();
         return Err("Cancelled".to_string());
     }
 
-    // Upload via suppaftp (put_file requires futures::AsyncRead).
-    // AllowStdIo from the futures crate bridges std::io::Read → futures::AsyncRead.
-    let mut cursor = futures::io::AllowStdIo::new(std::io::Cursor::new(data));
-    ftp.put_file(filename, &mut cursor)
+    // Flush the data stream and wait for the server's 226 Transfer complete.
+    ftp.finalize_put_stream(data_stream)
         .await
         .map_err(|e| format!("Upload failed for {remote_full}: {}", clean_ftp_error(e)))?;
 
