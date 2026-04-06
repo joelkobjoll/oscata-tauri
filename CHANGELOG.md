@@ -1,5 +1,25 @@
 # Novedades de Oscata
 
+## Versión 0.7.1 — 6 de abril de 2026
+
+### 📂 Subidas de series: carpeta de categoría siempre presente
+
+Al seleccionar una carpeta de destino para una serie con el explorador FTP, la subcarpeta de categoría correcta («Temporadas en emision» o «Temporadas Completadas») se mantiene en la ruta y se crea automáticamente en el servidor si aún no existe. Antes, si seleccionabas la carpeta raíz de series manualmente, la categoría desaparecía de la ruta.
+
+### 🗂️ El explorador FTP abre directamente en la carpeta correcta
+
+Para subidas de series, el explorador FTP se abre ahora en la subcarpeta de categoría ya detectada (p. ej. «Temporadas en emision») en lugar de en la raíz del servidor, reduciendo la navegación necesaria.
+
+### 🔧 Detección mejorada de temporada y episodio
+
+Se amplían los formatos de episodio reconocidos en el analizador: `1x05`, `Cap. 03`, `Capitulo 03` y números con cero inicial al principio del nombre de archivo. La detección de temporada dentro de directorios de temporada completa es más robusta y recorre un nivel adicional de subcarpetas cuando es necesario.
+
+### 🎵 Códec de audio y idiomas en subidas
+
+La información de códec de audio e idiomas detectada por ffprobe y el parser se propaga ahora correctamente al trabajo de subida y queda registrada en la base de datos al completarse.
+
+---
+
 ## Versión 0.7.0 — 5 de abril de 2026
 
 ### 📤 Subidas que sobreviven a un cierre inesperado
