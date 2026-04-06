@@ -1445,7 +1445,7 @@ export default function Library({
               )}
             </button>
           )}
-          <ThemeToggle />
+          {isTauri() && <ThemeToggle />}
           {/* Settings button */}
           <button
             onClick={() => setShowSettings(true)}
