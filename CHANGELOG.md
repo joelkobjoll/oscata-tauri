@@ -1,5 +1,13 @@
 # Novedades de Oscata
 
+## Versión 0.7.5 — 6 de abril de 2026
+
+### 🎵 Idioma integrado en cada pista de audio
+
+El campo de idioma ya no es un cuadro de texto libre separado. Ahora cada pista de audio incluye su propio selector de idioma (SPA – Español, ENG – Inglés, etc.) con todas las lenguas disponibles en la lista. El idioma queda como primer campo de la fila (`idioma | códec | canales | ×`), el código corto se usa en el nombre del archivo renombrado y el nombre completo sigue llegando a Telegram igual que antes. Los idiomas detectados por ffprobe o por el nombre del archivo se asignan automáticamente a cada pista por posición.
+
+---
+
 ## Versión 0.7.4 — 6 de abril de 2026
 
 ### 🎵 Pistas de audio en series (multi-track)
