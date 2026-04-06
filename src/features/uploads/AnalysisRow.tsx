@@ -624,6 +624,7 @@ export default function AnalysisRow({
       const results = await invoke<TmdbMatch[]>("search_tmdb", {
         query: tmdbQuery.trim(),
         mediaType: mediaType === "tv" ? "tv" : "movie",
+        year: suggestion?.detected_year ?? null,
       });
       setTmdbResults(results.slice(0, 6));
       setTmdbSearched(true);

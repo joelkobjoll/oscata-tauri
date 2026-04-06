@@ -2117,9 +2117,10 @@ pub async fn search_tmdb(
     state: tauri::State<'_, crate::db::Db>,
     query: String,
     media_type: String,
+    year: Option<u16>,
 ) -> Result<Vec<crate::tmdb::TmdbMovie>, String> {
     let config = state.load_config()?;
-    crate::tmdb::search_tmdb_multi(&config.tmdb_api_key, &query, &media_type).await
+    crate::tmdb::search_tmdb_multi_with_year(&config.tmdb_api_key, &query, &media_type, year).await
 }
 
 #[tauri::command]

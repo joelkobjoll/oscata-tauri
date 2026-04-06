@@ -195,6 +195,7 @@ export default function UploadPrepareModal({
         const tmdbMatches = await invoke<TmdbMatch[]>("search_tmdb", {
           query: cleanTmdbQuery(rawTitle),
           mediaType: suggestion?.media_type === "tv" ? "tv" : "movie",
+          year: suggestion?.detected_year ?? null,
         });
         const tmdbMatch = tmdbMatches[0] ?? null;
         setFiles((prev) =>

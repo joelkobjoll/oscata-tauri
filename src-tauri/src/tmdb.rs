@@ -127,9 +127,14 @@ fn score_result(result: &TmdbMovie, query: &str, year: Option<u16>) -> f64 {
         if let Some(ry) = result_year {
             let diff = (ry - y as i32).abs();
             if diff == 0 {
-                score += 30.0;
+                score += 50.0;
             } else if diff == 1 {
-                score += 15.0;
+                score += 20.0;
+            } else if diff <= 3 {
+                score -= 10.0;
+            } else {
+                // Large year gap — strongly penalize so the right era wins
+                score -= 25.0;
             }
         }
     }
@@ -507,6 +512,10 @@ pub async fn smart_search(
 }
 
 pub async fn search_tmdb_multi(api_key: &str, query: &str, media_type: &str) -> Result<Vec<TmdbMovie>, String> {
+    search_tmdb_multi_with_year(api_key, query, media_type, None).await
+}
+
+pub async fn search_tmdb_multi_with_year(api_key: &str, query: &str, media_type: &str, hint_year: Option<u16>) -> Result<Vec<TmdbMovie>, String> {
     let endpoint = if media_type == "tv" { "tv" } else { "movie" };
 
     // Clean the query before sending to TMDB:
@@ -528,12 +537,14 @@ pub async fn search_tmdb_multi(api_key: &str, query: &str, media_type: &str) -> 
         (cleaned, main_only)
     };
 
-    // Extract year from original query for scoring boost
-    let year: Option<u16> = regex::Regex::new(r"(?:[\(\[])?((19|20)\d{2})(?:[\)\]])?")
-        .unwrap()
-        .captures(query)
-        .and_then(|c| c.get(1))
-        .and_then(|m| m.as_str().parse().ok());
+    // Year for scoring: prefer the explicit hint, fall back to extracting from the raw query.
+    let year: Option<u16> = hint_year.or_else(|| {
+        regex::Regex::new(r"(?:[\(\[])?((19|20)\d{2})(?:[\)\]])?")
+            .unwrap()
+            .captures(query)
+            .and_then(|c| c.get(1))
+            .and_then(|m| m.as_str().parse().ok())
+    });
 
     let mut results = search_endpoint_results(api_key, &cleaned, year, endpoint).await?;
 
