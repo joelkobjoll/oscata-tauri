@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "../lib/transport";
 import AppIcon from "./AppIcon";
 import type { AppLanguage } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
@@ -52,7 +52,7 @@ export default function FixMatchModal({
     setLoading(true);
     setError("");
     try {
-      const res = await invoke<TmdbResult[]>("search_tmdb", {
+      const res = await call<TmdbResult[]>("search_tmdb", {
         query: nextQuery,
         mediaType: nextType,
       });
@@ -77,8 +77,8 @@ export default function FixMatchModal({
     setError("");
     try {
       for (const id of itemIds) {
-        await invoke("apply_tmdb_match", {
-          itemId: id,
+        await call("apply_tmdb_match", {
+          id,
           tmdbId: movie.id,
           mediaType,
         });
