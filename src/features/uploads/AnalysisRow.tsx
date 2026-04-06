@@ -44,6 +44,20 @@ const SEASON_SOURCES = [
 ];
 const SEASON_RESOLUTIONS = ["", "2160p", "1080p", "720p", "480p"];
 const SEASON_CODECS = ["", "HEVC", "AVC", "AV1", "VP9", "MPEG2"];
+const SEASON_AUDIO_CODECS = [
+  "",
+  "TrueHD Atmos",
+  "TrueHD",
+  "DTS-HD MA",
+  "DTS:X",
+  "DTS-HD HRA",
+  "DTS",
+  "EAC3",
+  "AC3",
+  "AAC",
+  "FLAC",
+  "MP3",
+];
 
 /** Parse episode number from a filename, e.g. S01E05 → 5. */
 function parseEpisodeNum(name: string): number | null {
@@ -89,6 +103,7 @@ function buildEpisodeFilename(
   source: string,
   resolution: string,
   codec: string,
+  audioTracks: { codec: string; channels: string }[],
   langs: string,
   ext: string,
 ): string {
@@ -102,6 +117,12 @@ function buildEpisodeFilename(
     parts.push(source.trim().replace(/\s+/g, ".").toUpperCase());
   if (resolution.trim()) parts.push(resolution.trim());
   if (codec.trim()) parts.push(codec.trim());
+  audioTracks
+    .filter((t) => t.codec.trim())
+    .forEach((t) => {
+      const ch = t.channels.trim();
+      parts.push(ch ? `${t.codec.trim()}.${ch}` : t.codec.trim());
+    });
   const langList = langs
     .split(/[,\s]+/)
     .filter(Boolean)
@@ -303,6 +324,47 @@ export default function AnalysisRow({
       .map((l) => l.toUpperCase())
       .join(", "),
   );
+  // TV audio tracks — one entry per physical track (codec + channels)
+  type SeasonAudioTrackEntry = { codec: string; channels: string };
+  const [seasonAudioTracks, setSeasonAudioTracks] = useState<
+    SeasonAudioTrackEntry[]
+  >(() => {
+    if (info?.audio_tracks && info.audio_tracks.length > 0) {
+      return info.audio_tracks.map((t) => ({
+        codec: t.codec ?? "",
+        channels:
+          t.channels != null
+            ? t.channels <= 2
+              ? `${t.channels}.0`
+              : t.channels === 6
+                ? "5.1"
+                : t.channels === 8
+                  ? "7.1"
+                  : `${t.channels}.0`
+            : "",
+      }));
+    }
+    return [{ codec: "", channels: "" }];
+  });
+  const updateSeasonAudioTrack = (
+    idx: number,
+    field: keyof SeasonAudioTrackEntry,
+    value: string,
+  ) => {
+    setSeasonAudioTracks((prev) =>
+      prev.map((t, i) => (i === idx ? { ...t, [field]: value } : t)),
+    );
+  };
+  const removeSeasonAudioTrack = (idx: number) => {
+    setSeasonAudioTracks((prev) =>
+      prev.length <= 1
+        ? [{ codec: "", channels: "" }]
+        : prev.filter((_, i) => i !== idx),
+    );
+  };
+  const addSeasonAudioTrack = () => {
+    setSeasonAudioTracks((prev) => [...prev, { codec: "", channels: "" }]);
+  };
   // Tracks whether the user has manually edited the FTP destination field (typing)
   const destTouchedRef = useRef(false);
   // When the user picks a folder via FTP browser for a TV show, store it here so
@@ -332,6 +394,23 @@ export default function AnalysisRow({
       .map((x) => x.toUpperCase())
       .join(", ");
     if (l && !seasonLangs) setSeasonLangs(l);
+    if (info.audio_tracks && info.audio_tracks.length > 0) {
+      setSeasonAudioTracks(
+        info.audio_tracks.map((t) => ({
+          codec: t.codec ?? "",
+          channels:
+            t.channels != null
+              ? t.channels <= 2
+                ? `${t.channels}.0`
+                : t.channels === 6
+                  ? "5.1"
+                  : t.channels === 8
+                    ? "7.1"
+                    : `${t.channels}.0`
+              : "",
+        })),
+      );
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info]);
 
@@ -352,6 +431,23 @@ export default function AnalysisRow({
           .filter(Boolean)
           .map((l) => l.toUpperCase());
         if (langs.length > 0 && !seasonLangs) setSeasonLangs(langs.join(", "));
+        if (epInfo.audio_tracks && epInfo.audio_tracks.length > 0) {
+          setSeasonAudioTracks(
+            epInfo.audio_tracks.map((t) => ({
+              codec: t.codec ?? "",
+              channels:
+                t.channels != null
+                  ? t.channels <= 2
+                    ? `${t.channels}.0`
+                    : t.channels === 6
+                      ? "5.1"
+                      : t.channels === 8
+                        ? "7.1"
+                        : `${t.channels}.0`
+                  : "",
+            })),
+          );
+        }
       })
       .catch(() => {
         // ffprobe not available — fall back to parsing filenames and folder name
@@ -431,6 +527,7 @@ export default function AnalysisRow({
           seasonSource,
           seasonResolution,
           seasonCodec,
+          seasonAudioTracks,
           seasonLangs,
           ext,
         ),
@@ -448,6 +545,7 @@ export default function AnalysisRow({
     seasonSource,
     seasonResolution,
     seasonCodec,
+    seasonAudioTracks,
     seasonLangs,
     rename,
   ]);
@@ -470,6 +568,7 @@ export default function AnalysisRow({
           seasonSource,
           seasonResolution,
           seasonCodec,
+          seasonAudioTracks,
           seasonLangs,
           epExt,
         ),
@@ -484,6 +583,7 @@ export default function AnalysisRow({
     seasonSource,
     seasonResolution,
     seasonCodec,
+    seasonAudioTracks,
     seasonLangs,
     rename,
   ]);
@@ -1344,6 +1444,94 @@ export default function AnalysisRow({
                       style={formInputCompact}
                     />
                   </div>
+                  {/* Audio tracks — one row per physical track */}
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: "var(--color-text-muted)",
+                        fontWeight: 600,
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      PISTAS DE AUDIO
+                    </div>
+                    {seasonAudioTracks.map((track, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 72px 26px",
+                          gap: "0 6px",
+                          alignItems: "center",
+                        }}
+                      >
+                        <select
+                          value={track.codec}
+                          onChange={(e) =>
+                            updateSeasonAudioTrack(idx, "codec", e.target.value)
+                          }
+                          style={formSelectCompact}
+                        >
+                          {SEASON_AUDIO_CODECS.map((a) => (
+                            <option key={a} value={a}>
+                              {a || "—"}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          value={track.channels}
+                          onChange={(e) =>
+                            updateSeasonAudioTrack(
+                              idx,
+                              "channels",
+                              e.target.value,
+                            )
+                          }
+                          placeholder="5.1"
+                          style={formInputCompact}
+                        />
+                        <button
+                          onClick={() => removeSeasonAudioTrack(idx)}
+                          title="Eliminar pista"
+                          style={{
+                            background: "none",
+                            border: "1px solid var(--color-border)",
+                            borderRadius: "var(--radius)",
+                            color: "var(--color-text-muted)",
+                            cursor: "pointer",
+                            fontSize: 14,
+                            lineHeight: 1,
+                            padding: "0 5px",
+                            height: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={addSeasonAudioTrack}
+                      style={{
+                        background: "none",
+                        border: "1px dashed var(--color-border)",
+                        borderRadius: "var(--radius)",
+                        color: "var(--color-text-muted)",
+                        cursor: "pointer",
+                        fontSize: 11,
+                        padding: "4px 10px",
+                        textAlign: "left",
+                        width: "fit-content",
+                      }}
+                    >
+                      + Añadir pista
+                    </button>
+                  </div>
                 </>
               )}
             </div>
@@ -1559,6 +1747,7 @@ export default function AnalysisRow({
                               seasonSource,
                               seasonResolution,
                               seasonCodec,
+                              seasonAudioTracks,
                               seasonLangs,
                               ext,
                             )

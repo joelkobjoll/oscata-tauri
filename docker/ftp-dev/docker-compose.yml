@@ -6,10 +6,10 @@ services:
       - "21:21"
       - "21000-21010:21000-21010"
     environment:
-      USERS: "oscata|oscata123|/ftp/media|10000"
+      USERS: "oscata|oscata123|/|10000"
       ADDRESS: localhost
       MIN_PORT: 21000
       MAX_PORT: 21010
     volumes:
-      - ./media:/ftp/media
+      - ./media:/storage/Contenido
     restart: unless-stopped

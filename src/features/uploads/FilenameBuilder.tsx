@@ -123,12 +123,35 @@ export default function FilenameBuilder({
   const [resolution, setResolution] = useState(info?.resolution ?? "");
   const [codec, setCodec] = useState(info?.codec ?? "");
   const [hdr, setHdr] = useState(info?.hdr ?? "");
-  const [audioCodec, setAudioCodec] = useState(
-    info?.audio_tracks?.[0]?.codec ?? "",
-  );
-  const [channels, setChannels] = useState(
-    formatChannels(info?.audio_tracks?.[0]?.channels ?? null),
-  );
+  // Audio tracks — one entry per physical track in the file
+  type AudioTrackEntry = { codec: string; channels: string };
+  const [audioTracks, setAudioTracks] = useState<AudioTrackEntry[]>(() => {
+    if (info?.audio_tracks && info.audio_tracks.length > 0) {
+      return info.audio_tracks.map((t) => ({
+        codec: t.codec ?? "",
+        channels: formatChannels(t.channels ?? null),
+      }));
+    }
+    return [{ codec: "", channels: "" }];
+  });
+
+  const updateAudioTrack = (idx: number, field: keyof AudioTrackEntry, value: string) => {
+    setAudioTracks((prev) =>
+      prev.map((t, i) => (i === idx ? { ...t, [field]: value } : t)),
+    );
+    notify();
+  };
+  const removeAudioTrack = (idx: number) => {
+    if (audioTracks.length <= 1) {
+      setAudioTracks([{ codec: "", channels: "" }]);
+    } else {
+      setAudioTracks((prev) => prev.filter((_, i) => i !== idx));
+    }
+    notify();
+  };
+  const addAudioTrack = () => {
+    setAudioTracks((prev) => [...prev, { codec: "", channels: "" }]);
+  };
   const [langs, setLangs] = useState(
     (info?.languages ?? []).map((l) => l.toUpperCase()).join(", "),
   );
@@ -175,10 +198,12 @@ export default function FilenameBuilder({
       const core = hdrCore(hdr);
       if (core) parts.push(core);
       if (isDV(hdr)) parts.push("DV");
-      if (audioCodec.trim()) {
-        const ch = channels.trim();
-        parts.push(ch ? `${audioCodec.trim()}.${ch}` : audioCodec.trim());
-      }
+      audioTracks
+        .filter((t) => t.codec.trim())
+        .forEach((t) => {
+          const ch = t.channels.trim();
+          parts.push(ch ? `${t.codec.trim()}.${ch}` : t.codec.trim());
+        });
       const langList = langs
         .split(/[,\s]+/)
         .filter(Boolean)
@@ -202,10 +227,12 @@ export default function FilenameBuilder({
       .filter(Boolean)
       .map((l) => l.toUpperCase());
     tags.push(...langList);
-    if (audioCodec.trim()) {
-      const ch = channels.trim();
-      tags.push(ch ? `${audioCodec.trim()} ${ch}` : audioCodec.trim());
-    }
+    audioTracks
+      .filter((t) => t.codec.trim())
+      .forEach((t) => {
+        const ch = t.channels.trim();
+        tags.push(ch ? `${t.codec.trim()} ${ch}` : t.codec.trim());
+      });
     if (subs) tags.push("SUBS");
 
     const inner = tags.join(".");
@@ -404,57 +431,101 @@ export default function FilenameBuilder({
         </Field>
       </div>
 
-      {/* Quality row 2: HDR / Audio codec / Channels */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr 80px",
-          gap: "8px 10px",
-        }}
-      >
-        <Field label="HDR">
-          <select
-            value={hdr}
-            onChange={(e) => {
-              setHdr(e.target.value);
-              notify();
+      {/* Quality row 2: HDR */}
+      <Field label="HDR">
+        <select
+          value={hdr}
+          onChange={(e) => {
+            setHdr(e.target.value);
+            notify();
+          }}
+          style={selectStyle}
+        >
+          {HDR_OPTIONS.map((h) => (
+            <option key={h.value} value={h.value}>
+              {h.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      {/* Audio tracks — one row per track */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div
+          style={{
+            fontSize: 10,
+            color: "var(--color-text-muted)",
+            fontWeight: 600,
+            letterSpacing: "0.04em",
+          }}
+        >
+          PISTAS DE AUDIO
+        </div>
+        {audioTracks.map((track, idx) => (
+          <div
+            key={idx}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 72px 26px",
+              gap: "0 6px",
+              alignItems: "center",
             }}
-            style={selectStyle}
           >
-            {HDR_OPTIONS.map((h) => (
-              <option key={h.value} value={h.value}>
-                {h.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Códec audio">
-          <select
-            value={audioCodec}
-            onChange={(e) => {
-              setAudioCodec(e.target.value);
-              notify();
-            }}
-            style={selectStyle}
-          >
-            {AUDIO_CODECS.map((a) => (
-              <option key={a} value={a}>
-                {a || "—"}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Canales">
-          <input
-            value={channels}
-            onChange={(e) => {
-              setChannels(e.target.value);
-              notify();
-            }}
-            placeholder="5.1"
-            style={inputStyle}
-          />
-        </Field>
+            <select
+              value={track.codec}
+              onChange={(e) => updateAudioTrack(idx, "codec", e.target.value)}
+              style={selectStyle}
+            >
+              {AUDIO_CODECS.map((a) => (
+                <option key={a} value={a}>
+                  {a || "—"}
+                </option>
+              ))}
+            </select>
+            <input
+              value={track.channels}
+              onChange={(e) => updateAudioTrack(idx, "channels", e.target.value)}
+              placeholder="5.1"
+              style={inputStyle}
+            />
+            <button
+              onClick={() => removeAudioTrack(idx)}
+              title="Eliminar pista"
+              style={{
+                background: "none",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius)",
+                color: "var(--color-text-muted)",
+                cursor: "pointer",
+                fontSize: 14,
+                lineHeight: 1,
+                padding: "0 5px",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={addAudioTrack}
+          style={{
+            background: "none",
+            border: "1px dashed var(--color-border)",
+            borderRadius: "var(--radius)",
+            color: "var(--color-text-muted)",
+            cursor: "pointer",
+            fontSize: 11,
+            padding: "4px 10px",
+            textAlign: "left",
+            width: "fit-content",
+          }}
+        >
+          + Añadir pista
+        </button>
       </div>
 
       {/* Languages + Subs (subs only for movies) */}
