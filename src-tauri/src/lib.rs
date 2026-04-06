@@ -162,6 +162,7 @@ pub fn run() {
             commands::update_quality_profile,
             commands::delete_quality_profile,
             commands::check_ffprobe,
+            commands::install_ffprobe,
             commands::analyze_local_file,
             commands::list_local_video_files,
             commands::check_ftp_write_permission,

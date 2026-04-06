@@ -2751,6 +2751,13 @@ pub fn check_ffprobe() -> Option<String> {
     crate::analysis::check_ffprobe()
 }
 
+/// Attempt to install ffmpeg via the system package manager (Homebrew on macOS,
+/// apt-get on Linux). Returns a success message or an error string.
+#[tauri::command]
+pub async fn install_ffprobe() -> Result<String, String> {
+    crate::analysis::install_ffmpeg().await
+}
+
 /// Run ffprobe on a local file and return media info.
 #[tauri::command]
 pub fn analyze_local_file(path: String) -> Result<crate::analysis::LocalMediaInfo, String> {

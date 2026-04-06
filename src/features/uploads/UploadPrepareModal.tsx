@@ -65,6 +65,21 @@ export default function UploadPrepareModal({
   );
   const [queueing, setQueueing] = useState(false);
   const [error, setError] = useState("");
+  const [installingFfprobe, setInstallingFfprobe] = useState(false);
+  const [ffprobeInstalled, setFfprobeInstalled] = useState(false);
+  const effectiveFfprobeAvailable = ffprobeAvailable || ffprobeInstalled;
+
+  const installFfprobe = async () => {
+    setInstallingFfprobe(true);
+    try {
+      await invoke("install_ffprobe");
+      setFfprobeInstalled(true);
+    } catch (e: unknown) {
+      setError(String(e));
+    } finally {
+      setInstallingFfprobe(false);
+    }
+  };
 
   // ── Step 1 helpers ────────────────────────────────────────────────────────
 
@@ -135,7 +150,7 @@ export default function UploadPrepareModal({
       let suggestion: UploadSuggestion | null = null;
       try {
         const [info, sug] = await Promise.all([
-          ffprobeAvailable
+          effectiveFfprobeAvailable
             ? invoke<LocalMediaInfo>("analyze_local_file", { path: f.path })
             : Promise.resolve(null),
           invoke<UploadSuggestion>("suggest_upload_destination", {
@@ -501,7 +516,7 @@ export default function UploadPrepareModal({
 
           {step === "configure" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {!ffprobeAvailable && (
+              {!effectiveFfprobeAvailable && (
                 <div
                   style={{
                     display: "flex",
@@ -514,10 +529,39 @@ export default function UploadPrepareModal({
                   }}
                 >
                   <AlertTriangle size={14} color="var(--color-warning)" />
-                  <span style={{ fontSize: 12, color: "var(--color-warning)" }}>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: "var(--color-warning)",
+                      flex: 1,
+                    }}
+                  >
                     ffprobe no encontrado. El análisis de calidad no está
-                    disponible. Instala ffmpeg para activarlo.
+                    disponible.
                   </span>
+                  <button
+                    onClick={installFfprobe}
+                    disabled={installingFfprobe}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                      background: "var(--color-primary)",
+                      border: "none",
+                      borderRadius: "var(--radius)",
+                      color: "#fff",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "4px 10px",
+                      cursor: installingFfprobe ? "not-allowed" : "pointer",
+                      opacity: installingFfprobe ? 0.6 : 1,
+                      flexShrink: 0,
+                      transition: "opacity 0.15s ease",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {installingFfprobe ? "Instalando…" : "Instalar ffmpeg"}
+                  </button>
                 </div>
               )}
 

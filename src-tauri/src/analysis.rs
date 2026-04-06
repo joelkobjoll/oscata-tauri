@@ -66,33 +66,122 @@ struct FfprobeFormat {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/// Returns the ffprobe binary path if found in PATH, or None.
-pub fn check_ffprobe() -> Option<String> {
-    let candidates = if cfg!(target_os = "windows") {
-        vec!["ffprobe.exe", "ffprobe"]
-    } else {
-        vec!["ffprobe"]
-    };
+/// Returns the absolute path to the ffprobe binary, checking common install
+/// locations first so Tauri apps on macOS work even without Homebrew in PATH.
+pub fn resolve_ffprobe_binary() -> Option<String> {
+    let mut candidates: Vec<&str> = Vec::new();
+
+    // Absolute paths first — Tauri apps on macOS launch with a minimal PATH
+    // that typically excludes /opt/homebrew/bin and /usr/local/bin.
+    #[cfg(not(target_os = "windows"))]
+    {
+        candidates.extend_from_slice(&[
+            "/opt/homebrew/bin/ffprobe",    // Homebrew Apple Silicon
+            "/usr/local/bin/ffprobe",        // Homebrew Intel / manual install
+            "/usr/bin/ffprobe",              // system package (Linux)
+            "/usr/local/ffmpeg/bin/ffprobe", // manual FFmpeg bundle
+        ]);
+    }
+    #[cfg(target_os = "windows")]
+    candidates.extend_from_slice(&["ffprobe.exe"]);
+
+    // Bare name last (relies on PATH — works in a terminal but not always in apps).
+    candidates.push("ffprobe");
 
     for candidate in candidates {
-        if let Ok(output) = std::process::Command::new(candidate)
+        if std::process::Command::new(candidate)
             .args(["-version"])
-            .stdout(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .output()
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
         {
-            if output.status.success() {
-                // Return first line (version string)
-                let version = String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .next()
-                    .unwrap_or(candidate)
-                    .to_string();
-                return Some(version);
-            }
+            return Some(candidate.to_string());
         }
     }
     None
+}
+
+/// Returns the ffprobe version string if found, or None.
+pub fn check_ffprobe() -> Option<String> {
+    let binary = resolve_ffprobe_binary()?;
+    let output = std::process::Command::new(&binary)
+        .args(["-version"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if output.status.success() {
+        Some(
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or(&binary)
+                .to_string(),
+        )
+    } else {
+        None
+    }
+}
+
+/// Try to install ffmpeg via the system package manager.
+/// macOS: Homebrew (`brew install ffmpeg`)
+/// Linux: apt-get (`apt-get install -y ffmpeg`)
+/// Windows: returns an informative error (must be installed manually).
+pub async fn install_ffmpeg() -> Result<String, String> {
+    if cfg!(target_os = "macos") {
+        // Locate Homebrew
+        let brew = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew", "brew"]
+            .into_iter()
+            .find(|b| {
+                std::process::Command::new(b)
+                    .args(["--version"])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| {
+                "Homebrew no encontrado. Instala Homebrew desde brew.sh y vuelve a intentarlo."
+                    .to_string()
+            })?;
+
+        let output = tokio::process::Command::new(brew)
+            .args(["install", "ffmpeg"])
+            .output()
+            .await
+            .map_err(|e| format!("No se pudo ejecutar brew: {e}"))?;
+
+        if output.status.success() {
+            Ok("ffmpeg instalado correctamente vía Homebrew.".to_string())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!(
+                "Error al instalar: {}",
+                stderr.lines().next().unwrap_or("error desconocido")
+            ))
+        }
+    } else if cfg!(target_os = "linux") {
+        let output = tokio::process::Command::new("apt-get")
+            .args(["install", "-y", "ffmpeg"])
+            .output()
+            .await
+            .map_err(|e| format!("No se pudo ejecutar apt-get: {e}"))?;
+
+        if output.status.success() {
+            Ok("ffmpeg instalado correctamente vía apt.".to_string())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!(
+                "Error al instalar: {}",
+                stderr.lines().next().unwrap_or("error desconocido")
+            ))
+        }
+    } else {
+        Err("Instalación automática no disponible en Windows. Descarga ffmpeg desde https://ffmpeg.org/download.html e instálalo manualmente.".to_string())
+    }
 }
 
 /// Run ffprobe on the local file at `path` and return parsed media info.
@@ -136,7 +225,10 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
 
     let file_size = meta.len();
 
-    let output = std::process::Command::new("ffprobe")
+    let binary = resolve_ffprobe_binary()
+        .ok_or_else(|| "ffprobe no encontrado. Instala ffmpeg para activar el análisis de calidad.".to_string())?;
+
+    let output = std::process::Command::new(&binary)
         .args([
             "-v", "quiet",
             "-print_format", "json",
