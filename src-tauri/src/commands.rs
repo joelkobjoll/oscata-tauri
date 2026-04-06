@@ -135,6 +135,7 @@ pub async fn resume_pending_uploads(
             item.hdr,
             item.languages,
             item.codec,
+            item.audio_codec,
             item.group_id,
             semaphore,
             cancel_flag,
@@ -2704,6 +2705,46 @@ fn format_bytes_human(bytes: u64) -> String {
     }
 }
 
+/// Maps an ISO 639-2 language code to its Spanish display name.
+fn lang_name(code: &str) -> String {
+    match code.to_uppercase().as_str() {
+        "SPA" | "ESP" => "Español".to_string(),
+        "ENG"         => "Inglés".to_string(),
+        "FRA"         => "Francés".to_string(),
+        "GER" | "DEU" => "Alemán".to_string(),
+        "ITA"         => "Italiano".to_string(),
+        "POR"         => "Portugués".to_string(),
+        "JPN"         => "Japonés".to_string(),
+        "KOR"         => "Coreano".to_string(),
+        "CHI" | "ZHO" => "Chino".to_string(),
+        "ARA"         => "Árabe".to_string(),
+        "RUS"         => "Ruso".to_string(),
+        "TUR"         => "Turco".to_string(),
+        "POL"         => "Polaco".to_string(),
+        "DUT" | "NLD" => "Neerlandés".to_string(),
+        "SWE"         => "Sueco".to_string(),
+        "NOR"         => "Noruego".to_string(),
+        "DAN"         => "Danés".to_string(),
+        "FIN"         => "Finlandés".to_string(),
+        "HEB"         => "Hebreo".to_string(),
+        "HUN"         => "Húngaro".to_string(),
+        "CZE"         => "Checo".to_string(),
+        "SLO"         => "Eslovaco".to_string(),
+        "ROM"         => "Rumano".to_string(),
+        "GRE" | "ELL" => "Griego".to_string(),
+        "THA"         => "Tailandés".to_string(),
+        "VIE"         => "Vietnamita".to_string(),
+        "IND"         => "Indonesio".to_string(),
+        "MAY"         => "Malayo".to_string(),
+        "HIN"         => "Hindi".to_string(),
+        "CAT"         => "Catalán".to_string(),
+        "LAT"         => "Latín".to_string(),
+        "EUS"         => "Euskera".to_string(),
+        "GLG"         => "Gallego".to_string(),
+        other         => other.to_uppercase(),
+    }
+}
+
 /// Returns the ffprobe version string if found in PATH, or null.
 #[tauri::command]
 pub fn check_ffprobe() -> Option<String> {
@@ -2797,11 +2838,27 @@ pub struct UploadSuggestion {
     /// TV base + resolved category subfolder (e.g. tv_dest/Temporadas en emision).
     /// Season folder uploads should go directly inside this path.
     pub tv_category_dest: String,
+    /// All configured FTP folder paths (ftp_root/folder_name) from the folder_types config.
+    /// Used by the frontend to populate dest input suggestions.
+    pub folder_options: Vec<String>,
 }
 
 /// Normalise a string for fuzzy folder matching: lowercase, strip non-alphanumeric, collapse spaces.
+fn strip_diacritic(c: char) -> char {
+    match c {
+        'á' | 'à' | 'ä' | 'â' | 'Á' | 'À' | 'Ä' | 'Â' => 'a',
+        'é' | 'è' | 'ë' | 'ê' | 'É' | 'È' | 'Ë' | 'Ê' => 'e',
+        'í' | 'ì' | 'ï' | 'î' | 'Í' | 'Ì' | 'Ï' | 'Î' => 'i',
+        'ó' | 'ò' | 'ö' | 'ô' | 'Ó' | 'Ò' | 'Ö' | 'Ô' => 'o',
+        'ú' | 'ù' | 'ü' | 'û' | 'Ú' | 'Ù' | 'Ü' | 'Û' => 'u',
+        'ñ' | 'Ñ' => 'n',
+        other => other,
+    }
+}
+
 fn normalise_for_match(s: &str) -> String {
     s.chars()
+        .map(strip_diacritic)
         .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { ' ' })
         .collect::<String>()
         .split_whitespace()
@@ -2944,13 +3001,17 @@ pub async fn suggest_upload_destination(
                 score += 10;
             }
         }
-        // Codec
+        // Codec — bonus for matching encoder folder, penalty for wrong encoder folder
         if let Some(ref codec) = parsed.codec {
             let cl = codec.to_lowercase();
-            if cl.contains("x265") || cl.contains("hevc") || cl.contains("265") {
+            let is_x265 = cl.contains("x265") || cl.contains("hevc") || cl.contains("265");
+            let is_x264 = cl.contains("x264") || cl.contains("264") || cl.contains("avc");
+            if is_x265 {
                 if fl.contains("x265") || fl.contains("hevc") { score += 5; }
-            } else if cl.contains("x264") || cl.contains("264") || cl.contains("avc") {
+                else if fl.contains("x264") { score -= 8; } // AVC folder is wrong for HEVC content
+            } else if is_x264 {
                 if fl.contains("x264") { score += 5; }
+                else if fl.contains("x265") || fl.contains("hevc") { score -= 8; } // X265 folder is wrong for AVC content
             }
         }
         // Release type
@@ -2996,89 +3057,97 @@ pub async fn suggest_upload_destination(
     };
 
     // For TV shows: search for the show across category subfolders (e.g. "Temporadas en emision",
-    // "Temporadas completas"). If found, use the existing path + season subfolder. If not found,
-    // default to "Temporadas en emision" category (prefer the category whose name contains
-    // "emision" or the first category found) and construct the full path — the uploader will
-    // create it via MKD. Season path is always constructed as "Season NN".
-    // For movies: just return the movie base folder.
-    //
-    // `resolved_tv_category` = tv_dest/Category — the folder that season dirs live directly inside.
-    // Used by directory-mode uploads where the flat season folder goes there.
+    // For TV: structure is ALWAYS tv_dest/Category/Show where Category is one of
+    // "Temporadas en emision" (single episodes) or "Temporadas completas" (full seasons).
+    // If the show folder doesn't exist yet it will be created by the FTP uploader.
     let (dest, resolved_tv_category) = if media_type == "tv" && !tv_dest.is_empty() {
         let show_title = parsed.title.trim().replace(['/', '\\'], "");
         let season = parsed.season.unwrap_or(1);
-        let season_folder = format!("Season {:02}", season);
+        let is_full_season = p.is_dir(); // directory = full season upload
 
-        // List level-1 dirs (category folders) under the tv base
-        let category_dirs = if !show_title.is_empty() {
-            crate::ftp::list_raw(
-                &config.ftp_host, config.ftp_port, &config.ftp_user, &config.ftp_pass,
-                &tv_dest,
-            ).await.map(|r| extract_dir_names(&r)).unwrap_or_default()
+        // Step 1: list tv_dest to find actual category folder names on the server.
+        // These are typically "Temporadas en emisión" / "Temporadas completas" but may
+        // use different capitalisation or encoding. If the list fails or no category
+        // folders are found, fall back to hardcoded Spanish names.
+        let level1_raw = crate::ftp::list_raw(
+            &config.ftp_host, config.ftp_port, &config.ftp_user, &config.ftp_pass,
+            &tv_dest,
+        ).await;
+        eprintln!("[TV-DEST] tv_dest={tv_dest}");
+        eprintln!("[TV-DEST] list_raw result ok={}", level1_raw.is_ok());
+        let level1_dirs = level1_raw.map(|r| {
+            eprintln!("[TV-DEST] raw lines: {:?}", &r);
+            let dirs = extract_dir_names(&r);
+            eprintln!("[TV-DEST] extracted dirs: {:?}", &dirs);
+            dirs
+        }).unwrap_or_default();
+
+        // Category folders contain "temporad", "emisi", or "completa" (ASCII-safe prefixes
+        // that survive Latin-1 → UTF-8 replacement char conversion on the ó).
+        let category_dirs: Vec<String> = level1_dirs.into_iter()
+            .filter(|d| {
+                let n = normalise_for_match(d);
+                let matches = n.contains("temporad") || n.contains("emisi") || n.contains("completa");
+                eprintln!("[TV-DEST] dir={d:?} normalised={n:?} is_category={matches}");
+                matches
+            })
+            .collect();
+        eprintln!("[TV-DEST] category_dirs={:?}", &category_dirs);
+
+        // Step 2: pick the right category folder name.
+        // Prefer actual server name if found; otherwise use the standard Spanish name.
+        let preferred_kw = if is_full_season { "completa" } else { "emisi" };
+        let fallback_kw  = if is_full_season { "emisi" } else { "completa" };
+        let cat_dir = category_dirs.iter()
+            .find(|d| normalise_for_match(d).contains(preferred_kw))
+            .or_else(|| category_dirs.iter().find(|d| normalise_for_match(d).contains(fallback_kw)))
+            .or_else(|| category_dirs.first())
+            .cloned()
+            .unwrap_or_else(|| {
+                // Fallback: use the standard Spanish category name — the FTP list may have
+                // failed or the folders don't exist yet; ensure_remote_dir will create them.
+                if is_full_season {
+                    "Temporadas completas".to_string()
+                } else {
+                    "Temporadas en emision".to_string()
+                }
+            });
+
+        let cat_path = if cat_dir.is_empty() {
+            tv_dest.clone()
         } else {
-            vec![]
+            format!("{}/{}", tv_dest.trim_end_matches('/'), cat_dir)
         };
 
-        // Search each category for the show; collect (cat_path, show_path, season_path) if found.
-        let mut found_show: Option<(String, String, String)> = None; // (cat_path, show_path, season_path)
-        for cat_dir in &category_dirs {
-            let cat_path = format!("{}/{}", tv_dest.trim_end_matches('/'), cat_dir);
-            if let Ok(cat_raw) = crate::ftp::list_raw(
+        // Step 3: search inside the chosen category for an existing show folder.
+        // Use list_raw_sub to CWD to tv_dest then LIST cat_dir relatively — avoids
+        // CWD failures from Latin-1 accented chars in the category folder name.
+        let existing_show = if !show_title.is_empty() && !cat_dir.is_empty() {
+            crate::ftp::list_raw_sub(
                 &config.ftp_host, config.ftp_port, &config.ftp_user, &config.ftp_pass,
-                &cat_path,
-            ).await {
-                let show_dirs = extract_dir_names(&cat_raw);
-                if let Some(best_show) = fuzzy_best_show(&show_title, &show_dirs) {
-                    let show_path = format!("{}/{}", cat_path.trim_end_matches('/'), best_show);
-                    // Try to find existing season subfolder
-                    let season_path = if let Ok(sr) = crate::ftp::list_raw(
-                        &config.ftp_host, config.ftp_port, &config.ftp_user, &config.ftp_pass,
-                        &show_path,
-                    ).await {
-                        let sdirs = extract_dir_names(&sr);
-                        find_season_dir(&sdirs, season)
-                            .map(|sd| format!("{}/{}", show_path.trim_end_matches('/'), sd))
-                            .unwrap_or_else(|| format!("{}/{}", show_path.trim_end_matches('/'), &season_folder))
-                    } else {
-                        format!("{}/{}", show_path.trim_end_matches('/'), &season_folder)
-                    };
-                    found_show = Some((cat_path, show_path, season_path));
-                    break;
-                }
-            }
-        }
-
-        if let Some((cat_path, _show_path, season_path)) = found_show {
-            (season_path, cat_path)
+                &tv_dest, &cat_dir,
+            ).await
+            .map(|r| {
+                let show_dirs = extract_dir_names(&r);
+                fuzzy_best_show(&show_title, &show_dirs)
+            })
+            .unwrap_or(None)
         } else {
-            // Show doesn't exist yet — pick the right category:
-            // full season upload (directory) → "Temporadas completas"
-            // single episode → "Temporadas en emision"
-            let default_cat = if p.is_dir() {
-                category_dirs.iter()
-                    .find(|d| normalise_for_match(d).contains("completa"))
-                    .or_else(|| category_dirs.first())
-                    .cloned()
-                    .unwrap_or_default()
-            } else {
-                category_dirs.iter()
-                    .find(|d| normalise_for_match(d).contains("emision"))
-                    .or_else(|| category_dirs.first())
-                    .cloned()
-                    .unwrap_or_default()
-            };
-            let cat_path = if default_cat.is_empty() {
-                tv_dest.clone()
-            } else {
-                format!("{}/{}", tv_dest.trim_end_matches('/'), default_cat)
-            };
-            let new_dest = if !show_title.is_empty() {
-                format!("{}/{}/{}", cat_path.trim_end_matches('/'), show_title, season_folder)
-            } else {
-                cat_path.clone()
-            };
-            (new_dest, cat_path)
-        }
+            None
+        };
+
+        // Step 4: build the final dest path.
+        let show_path = if let Some(found) = existing_show {
+            // Existing show folder found — use it directly (episodes go flat inside it).
+            format!("{}/{}", cat_path.trim_end_matches('/'), found)
+        } else {
+            // New show — create a folder named "ShowTitle (Year) SXX".
+            let year_part = parsed.year.map(|y| format!(" ({})", y)).unwrap_or_default();
+            let folder = format!("{}{} S{:02}", show_title, year_part, season);
+            format!("{}/{}", cat_path.trim_end_matches('/'), folder)
+        };
+
+        (show_path, cat_path)
     } else {
         (movie_dest.clone(), String::new())
     };
@@ -3091,16 +3160,25 @@ pub async fn suggest_upload_destination(
             &config.ftp_user, &config.ftp_pass,
             &tv_dest,
         ).await.map(|r| extract_dir_names(&r)).unwrap_or_default();
-        let preferred = if p.is_dir() { "completa" } else { "emision" };
-        let cat = cat_dirs.iter()
-            .find(|d| normalise_for_match(d).contains(preferred))
-            .or_else(|| cat_dirs.first())
-            .cloned()
-            .unwrap_or_default();
-        if cat.is_empty() {
-            tv_dest.clone()
+        let (cat_dirs_fb, _): (Vec<String>, Vec<String>) = cat_dirs
+            .into_iter()
+            .partition(|d| {
+                let n = normalise_for_match(d);
+                n.contains("temporad") || n.contains("emisi") || n.contains("completa")
+            });
+        if !cat_dirs_fb.is_empty() {
+            let preferred_kw = if p.is_dir() { "completa" } else { "emisi" };
+            let fallback_kw  = if p.is_dir() { "emisi" } else { "completa" };
+            let cat = cat_dirs_fb.iter()
+                .find(|d| normalise_for_match(d).contains(preferred_kw))
+                .or_else(|| cat_dirs_fb.iter().find(|d| normalise_for_match(d).contains(fallback_kw)))
+                .or_else(|| cat_dirs_fb.first())
+                .cloned()
+                .unwrap_or_default();
+            if cat.is_empty() { tv_dest.clone() } else { format!("{}/{}", tv_dest.trim_end_matches('/'), cat) }
         } else {
-            format!("{}/{}", tv_dest.trim_end_matches('/'), cat)
+            // Flat structure — no category layer
+            tv_dest.clone()
         }
     } else {
         resolved_tv_category
@@ -3126,6 +3204,14 @@ pub async fn suggest_upload_destination(
         movie_dest,
         tv_dest,
         tv_category_dest: resolved_tv_category,
+        folder_options: {
+            let mut opts: Vec<String> = folder_map
+                .keys()
+                .map(|name| format!("{}/{}", ftp_root, name))
+                .collect();
+            opts.sort();
+            opts
+        },
     })
 }
 
@@ -3227,6 +3313,7 @@ fn spawn_upload_job(
     hdr: Option<String>,
     languages: Vec<String>,
     codec: Option<String>,
+    audio_codec: Option<String>,
     group_id: Option<String>,
     semaphore: Arc<tokio::sync::Semaphore>,
     cancel_flag: Arc<std::sync::atomic::AtomicBool>,
@@ -3329,14 +3416,15 @@ fn spawn_upload_job(
                     };
 
                     if should_notify {
-                        // Derive display folder: last two path segments
+                        // Derive display folder: everything from "Compartida" onwards (case-insensitive).
+                        // Falls back to the full path if the anchor segment is not found.
                         let dest_display = {
-                            let parts: Vec<&str> = ftp_dest_path.trim_end_matches('/').rsplitn(3, '/').collect();
-                            match parts.as_slice() {
-                                [last, prev, _] => format!("{}/{}", prev, last),
-                                [last, prev] => format!("{}/{}", prev, last),
-                                [last] => last.to_string(),
-                                _ => ftp_dest_path.clone(),
+                            let path = ftp_dest_path.trim_end_matches('/');
+                            let segments: Vec<&str> = path.split('/').collect();
+                            let anchor = segments.iter().position(|s| s.to_lowercase() == "compartida");
+                            match anchor {
+                                Some(idx) => segments[idx..].join("/"),
+                                None => path.to_string(),
                             }
                         };
 
@@ -3420,19 +3508,24 @@ fn spawn_upload_job(
                             })
                             .unwrap_or_default();
 
-                        // Tech-specs line: resolution · codec · HDR · languages
+                        // Tech-specs line: resolution · video codec · HDR · audio codec
                         let specs_parts: Vec<String> = [
                             resolution.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
                             codec.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
                             hdr.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
-                            if languages.is_empty() { None } else {
-                                Some(languages.iter().map(|l| l.to_uppercase()).collect::<Vec<_>>().join(", "))
-                            },
+                            audio_codec.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
                         ].into_iter().flatten().collect();
                         let specs_str = if specs_parts.is_empty() {
                             String::new()
                         } else {
                             format!("\n📏 {}", specs_parts.join(" · "))
+                        };
+                        // Languages on their own line — map codes to Spanish names
+                        let langs_str = if languages.is_empty() {
+                            String::new()
+                        } else {
+                            let names: Vec<String> = languages.iter().map(|l| lang_name(l)).collect();
+                            format!("\n🗣️ {}", names.join(" · "))
                         };
                         let size_str = if let Some(ref gid) = group_id {
                             // For season groups use the sum of all episode sizes
@@ -3456,7 +3549,7 @@ fn spawn_upload_job(
                         };
 
                         let msg = format!(
-                            "<b>{header}</b>\n\n<b>{display_title}</b>{year_str}{episode_str}{specs_str}{size_str}{rating_str}{overview_str}{tmdb_link_str}\n\n📂 <code>{dest_display}</code>",
+                            "<b>{header}</b>\n\n<b>{display_title}</b>{year_str}{episode_str}{specs_str}{langs_str}{size_str}{rating_str}{overview_str}{tmdb_link_str}\n\n📂 <code>{dest_display}</code>",
                         );
 
                         let poster_url = tmdb_data.as_ref()
@@ -3511,6 +3604,7 @@ pub async fn queue_upload(
     hdr: Option<String>,
     languages: Vec<String>,
     codec: Option<String>,
+    audio_codec: Option<String>,
     group_id: Option<String>,
     upload_queue: tauri::State<'_, crate::uploads::SharedUploadQueue>,
     db: tauri::State<'_, crate::db::Db>,
@@ -3529,6 +3623,7 @@ pub async fn queue_upload(
             hdr.clone(),
             languages.clone(),
             codec.clone(),
+            audio_codec.clone(),
             group_id.clone(),
         )
     };
@@ -3567,6 +3662,7 @@ pub async fn queue_upload(
         hdr,
         languages,
         codec,
+        audio_codec,
         group_id,
         semaphore,
         cancel_flag,
@@ -3620,6 +3716,7 @@ pub async fn retry_upload(
         item.hdr,
         item.languages,
         item.codec,
+        item.audio_codec,
         item.group_id,
         semaphore,
         cancel_flag,

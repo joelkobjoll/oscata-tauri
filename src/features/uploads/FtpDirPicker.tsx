@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FolderOpen, ChevronRight, Loader2, ChevronLeft } from "lucide-react";
 
@@ -31,6 +31,12 @@ export default function FtpDirPicker({
   const [dirs, setDirs] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Load the initial path automatically when the picker opens
+  useEffect(() => {
+    load(sanitizeFtpPath(initialPath));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const load = async (p: string) => {
     setLoading(true);
@@ -161,26 +167,17 @@ export default function FtpDirPicker({
 
       {/* Directory list */}
       <div style={{ maxHeight: 220, overflowY: "auto" }}>
-        {dirs === null && !loading && (
-          <button
-            onClick={() => load(path)}
+        {dirs === null && !loading && !error && (
+          <div
             style={{
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              background: "none",
-              border: "none",
-              cursor: "pointer",
+              fontSize: 11,
               color: "var(--color-text-muted)",
-              fontSize: 12,
-              padding: "12px 10px",
+              padding: "10px",
+              textAlign: "center",
             }}
           >
-            <FolderOpen size={14} />
-            Explorar carpetas FTP
-          </button>
+            Cargando…
+          </div>
         )}
 
         {error && (

@@ -30,6 +30,7 @@ pub struct UploadItem {
     pub hdr: Option<String>,
     pub languages: Vec<String>,
     pub codec: Option<String>,
+    pub audio_codec: Option<String>,
     /// Optional group id linking all episodes from the same season batch upload.
     pub group_id: Option<String>,
 }
@@ -72,6 +73,7 @@ impl UploadQueue {
         hdr: Option<String>,
         languages: Vec<String>,
         codec: Option<String>,
+        audio_codec: Option<String>,
         group_id: Option<String>,
     ) -> (u64, Arc<tokio::sync::Semaphore>, Arc<std::sync::atomic::AtomicBool>) {
         let id = self.next_id;
@@ -96,6 +98,7 @@ impl UploadQueue {
             hdr,
             languages,
             codec,
+            audio_codec,
             group_id,
         });
         (id, self.semaphore.clone(), cancel_flag)

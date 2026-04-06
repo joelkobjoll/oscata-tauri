@@ -40,6 +40,8 @@ export interface UploadSuggestion {
   tv_dest: string;
   /** tv_dest + resolved category subfolder (e.g. Temporadas en emision). Use this as the base for season folder uploads. */
   tv_category_dest: string;
+  /** All configured FTP folder paths from the folder_types config, for dest input autocomplete. */
+  folder_options: string[];
 }
 
 /** Mirrors TmdbMovie from Rust — returned by search_tmdb */

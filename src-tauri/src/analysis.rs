@@ -48,6 +48,8 @@ struct FfprobeStream {
 struct FfprobeDisposition {
     #[serde(default)]
     default: u8,
+    #[serde(default)]
+    attached_pic: u8,
 }
 
 #[derive(Debug, Deserialize)]
@@ -160,15 +162,20 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
         .map_err(|e| format!("Failed to parse ffprobe output: {e}"))?;
 
     // ── Video stream ──────────────────────────────────────────────────────────
+    // Skip cover-art / attached picture streams — they are often 1920×1080 JPEGs
+    // embedded in 4K MKVs and would be mistakenly identified as the video resolution.
     let video = probe.streams.iter().find(|s| {
-        s.codec_type.as_deref() == Some("video")
+        s.codec_type.as_deref() == Some("video") && s.disposition.attached_pic == 0
     });
 
     let width = video.and_then(|v| v.width);
     let height = video.and_then(|v| v.height);
     let codec = video.and_then(|v| v.codec_name.clone()).map(|c| normalize_codec(&c));
 
-    let resolution = height.map(|h| height_to_resolution(h));
+    // Prefer actual dimensions from ffprobe (ground truth), fall back to
+    // resolution keyword in the filename/path if dims are unavailable.
+    let resolution = dims_to_resolution(width, height)
+        .or_else(|| resolution_from_path(path));
 
     let hdr = video.and_then(|v| detect_hdr(v));
 
@@ -229,13 +236,58 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-fn height_to_resolution(height: u32) -> String {
-    match height {
-        h if h >= 2100 => "4K".to_string(),
-        h if h >= 1060 => "1080p".to_string(),
-        h if h >= 700  => "720p".to_string(),
-        h if h >= 460  => "480p".to_string(),
-        _              => format!("{}p", height),
+/// Classify resolution from ffprobe width/height.
+///
+/// Width is the primary signal because it is stable across:
+/// - Dolby Vision profile 8 (height can be 2076 instead of 2160)
+/// - Scope/anamorphic crops (height is cropped but width stays at 3840/1920/1280)
+///
+/// Thresholds (width-first):
+///   >=3200  → 4K   (covers 3840, 4096 and any DV variant)
+///   >=1800  → 1080p (covers 1920)
+///   >=1100  → 720p  (covers 1280)
+///   >=600   → 480p  (covers 720/854)
+///
+/// Height-only fallback (width unavailable):
+///   >=2000  → 4K   (safely above 1080p territory)
+///   >=1000  → 1080p
+///   >=650   → 720p
+///   >=430   → 480p
+fn dims_to_resolution(width: Option<u32>, height: Option<u32>) -> Option<String> {
+    match (width, height) {
+        (Some(w), _) if w >= 3200 => Some("2160p".to_string()),
+        (Some(w), _) if w >= 1800 => Some("1080p".to_string()),
+        (Some(w), _) if w >= 1100 => Some("720p".to_string()),
+        (Some(w), _) if w >= 600  => Some("480p".to_string()),
+        (Some(_), _)              => None,
+        // Width unavailable — use height with conservative thresholds
+        (None, Some(h)) if h >= 2000 => Some("2160p".to_string()),
+        (None, Some(h)) if h >= 1000 => Some("1080p".to_string()),
+        (None, Some(h)) if h >= 650  => Some("720p".to_string()),
+        (None, Some(h)) if h >= 430  => Some("480p".to_string()),
+        (None, Some(h))              => Some(format!("{}p", h)),
+        (None, None)                 => None,
+    }
+}
+
+/// Extract a resolution label from keywords in the file path / filename.
+/// Used as a fallback when ffprobe cannot determine actual dimensions.
+fn resolution_from_path(path: &str) -> Option<String> {
+    let name = std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path)
+        .to_uppercase();
+    if name.contains("2160P") || name.contains("4K") || name.contains("UHD") {
+        Some("2160p".to_string())
+    } else if name.contains("1080P") || name.contains("1080I") {
+        Some("1080p".to_string())
+    } else if name.contains("720P") {
+        Some("720p".to_string())
+    } else if name.contains("480P") {
+        Some("480p".to_string())
+    } else {
+        None
     }
 }
 

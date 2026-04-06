@@ -12,7 +12,6 @@ export const DEFAULT_FOLDER_TYPES: Record<string, FolderTypeValue> = {
   "Peliculas y Series mas antiguas": "mixed",
   "Series 4K 2160p": "tv",
   "Series HD 1080p": "tv",
-  "Series HD 1080p X265": "tv",
 };
 
 export const DEFAULT_FOLDER_TYPES_STRING = JSON.stringify(DEFAULT_FOLDER_TYPES);
@@ -24,6 +23,7 @@ const REMOVED_FOLDER_TYPE_KEYS = new Set([
   "Movies",
   "Documentaries",
   "TV Shows",
+  "Series HD 1080p X265",
 ]);
 
 const LEGACY_DEFAULT_FOLDER_TYPES = JSON.stringify({

@@ -195,6 +195,31 @@ pub async fn list_raw(
     Ok(entries)
 }
 
+/// List a subdirectory relative to a parent path without CWD-ing into the
+/// subdirectory. This avoids FTP CWD failures when the subdir name contains
+/// non-ASCII characters that may be mangled by the UTF-8 conversion of the
+/// LIST response (e.g. Latin-1 "Temporadas en emisión" ó → replacement char).
+///
+/// Strategy: CWD to `parent_path` (parent is usually ASCII-safe), then send
+/// `LIST subdir` as a relative path argument so the server uses its native
+/// path without us re-encoding the accented characters.
+pub async fn list_raw_sub(
+    host: &str,
+    port: u16,
+    user: &str,
+    pass: &str,
+    parent_path: &str,
+    subdir: &str,
+) -> Result<Vec<String>, String> {
+    let mut ftp = connect(host, port, user, pass).await?;
+    ftp.cwd(parent_path).await.map_err(|e| format!("CWD {parent_path}: {e}"))?;
+    // Pass subdir as the LIST argument — avoids a second CWD with a potentially
+    // broken UTF-8 string derived from a Latin-1 FTP response.
+    let entries = ftp.list(Some(subdir)).await.map_err(|e| e.to_string())?;
+    ftp.quit().await.ok();
+    Ok(entries)
+}
+
 /// Crawl `root` using a pool of N concurrent FTP connections draining a shared
 /// work queue (breadth-first parallel scan).
 ///

@@ -24,7 +24,7 @@ import type {
   TmdbMatch,
   UploadSuggestion,
 } from "./types";
-import { formatBytes, formatDuration } from "../../lib/format";
+import { formatBytes, formatDuration, formatLanguages } from "../../lib/format";
 import { formInputCompact, formSelectCompact } from "../../lib/formStyles";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w92";
@@ -42,7 +42,7 @@ const SEASON_SOURCES = [
   "HDTV",
   "REMUX",
 ];
-const SEASON_RESOLUTIONS = ["", "4K", "2160p", "1080p", "720p", "480p"];
+const SEASON_RESOLUTIONS = ["", "2160p", "1080p", "720p", "480p"];
 const SEASON_CODECS = ["", "HEVC", "AVC", "AV1", "VP9", "MPEG2"];
 
 /** Parse episode number from a filename, e.g. S01E05 → 5. */
@@ -964,9 +964,7 @@ export default function AnalysisRow({
                 <Badge label={info.audio_tracks[0].codec} />
               )}
               {info.languages.length > 0 && (
-                <Badge
-                  label={info.languages.map((l) => l.toUpperCase()).join(", ")}
-                />
+                <Badge label={formatLanguages(info.languages)} />
               )}
               {info.duration_secs != null && (
                 <Badge label={formatDuration(info.duration_secs)} />
@@ -1269,9 +1267,17 @@ export default function AnalysisRow({
               DESTINO FTP
             </div>
             <div style={{ display: "flex", gap: 6, position: "relative" }}>
+              <datalist
+                id={`dest-opts-${result.path.replace(/[^a-z0-9]/gi, "_")}`}
+              >
+                {(suggestion?.folder_options ?? []).map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
               <input
                 value={dest}
                 onChange={(e) => handleDestChange(e.target.value)}
+                list={`dest-opts-${result.path.replace(/[^a-z0-9]/gi, "_")}`}
                 placeholder="/Compartida/Series HD 1080p"
                 style={{ ...inputStyle, flex: 1, fontFamily: "monospace" }}
               />
@@ -1307,7 +1313,17 @@ export default function AnalysisRow({
 
               {showBrowser && (
                 <FtpDirPicker
-                  initialPath={dest || "/"}
+                  initialPath={(() => {
+                    // Open at the FTP root (parent of the first configured folder),
+                    // so the user sees all category folders immediately.
+                    const base =
+                      suggestion?.movie_dest || suggestion?.tv_dest || "";
+                    if (base) {
+                      const parent = base.split("/").slice(0, -1).join("/");
+                      return parent || "/";
+                    }
+                    return dest || "/";
+                  })()}
                   onSelect={(p) => {
                     handleDestChange(p);
                     setShowBrowser(false);

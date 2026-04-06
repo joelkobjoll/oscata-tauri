@@ -32,7 +32,7 @@ const SOURCE_OPTIONS = [
   "HDTV",
   "REMUX",
 ];
-const RESOLUTIONS = ["", "4K", "2160p", "1080p", "720p", "480p"];
+const RESOLUTIONS = ["", "2160p", "1080p", "720p", "480p"];
 const CODECS = ["", "HEVC", "AVC", "AV1", "VP9", "MPEG2"];
 const AUDIO_CODECS = [
   "",

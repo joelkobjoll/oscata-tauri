@@ -240,6 +240,8 @@ export default function UploadPrepareModal({
             ? info.languages
             : sug?.detected_languages) ?? [];
         const codec = info?.codec ?? sug?.detected_codec ?? null;
+        const audioCodec =
+          info?.audio_tracks?.[0]?.codec ?? sug?.detected_audio_codec ?? null;
 
         // TV season directory: explode into individual episode uploads (flat into dest folder)
         if (f.isDirectory && f.episodePlan && f.episodePlan.length > 0) {
@@ -258,6 +260,7 @@ export default function UploadPrepareModal({
               hdr,
               languages,
               codec,
+              audioCodec,
               groupId,
             });
           }
@@ -273,6 +276,7 @@ export default function UploadPrepareModal({
             hdr,
             languages,
             codec,
+            audioCodec,
             groupId: null,
           });
         }
