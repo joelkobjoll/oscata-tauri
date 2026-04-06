@@ -1,5 +1,13 @@
 # Novedades de Oscata
 
+## Versión 0.7.6 — 6 de abril de 2026
+
+### 🐛 Subida de archivos ya no se queda bloqueada al 100%
+
+Se corrige un error por el que la barra de progreso llegaba al 100% y se quedaba parada durante un tiempo indeterminado antes de marcar la subida como completada (o no completarla nunca). La causa era que el progreso se calculaba sobre la **lectura del disco** (muy rápida) y no sobre la **transferencia real por FTP**. Ahora se usa streaming directo al servidor: cada fragmento de 256 KB se envía al vuelo y el progreso refleja los bytes realmente transmitidos por red. El 100% ya solo aparece cuando el servidor confirma la transferencia completa. Como beneficio adicional, ya no se almacena el archivo entero en RAM durante la subida.
+
+---
+
 ## Versión 0.7.5 — 6 de abril de 2026
 
 ### 🎵 Idioma integrado en cada pista de audio
