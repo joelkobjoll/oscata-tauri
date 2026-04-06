@@ -2736,33 +2736,35 @@ export default function Settings({
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 14 }}
                 >
-                  {/* Enable toggle */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 10,
-                    }}
-                  >
-                    <span
+                  {/* Enable toggle — only shown in Tauri desktop mode; in headless/web the server is always on */}
+                  {isTauri() && (
+                    <div
                       style={{
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "var(--color-text)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
                       }}
                     >
-                      {t(language, "settings.webInterfaceEnable")}
-                    </span>
-                    <Toggle
-                      checked={webGuiConfig.enabled}
-                      onChange={(v) =>
-                        setWebGuiConfig((c) => (c ? { ...c, enabled: v } : c))
-                      }
-                    />
-                  </div>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "var(--color-text)",
+                        }}
+                      >
+                        {t(language, "settings.webInterfaceEnable")}
+                      </span>
+                      <Toggle
+                        checked={webGuiConfig.enabled}
+                        onChange={(v) =>
+                          setWebGuiConfig((c) => (c ? { ...c, enabled: v } : c))
+                        }
+                      />
+                    </div>
+                  )}
 
-                  {webGuiConfig.enabled && (
+                  {(isTauri() ? webGuiConfig.enabled : true) && (
                     <div
                       style={{
                         display: "flex",

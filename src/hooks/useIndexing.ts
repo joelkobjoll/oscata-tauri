@@ -269,11 +269,16 @@ export function useIndexing() {
 
         // When indexing transitions from running → done, reload the library.
         if (wasRunning && !running) {
+          setProgress(null);
+          setTmdbProgress(null);
           const loaded = await call<MediaItem[]>("get_all_media");
           rebuildIndex(loaded);
           setItems(loaded);
+          setCompletionSummary({ newItems: 0, removed: 0 });
         } else if (!wasRunning && running) {
           // Just started — signal via setProgress so the indicator appears.
+          setIndexError(null);
+          setCompletionSummary(null);
           setProgress({ current: 0, total: 0 });
         }
 
