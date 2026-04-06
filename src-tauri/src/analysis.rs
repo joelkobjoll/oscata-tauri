@@ -427,8 +427,10 @@ fn normalize_audio_codec(codec: &str) -> String {
     match codec.to_lowercase().as_str() {
         "aac"                               => "AAC".to_string(),
         "mp3"                               => "MP3".to_string(),
-        "ac3" | "eac3"                      => "AC3".to_string(),
-        "dts" | "dts-hd" | "dts_hd"        => "DTS".to_string(),
+        "ac3"                               => "AC3".to_string(),
+        "eac3"                              => "EAC3".to_string(),
+        "dts"                               => "DTS".to_string(),
+        "dts-hd" | "dts_hd" | "dts-hd ma"  => "DTS-HD MA".to_string(),
         "truehd" | "mlp"                    => "TrueHD".to_string(),
         "flac"                              => "FLAC".to_string(),
         "opus"                              => "Opus".to_string(),
