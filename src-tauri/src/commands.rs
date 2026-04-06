@@ -3066,33 +3066,20 @@ pub async fn suggest_upload_destination(
         let is_full_season = p.is_dir(); // directory = full season upload
 
         // Step 1: list tv_dest to find actual category folder names on the server.
-        // These are typically "Temporadas en emisión" / "Temporadas completas" but may
-        // use different capitalisation or encoding. If the list fails or no category
-        // folders are found, fall back to hardcoded Spanish names.
-        let level1_raw = crate::ftp::list_raw(
+        // If the list fails or no category folders are found, fall back to hardcoded names.
+        let level1_dirs = crate::ftp::list_raw(
             &config.ftp_host, config.ftp_port, &config.ftp_user, &config.ftp_pass,
             &tv_dest,
-        ).await;
-        eprintln!("[TV-DEST] tv_dest={tv_dest}");
-        eprintln!("[TV-DEST] list_raw result ok={}", level1_raw.is_ok());
-        let level1_dirs = level1_raw.map(|r| {
-            eprintln!("[TV-DEST] raw lines: {:?}", &r);
-            let dirs = extract_dir_names(&r);
-            eprintln!("[TV-DEST] extracted dirs: {:?}", &dirs);
-            dirs
-        }).unwrap_or_default();
+        ).await.map(|r| extract_dir_names(&r)).unwrap_or_default();
 
         // Category folders contain "temporad", "emisi", or "completa" (ASCII-safe prefixes
         // that survive Latin-1 → UTF-8 replacement char conversion on the ó).
         let category_dirs: Vec<String> = level1_dirs.into_iter()
             .filter(|d| {
                 let n = normalise_for_match(d);
-                let matches = n.contains("temporad") || n.contains("emisi") || n.contains("completa");
-                eprintln!("[TV-DEST] dir={d:?} normalised={n:?} is_category={matches}");
-                matches
+                n.contains("temporad") || n.contains("emisi") || n.contains("completa")
             })
             .collect();
-        eprintln!("[TV-DEST] category_dirs={:?}", &category_dirs);
 
         // Step 2: pick the right category folder name.
         // Prefer actual server name if found; otherwise use the standard Spanish name.

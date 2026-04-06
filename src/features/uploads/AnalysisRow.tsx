@@ -47,9 +47,20 @@ const SEASON_CODECS = ["", "HEVC", "AVC", "AV1", "VP9", "MPEG2"];
 
 /** Parse episode number from a filename, e.g. S01E05 → 5. */
 function parseEpisodeNum(name: string): number | null {
+  // SxxExx — most common: S01E05
   let m = name.match(/[Ss]\d+[Ee](\d+)/);
   if (m) return parseInt(m[1], 10);
+  // Exx or EpXX standalone (e.g. E05, Ep05)
   m = name.match(/(?:^|[\s._-])(?:E|Ep)(\d{1,3})(?:[\s._-]|$)/i);
+  if (m) return parseInt(m[1], 10);
+  // 1x05 style (season x episode)
+  m = name.match(/\d+[xX](\d{1,3})(?:[\s._-]|$)/);
+  if (m) return parseInt(m[1], 10);
+  // Cap. or Capitulo (Spanish convention)
+  m = name.match(/(?:Cap(?:itulo|\.)?)[\s._-]*(\d{1,3})/i);
+  if (m) return parseInt(m[1], 10);
+  // Leading zero-padded number at start of filename: "01.mkv", "02 Title.mkv"
+  m = name.match(/^(\d{1,3})(?:[\s._-]|$)/);
   if (m) return parseInt(m[1], 10);
   return null;
 }
@@ -420,11 +431,12 @@ export default function AnalysisRow({
   // Episode plan: for each video file in the folder, build its renamed filename
   const episodePlan = useMemo(() => {
     if (!isDirectory || mediaType !== "tv") return [];
-    return episodeFiles.map((fp) => {
+    return episodeFiles.map((fp, index) => {
       const basename = fp.split(/[\\/]/).pop() ?? fp;
       if (!rename) return { localPath: fp, filename: basename };
       const epExt = basename.includes(".") ? basename.split(".").pop()! : "mkv";
-      const epNum = parseEpisodeNum(basename) ?? 1;
+      // Fall back to 1-based positional index when no episode number found in filename
+      const epNum = parseEpisodeNum(basename) ?? index + 1;
       return {
         localPath: fp,
         filename: buildEpisodeFilename(
