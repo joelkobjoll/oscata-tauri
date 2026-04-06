@@ -1,5 +1,17 @@
 # Novedades de Oscata
 
+## Versión 0.7.4 — 6 de abril de 2026
+
+### 🎵 Pistas de audio en series (multi-track)
+
+El módulo de subidas ahora incluye el selector de pistas de audio en series y episodios, igual que ya existía para películas. Se detectan automáticamente desde ffprobe al analizar el archivo o el primer episodio de la temporada, y se incorporan al nombre del archivo generado (p. ej. `Breaking.Bad.S01E01.WEB-DL.1080p.HEVC.TrueHD.5.1.SPA.ENG.mkv`). El selector permite añadir, editar y eliminar pistas manualmente.
+
+### 🎯 Coincidencia TMDB más precisa por año
+
+La puntuación al buscar en TMDB tiene en cuenta el año del archivo con más fuerza: una coincidencia exacta suma 50 puntos, ±1 año suma 20, una diferencia de 2–3 años penaliza con −10 y más de 3 años con −25. Además, el año detectado en el nombre del archivo se pasa directamente a la búsqueda (sin depender solo del regex sobre la consulta), lo que evita que un título con varias versiones históricas seleccione la versión errónea.
+
+---
+
 ## Versión 0.7.3 — 6 de abril de 2026
 
 ### 🎵 Códecs de audio detectados con precisión real
