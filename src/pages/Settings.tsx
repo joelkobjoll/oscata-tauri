@@ -1453,6 +1453,7 @@ export default function Settings({
               icon="settings"
               title={t(language, "settings.appearanceTitle")}
               description={t(language, "settings.appearanceDescription")}
+              defaultOpen={false}
             >
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 {(["system", "dark", "light"] as const).map((option) => {
@@ -1707,6 +1708,7 @@ export default function Settings({
                 icon="download"
                 title={t(language, "settings.downloadsTitle")}
                 description={t(language, "settings.downloadsDescription")}
+                defaultOpen={false}
               >
                 <div style={{ display: "grid", gap: 12 }}>
                   <div style={fieldStyle}>
@@ -1772,6 +1774,7 @@ export default function Settings({
                 icon="search"
                 title={t(language, "settings.metaTitle")}
                 description={t(language, "settings.metaDescription")}
+                defaultOpen={false}
               >
                 <div style={{ display: "grid", gap: 12 }}>
                   <div style={fieldStyle}>
@@ -1815,6 +1818,7 @@ export default function Settings({
                 icon="download"
                 title={t(language, "settings.folderRoutingTitle")}
                 description={t(language, "settings.folderRoutingDescription")}
+                defaultOpen={false}
               >
                 {/* ── Three fixed destinations ─────────────────────────────── */}
                 <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
@@ -2196,6 +2200,7 @@ export default function Settings({
               icon="folder"
               title={t(language, "settings.folderTypesTitle")}
               description={t(language, "settings.folderTypesDescription")}
+              defaultOpen={false}
             >
               <div
                 style={{
@@ -2313,6 +2318,7 @@ export default function Settings({
               icon="activity"
               title={t(language, "settings.mediaServersTitle")}
               description={t(language, "settings.mediaServersDescription")}
+              defaultOpen={false}
             >
               <div
                 style={{
@@ -2528,6 +2534,7 @@ export default function Settings({
                 icon="settings"
                 title={t(language, "settings.desktopTitle")}
                 description={t(language, "settings.desktopDescription")}
+                defaultOpen={false}
               >
                 <div
                   style={{
@@ -2597,6 +2604,7 @@ export default function Settings({
                 icon="settings"
                 title={t(language, "settings.webInterfaceTitle")}
                 description={t(language, "settings.webInterfaceDescription")}
+                defaultOpen={false}
               >
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 14 }}
@@ -2934,6 +2942,7 @@ export default function Settings({
                 icon="folder"
                 title={t(language, "settings.storage")}
                 description={t(language, "settings.dbLocationDesc")}
+                defaultOpen={false}
               >
                 <div style={{ display: "grid", gap: 12 }}>
                   {isPortable ? (
@@ -3126,6 +3135,7 @@ export default function Settings({
               icon="folder"
               title={t(language, "settings.backupsTitle")}
               description={t(language, "settings.backupsDescription")}
+              defaultOpen={false}
             >
               <div style={{ display: "grid", gap: 12 }}>
                 {isTauri() ? (
