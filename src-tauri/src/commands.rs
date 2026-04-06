@@ -2941,33 +2941,77 @@ pub async fn suggest_upload_destination(
     let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
     let mut parsed = crate::parser::parse_media_path("", &name);
 
-    // If no episode info from the name itself, scan directory contents for
-    // Season subfolders or episode-patterned files.
-    if parsed.season.is_none() && parsed.episode.is_none() && p.is_dir() {
-        'scan: for entry in std::fs::read_dir(&local_path).into_iter().flatten().flatten() {
+    // Scan directory contents to detect season/episode and quality metadata.
+    // Priority: episode files (richest metadata) > season subfolder names > recurse into subfolders.
+    if p.is_dir() {
+        let top_entries: Vec<_> = std::fs::read_dir(&local_path)
+            .into_iter().flatten().flatten().collect();
+
+        // Pass 1: iterate all entries once.
+        // — Episode FILES: extract full metadata and stop.
+        // — Season DIRECTORIES: record season number and try to extract resolution
+        //   from the folder name itself (e.g. "S01 2160p"), but keep going so we
+        //   can still find episode files with richer info.
+        for entry in &top_entries {
             let entry_name = entry.file_name().to_string_lossy().to_string();
             let lower = entry_name.to_lowercase();
-            // Season subfolder: "Season 01", "Temporada 1", "S01", etc.
-            if lower.starts_with("season")
-                || lower.starts_with("temporada")
-                || (lower.len() >= 2 && lower.starts_with('s') && lower.chars().nth(1).map_or(false, |c| c.is_ascii_digit()))
-            {
-                let n: Option<u8> = entry_name
-                    .chars()
-                    .filter(|c| c.is_ascii_digit())
-                    .collect::<String>()
-                    .parse()
-                    .ok();
-                parsed.season = n.or(Some(1));
-                break 'scan;
-            }
-            // Episode-pattern file (e.g. S01E01 in filename)
-            if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            let is_file = entry.file_type().map(|t| t.is_file()).unwrap_or(false);
+            let is_dir  = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+
+            // Episode file with a season/episode pattern — stop here, it has everything.
+            if is_file {
                 let ep = crate::parser::parse_media_path("", &entry_name);
                 if ep.season.is_some() || ep.episode.is_some() {
-                    parsed.season = ep.season.or(parsed.season);
-                    parsed.episode = ep.episode.or(parsed.episode);
-                    break 'scan;
+                    if parsed.season.is_none() { parsed.season = ep.season.or(Some(1)); }
+                    if parsed.episode.is_none() { parsed.episode = ep.episode; }
+                    if parsed.resolution.is_none() { parsed.resolution = ep.resolution; }
+                    if parsed.codec.is_none() { parsed.codec = ep.codec; }
+                    if parsed.audio_codec.is_none() { parsed.audio_codec = ep.audio_codec; }
+                    if parsed.release_type.is_none() { parsed.release_type = ep.release_type; }
+                    break; // episode files are the richest source of truth
+                }
+            }
+
+            // Season subfolder (must actually be a directory to avoid confusing
+            // episode files like "S01E01.foo.mkv" with season folders).
+            if is_dir && (
+                lower.starts_with("season")
+                || lower.starts_with("temporada")
+                || (lower.len() >= 2 && lower.starts_with('s') && lower.chars().nth(1).map_or(false, |c| c.is_ascii_digit()))
+            ) {
+                if parsed.season.is_none() {
+                    // Extract first run of digits as the season number.
+                    let digits: String = entry_name.chars()
+                        .skip_while(|c| !c.is_ascii_digit())
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect();
+                    let n: Option<u8> = digits.parse().ok();
+                    parsed.season = n.or(Some(1));
+                }
+                // Season folder names sometimes encode quality ("S01 2160p").
+                let sf = crate::parser::parse_media_path("", &entry_name);
+                if parsed.resolution.is_none() { parsed.resolution = sf.resolution; }
+                if parsed.codec.is_none()      { parsed.codec = sf.codec; }
+                // Don't break — keep looking for episode files that have richer info.
+            }
+        }
+
+        // Pass 2: if we know it's TV but still have no resolution, recurse one
+        // level into any subdirectory to find episode filenames there.
+        if parsed.season.is_some() && parsed.resolution.is_none() {
+            'outer: for entry in &top_entries {
+                if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) { continue; }
+                if let Ok(sub_entries) = std::fs::read_dir(entry.path()) {
+                    for sub in sub_entries.flatten() {
+                        if !sub.file_type().map(|t| t.is_file()).unwrap_or(false) { continue; }
+                        let sub_name = sub.file_name().to_string_lossy().to_string();
+                        let ep = crate::parser::parse_media_path("", &sub_name);
+                        if parsed.resolution.is_none() { parsed.resolution = ep.resolution; }
+                        if parsed.codec.is_none()      { parsed.codec = ep.codec; }
+                        if parsed.audio_codec.is_none(){ parsed.audio_codec = ep.audio_codec; }
+                        if parsed.release_type.is_none(){ parsed.release_type = ep.release_type; }
+                        if parsed.resolution.is_some() { break 'outer; }
+                    }
                 }
             }
         }
@@ -2993,12 +3037,18 @@ pub async fn suggest_upload_destination(
             let rl = res.to_lowercase();
             if rl.contains("2160") || rl.contains("4k") || rl.contains("uhd") {
                 if fl.contains("2160") || fl.contains("4k") || fl.contains("uhd") {
-                    score += 10;
+                    score += 20;
+                } else if fl.contains("1080") {
+                    score -= 20; // strong penalty: 1080p folder is wrong for 4K content
                 } else {
-                    score -= 5; // penalise 1080p folders for 4K files
+                    score -= 5; // mild penalty for non-4K folders without explicit resolution
                 }
-            } else if rl.contains("1080") && fl.contains("1080") {
-                score += 10;
+            } else if rl.contains("1080") {
+                if fl.contains("1080") {
+                    score += 20;
+                } else if fl.contains("2160") || fl.contains("4k") || fl.contains("uhd") {
+                    score -= 20; // strong penalty: 4K folder is wrong for 1080p content
+                }
             }
         }
         // Codec — bonus for matching encoder folder, penalty for wrong encoder folder
