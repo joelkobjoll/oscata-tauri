@@ -9,6 +9,14 @@ pub struct AudioTrack {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubtitleTrack {
+    pub codec: String,
+    pub language: Option<String>,
+    pub is_default: bool,
+    pub is_forced: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalMediaInfo {
     pub resolution: Option<String>,
     pub width: Option<u32>,
@@ -20,6 +28,7 @@ pub struct LocalMediaInfo {
     pub duration_secs: Option<f64>,
     pub size_bytes: u64,
     pub format: Option<String>,
+    pub subtitle_tracks: Vec<SubtitleTrack>,
 }
 
 // ─── ffprobe JSON types ───────────────────────────────────────────────────────
@@ -50,6 +59,8 @@ struct FfprobeDisposition {
     default: u8,
     #[serde(default)]
     attached_pic: u8,
+    #[serde(default)]
+    forced: u8,
 }
 
 #[derive(Debug, Deserialize)]
@@ -220,6 +231,7 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
             audio_tracks: vec![],
             languages: vec![],
             format: None,
+            subtitle_tracks: vec![],
         });
     }
 
@@ -296,6 +308,22 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
         languages.retain(|l| seen.insert(l.clone()));
     }
 
+    // ── Subtitle streams ──────────────────────────────────────────────────────
+    let subtitle_tracks: Vec<SubtitleTrack> = probe.streams.iter()
+        .filter(|s| s.codec_type.as_deref() == Some("subtitle"))
+        .map(|s| {
+            let lang = s.tags.as_ref().and_then(|t| t.language.clone())
+                .map(|l| l.to_lowercase())
+                .filter(|l| l != "und" && !l.is_empty());
+            SubtitleTrack {
+                codec: s.codec_name.clone().unwrap_or_default(),
+                language: lang,
+                is_default: s.disposition.default == 1,
+                is_forced: s.disposition.forced == 1,
+            }
+        })
+        .collect();
+
     // ── Format / duration ─────────────────────────────────────────────────────
     let duration_secs = probe.format.as_ref()
         .and_then(|f| f.duration.as_ref())
@@ -323,6 +351,7 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
         duration_secs,
         size_bytes,
         format,
+        subtitle_tracks,
     })
 }
 

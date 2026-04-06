@@ -31,6 +31,15 @@ pub struct UploadItem {
     pub languages: Vec<String>,
     pub codec: Option<String>,
     pub audio_codec: Option<String>,
+    /// Subtitle language codes detected by ffprobe (e.g. ["spa", "eng"]).
+    #[serde(default)]
+    pub subtitle_langs: Vec<String>,
+    /// Full audio track info from ffprobe.
+    #[serde(default)]
+    pub audio_tracks: Vec<crate::analysis::AudioTrack>,
+    /// Full subtitle track info from ffprobe.
+    #[serde(default)]
+    pub subtitle_tracks: Vec<crate::analysis::SubtitleTrack>,
     /// Optional group id linking all episodes from the same season batch upload.
     pub group_id: Option<String>,
 }
@@ -74,6 +83,9 @@ impl UploadQueue {
         languages: Vec<String>,
         codec: Option<String>,
         audio_codec: Option<String>,
+        subtitle_langs: Vec<String>,
+        audio_tracks: Vec<crate::analysis::AudioTrack>,
+        subtitle_tracks: Vec<crate::analysis::SubtitleTrack>,
         group_id: Option<String>,
     ) -> (u64, Arc<tokio::sync::Semaphore>, Arc<std::sync::atomic::AtomicBool>) {
         let id = self.next_id;
@@ -99,6 +111,9 @@ impl UploadQueue {
             languages,
             codec,
             audio_codec,
+            subtitle_langs,
+            audio_tracks,
+            subtitle_tracks,
             group_id,
         });
         (id, self.semaphore.clone(), cancel_flag)

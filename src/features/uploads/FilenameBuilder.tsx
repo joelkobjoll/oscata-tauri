@@ -134,7 +134,9 @@ export default function FilenameBuilder({
   const [source, setSource] = useState(() =>
     mapReleaseType(defaultReleaseType),
   );
-  const [subs, setSubs] = useState(false);
+  const [subs, setSubs] = useState(
+    () => (info?.subtitle_tracks?.length ?? 0) > 0,
+  );
   const [copied, setCopied] = useState(false);
 
   // Movie-specific (strip subtitle dashes on init)

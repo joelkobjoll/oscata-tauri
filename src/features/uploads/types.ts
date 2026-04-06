@@ -5,6 +5,13 @@ export interface AudioTrack {
   is_default: boolean;
 }
 
+export interface SubtitleTrack {
+  codec: string;
+  language: string | null;
+  is_default: boolean;
+  is_forced: boolean;
+}
+
 export interface LocalMediaInfo {
   resolution: string | null;
   width: number | null;
@@ -16,6 +23,7 @@ export interface LocalMediaInfo {
   duration_secs: number | null;
   size_bytes: number;
   format: string | null;
+  subtitle_tracks: SubtitleTrack[];
 }
 
 export type MediaType = "movie" | "tv" | "documentary";

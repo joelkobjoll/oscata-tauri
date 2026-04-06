@@ -257,6 +257,15 @@ export default function UploadPrepareModal({
         const codec = info?.codec ?? sug?.detected_codec ?? null;
         const audioCodec =
           info?.audio_tracks?.[0]?.codec ?? sug?.detected_audio_codec ?? null;
+        const audioTracks = info?.audio_tracks ?? [];
+        const subtitleLangs = [
+          ...new Set(
+            (info?.subtitle_tracks ?? [])
+              .map((t) => t.language)
+              .filter((l): l is string => !!l),
+          ),
+        ];
+        const subtitleTracks = info?.subtitle_tracks ?? [];
 
         // TV season directory: explode into individual episode uploads (flat into dest folder)
         if (f.isDirectory && f.episodePlan && f.episodePlan.length > 0) {
@@ -276,6 +285,9 @@ export default function UploadPrepareModal({
               languages,
               codec,
               audioCodec,
+              subtitleLangs,
+              audioTracks,
+              subtitleTracks,
               groupId,
             });
           }
@@ -292,6 +304,9 @@ export default function UploadPrepareModal({
             languages,
             codec,
             audioCodec,
+            subtitleLangs,
+            audioTracks,
+            subtitleTracks,
             groupId: null,
           });
         }

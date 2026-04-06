@@ -136,6 +136,9 @@ pub async fn resume_pending_uploads(
             item.languages,
             item.codec,
             item.audio_codec,
+            item.subtitle_langs,
+            item.audio_tracks,
+            item.subtitle_tracks,
             item.group_id,
             semaphore,
             cancel_flag,
@@ -2705,44 +2708,148 @@ fn format_bytes_human(bytes: u64) -> String {
     }
 }
 
-/// Maps an ISO 639-2 language code to its Spanish display name.
+/// Formats a runtime in minutes as "1h 42min" or "45min".
+fn format_runtime(mins: u32) -> String {
+    if mins >= 60 {
+        let h = mins / 60;
+        let m = mins % 60;
+        if m == 0 {
+            format!("{h}h")
+        } else {
+            format!("{h}h {m}min")
+        }
+    } else {
+        format!("{mins}min")
+    }
+}
+
+/// Maps a channel count to a human-readable label (5.1, 7.1, Estéreo, …).
+fn channels_label(ch: u32) -> String {
+    match ch {
+        1 => "Mono".to_string(),
+        2 => "Estéreo".to_string(),
+        6 => "5.1".to_string(),
+        7 => "6.1".to_string(),
+        8 => "7.1".to_string(),
+        n => format!("{}ch", n),
+    }
+}
+
+/// Converts a TMDB ISO date ("2025-12-25") to a compact Spanish string ("25 dic 2025").
+fn format_date_es(date: &str) -> String {
+    let parts: Vec<&str> = date.split('-').collect();
+    if parts.len() < 3 {
+        return date.to_string();
+    }
+    let month_name = match parts[1] {
+        "01" => "ene", "02" => "feb", "03" => "mar", "04" => "abr",
+        "05" => "may", "06" => "jun", "07" => "jul", "08" => "ago",
+        "09" => "sep", "10" => "oct", "11" => "nov", "12" => "dic",
+        _ => parts[1],
+    };
+    format!("{} {} {}", parts[2].trim_start_matches('0').max("1"), month_name, parts[0])
+}
+
+/// Maps an ISO 3166-1 alpha-2 country code to a Spanish country name.
+fn country_name(code: &str) -> &'static str {
+    match code.to_uppercase().as_str() {
+        "AD" => "Andorra",        "AE" => "Emiratos Árabes",  "AF" => "Afganistán",
+        "AL" => "Albania",        "AM" => "Armenia",           "AO" => "Angola",
+        "AR" => "Argentina",      "AT" => "Austria",           "AU" => "Australia",
+        "AZ" => "Azerbaiyán",     "BA" => "Bosnia-Herzegovina","BD" => "Bangladesh",
+        "BE" => "Bélgica",        "BF" => "Burkina Faso",      "BG" => "Bulgaria",
+        "BH" => "Baréin",         "BO" => "Bolivia",           "BR" => "Brasil",
+        "BY" => "Bielorrusia",    "CA" => "Canadá",            "CD" => "Congo (RD)",
+        "CH" => "Suiza",          "CI" => "Costa de Marfil",   "CL" => "Chile",
+        "CM" => "Camerún",        "CN" => "China",             "CO" => "Colombia",
+        "CR" => "Costa Rica",     "CU" => "Cuba",              "CY" => "Chipre",
+        "CZ" => "Chequia",        "DE" => "Alemania",          "DK" => "Dinamarca",
+        "DO" => "Rep. Dominicana","DZ" => "Argelia",           "EC" => "Ecuador",
+        "EE" => "Estonia",        "EG" => "Egipto",            "ES" => "España",
+        "ET" => "Etiopía",        "FI" => "Finlandia",         "FJ" => "Fiyi",
+        "FR" => "Francia",        "GA" => "Gabón",             "GB" => "Reino Unido",
+        "GE" => "Georgia",        "GH" => "Ghana",             "GR" => "Grecia",
+        "GT" => "Guatemala",      "HK" => "Hong Kong",         "HN" => "Honduras",
+        "HR" => "Croacia",        "HU" => "Hungría",           "ID" => "Indonesia",
+        "IE" => "Irlanda",        "IL" => "Israel",            "IN" => "India",
+        "IQ" => "Irak",           "IR" => "Irán",              "IS" => "Islandia",
+        "IT" => "Italia",         "JM" => "Jamaica",           "JO" => "Jordania",
+        "JP" => "Japón",          "KE" => "Kenia",             "KG" => "Kirguistán",
+        "KH" => "Camboya",        "KR" => "Corea del Sur",     "KW" => "Kuwait",
+        "KZ" => "Kazajistán",     "LB" => "Líbano",            "LK" => "Sri Lanka",
+        "LT" => "Lituania",       "LU" => "Luxemburgo",        "LV" => "Letonia",
+        "LY" => "Libia",          "MA" => "Marruecos",         "MD" => "Moldavia",
+        "MK" => "Macedonia del Norte", "ML" => "Malí",         "MM" => "Birmania",
+        "MN" => "Mongolia",       "MX" => "México",            "MY" => "Malasia",
+        "MZ" => "Mozambique",     "NA" => "Namibia",           "NG" => "Nigeria",
+        "NI" => "Nicaragua",      "NL" => "Países Bajos",      "NO" => "Noruega",
+        "NP" => "Nepal",          "NZ" => "Nueva Zelanda",     "OM" => "Omán",
+        "PA" => "Panamá",         "PE" => "Perú",              "PH" => "Filipinas",
+        "PK" => "Pakistán",       "PL" => "Polonia",           "PT" => "Portugal",
+        "PY" => "Paraguay",       "QA" => "Catar",             "RO" => "Rumanía",
+        "RS" => "Serbia",         "RU" => "Rusia",             "RW" => "Ruanda",
+        "SA" => "Arabia Saudí",   "SD" => "Sudán",             "SE" => "Suecia",
+        "SG" => "Singapur",       "SI" => "Eslovenia",         "SK" => "Eslovaquia",
+        "SN" => "Senegal",        "SO" => "Somalia",           "SS" => "Sudán del Sur",
+        "SV" => "El Salvador",    "SY" => "Siria",             "TH" => "Tailandia",
+        "TJ" => "Tayikistán",     "TN" => "Túnez",             "TR" => "Turquía",
+        "TW" => "Taiwán",         "TZ" => "Tanzania",          "UA" => "Ucrania",
+        "UG" => "Uganda",         "US" => "Estados Unidos",    "UY" => "Uruguay",
+        "UZ" => "Uzbekistán",     "VE" => "Venezuela",         "VN" => "Vietnam",
+        "YE" => "Yemen",          "ZA" => "Sudáfrica",         "ZM" => "Zambia",
+        "ZW" => "Zimbabue",
+        _ => "",
+    }
+}
+
+/// Maps an ISO 639-2 (or ISO 639-1) language code to its Spanish display name.
 fn lang_name(code: &str) -> String {
     match code.to_uppercase().as_str() {
-        "SPA" | "ESP" => "Español".to_string(),
-        "ENG"         => "Inglés".to_string(),
-        "FRA"         => "Francés".to_string(),
-        "GER" | "DEU" => "Alemán".to_string(),
-        "ITA"         => "Italiano".to_string(),
-        "POR"         => "Portugués".to_string(),
-        "JPN"         => "Japonés".to_string(),
-        "KOR"         => "Coreano".to_string(),
-        "CHI" | "ZHO" => "Chino".to_string(),
-        "ARA"         => "Árabe".to_string(),
-        "RUS"         => "Ruso".to_string(),
-        "TUR"         => "Turco".to_string(),
-        "POL"         => "Polaco".to_string(),
-        "DUT" | "NLD" => "Neerlandés".to_string(),
-        "SWE"         => "Sueco".to_string(),
-        "NOR"         => "Noruego".to_string(),
-        "DAN"         => "Danés".to_string(),
-        "FIN"         => "Finlandés".to_string(),
-        "HEB"         => "Hebreo".to_string(),
-        "HUN"         => "Húngaro".to_string(),
-        "CZE"         => "Checo".to_string(),
-        "SLO"         => "Eslovaco".to_string(),
-        "ROM"         => "Rumano".to_string(),
-        "GRE" | "ELL" => "Griego".to_string(),
-        "THA"         => "Tailandés".to_string(),
-        "VIE"         => "Vietnamita".to_string(),
-        "IND"         => "Indonesio".to_string(),
-        "MAY"         => "Malayo".to_string(),
-        "HIN"         => "Hindi".to_string(),
-        "CAT"         => "Catalán".to_string(),
-        "LAT"         => "Latín".to_string(),
-        "EUS"         => "Euskera".to_string(),
-        "GLG"         => "Gallego".to_string(),
-        other         => other.to_uppercase(),
+        "ES" | "SPA" | "ESP"           => "Español",
+        "EN" | "ENG"                   => "Inglés",
+        "FR" | "FRE" | "FRA"           => "Francés",
+        "DE" | "GER" | "DEU"           => "Alemán",
+        "IT" | "ITA"                   => "Italiano",
+        "PT" | "POR"                   => "Portugués",
+        "JA" | "JPN"                   => "Japonés",
+        "KO" | "KOR"                   => "Coreano",
+        "ZH" | "CHI" | "ZHO"           => "Chino",
+        "AR" | "ARA"                   => "Árabe",
+        "RU" | "RUS"                   => "Ruso",
+        "TR" | "TUR"                   => "Turco",
+        "PL" | "POL"                   => "Polaco",
+        "NL" | "DUT" | "NLD"           => "Neerlandés",
+        "SV" | "SWE"                   => "Sueco",
+        "NO" | "NOR" | "NOB" | "NNO"   => "Noruego",
+        "DA" | "DAN"                   => "Danés",
+        "FI" | "FIN"                   => "Finlandés",
+        "HE" | "HEB"                   => "Hebreo",
+        "HU" | "HUN"                   => "Húngaro",
+        "CS" | "CZE" | "CES"           => "Checo",
+        "SK" | "SLO" | "SLK"           => "Eslovaco",
+        "RO" | "ROM" | "RUM" | "RON"   => "Rumano",
+        "EL" | "GRE" | "ELL"           => "Griego",
+        "TH" | "THA"                   => "Tailandés",
+        "VI" | "VIE"                   => "Vietnamita",
+        "ID" | "IND"                   => "Indonesio",
+        "MS" | "MAY" | "MSA"           => "Malayo",
+        "HI" | "HIN"                   => "Hindi",
+        "CA" | "CAT"                   => "Catalán",
+        "LA" | "LAT"                   => "Latín",
+        "EU" | "EUS" | "BAQ"           => "Euskera",
+        "GL" | "GLG"                   => "Gallego",
+        "UK" | "UKR"                   => "Ucraniano",
+        "HR" | "HRV"                   => "Croata",
+        "SR" | "SRP"                   => "Serbio",
+        "BG" | "BUL"                   => "Búlgaro",
+        "SL" | "SLV"                   => "Esloveno",
+        "LT" | "LIT"                   => "Lituano",
+        "LV" | "LAV"                   => "Letón",
+        "ET" | "EST"                   => "Estonio",
+        "SQ" | "ALB" | "SQI"           => "Albanés",
+        other                           => return other.to_uppercase(),
     }
+    .to_string()
 }
 
 /// Returns the ffprobe version string if found in PATH, or null.
@@ -3140,16 +3247,14 @@ pub async fn suggest_upload_destination(
 
         // Step 2: pick the right category folder name.
         // Prefer actual server name if found; otherwise use the standard Spanish name.
+        // Never fall back to the opposite category (e.g. put a single episode in "completas").
         let preferred_kw = if is_full_season { "completa" } else { "emisi" };
-        let fallback_kw  = if is_full_season { "emisi" } else { "completa" };
         let cat_dir = category_dirs.iter()
             .find(|d| normalise_for_match(d).contains(preferred_kw))
-            .or_else(|| category_dirs.iter().find(|d| normalise_for_match(d).contains(fallback_kw)))
-            .or_else(|| category_dirs.first())
             .cloned()
             .unwrap_or_else(|| {
-                // Fallback: use the standard Spanish category name — the FTP list may have
-                // failed or the folders don't exist yet; ensure_remote_dir will create them.
+                // Preferred category not found on server — use hardcoded name.
+                // ensure_remote_dir will create it on upload.
                 if is_full_season {
                     "Temporadas completas".to_string()
                 } else {
@@ -3212,13 +3317,13 @@ pub async fn suggest_upload_destination(
             });
         if !cat_dirs_fb.is_empty() {
             let preferred_kw = if p.is_dir() { "completa" } else { "emisi" };
-            let fallback_kw  = if p.is_dir() { "emisi" } else { "completa" };
             let cat = cat_dirs_fb.iter()
                 .find(|d| normalise_for_match(d).contains(preferred_kw))
-                .or_else(|| cat_dirs_fb.iter().find(|d| normalise_for_match(d).contains(fallback_kw)))
-                .or_else(|| cat_dirs_fb.first())
                 .cloned()
-                .unwrap_or_default();
+                .unwrap_or_else(|| {
+                    if p.is_dir() { "Temporadas completas".to_string() }
+                    else { "Temporadas en emision".to_string() }
+                });
             if cat.is_empty() { tv_dest.clone() } else { format!("{}/{}", tv_dest.trim_end_matches('/'), cat) }
         } else {
             // Flat structure — no category layer
@@ -3358,6 +3463,9 @@ fn spawn_upload_job(
     languages: Vec<String>,
     codec: Option<String>,
     audio_codec: Option<String>,
+    subtitle_langs: Vec<String>,
+    audio_tracks: Vec<crate::analysis::AudioTrack>,
+    subtitle_tracks: Vec<crate::analysis::SubtitleTrack>,
     group_id: Option<String>,
     semaphore: Arc<tokio::sync::Semaphore>,
     cancel_flag: Arc<std::sync::atomic::AtomicBool>,
@@ -3532,47 +3640,73 @@ fn spawn_upload_job(
                             .map(|y| format!(" ({})", y))
                             .unwrap_or_default();
 
-                        let rating_str = tmdb_data.as_ref()
-                            .and_then(|m| m.vote_average)
-                            .filter(|&r| r > 0.0)
-                            .map(|r| format!("\n⭐ <b>{:.1}</b>", r))
-                            .unwrap_or_default();
-
-                        let overview_str = tmdb_data.as_ref()
-                            .and_then(|m| m.overview.as_deref())
-                            .filter(|s| !s.is_empty())
-                            .map(|s| {
-                                let truncated = if s.chars().count() > 300 {
-                                    let cut: String = s.chars().take(300).collect();
-                                    format!("{}…", cut)
-                                } else {
-                                    s.to_string()
-                                };
-                                format!("\n\n<i>{}</i>", truncated)
-                            })
-                            .unwrap_or_default();
-
-                        // Tech-specs line: resolution · video codec · HDR · audio codec
+                        // Tech-specs line: resolution · video codec · HDR (audio moved to 🔊 line)
                         let specs_parts: Vec<String> = [
                             resolution.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
                             codec.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
                             hdr.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
-                            audio_codec.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
                         ].into_iter().flatten().collect();
                         let specs_str = if specs_parts.is_empty() {
                             String::new()
                         } else {
-                            format!("\n📏 {}", specs_parts.join(" · "))
+                            format!("\n📺 {}", specs_parts.join(" · "))
                         };
-                        // Languages on their own line — map codes to Spanish names
-                        let langs_str = if languages.is_empty() {
-                            String::new()
-                        } else {
+
+                        // Audio tracks: "🔊 Español TrueHD 7.1 · Inglés AC3 5.1"
+                        // Falls back to plain language list if no track metadata
+                        let audio_str = if !audio_tracks.is_empty() {
+                            let mut seen = std::collections::HashSet::new();
+                            let parts: Vec<String> = audio_tracks.iter()
+                                .filter_map(|t| {
+                                    let lang_label = t.language.as_deref()
+                                        .map(lang_name)
+                                        .unwrap_or_else(|| "Desconocido".into());
+                                    let ch_label = t.channels.map(channels_label).unwrap_or_default();
+                                    let entry = format!(
+                                        "{}{}{}",
+                                        lang_label,
+                                        if t.codec.is_empty() { String::new() } else { format!(" {}", t.codec) },
+                                        if ch_label.is_empty() { String::new() } else { format!(" {}", ch_label) },
+                                    );
+                                    if seen.insert(entry.clone()) { Some(entry) } else { None }
+                                })
+                                .collect();
+                            if parts.is_empty() { String::new() } else { format!("\n🔊 {}", parts.join(" · ")) }
+                        } else if !languages.is_empty() {
                             let names: Vec<String> = languages.iter().map(|l| lang_name(l)).collect();
                             format!("\n🗣️ {}", names.join(" · "))
+                        } else if let Some(ref ac) = audio_codec {
+                            format!("\n🔊 {}", ac)
+                        } else {
+                            String::new()
                         };
+
+                        // Subtitle tracks: "💬 Español · Inglés (forzado)"
+                        let subs_str = if !subtitle_tracks.is_empty() {
+                            let mut seen = std::collections::HashSet::new();
+                            let parts: Vec<String> = subtitle_tracks.iter()
+                                .filter_map(|t| {
+                                    let lang = t.language.as_deref().unwrap_or("und");
+                                    let key = format!("{}{}", lang, t.is_forced);
+                                    if !seen.insert(key) { return None; }
+                                    let name = lang_name(lang);
+                                    if t.is_forced {
+                                        Some(format!("{} (forzado)", name))
+                                    } else {
+                                        Some(name.into())
+                                    }
+                                })
+                                .collect();
+                            if parts.is_empty() { String::new() } else { format!("\n💬 {}", parts.join(" · ")) }
+                        } else if !subtitle_langs.is_empty() {
+                            let names: Vec<String> = subtitle_langs.iter().map(|l| lang_name(l)).collect();
+                            format!("\n💬 {}", names.join(" · "))
+                        } else {
+                            String::new()
+                        };
+
+                        // File size
                         let size_str = if let Some(ref gid) = group_id {
-                            // For season groups use the sum of all episode sizes
                             let total = upload_queue.lock().unwrap().group_total_bytes(gid);
                             if total > 0 {
                                 format!("\n💾 {}", format_bytes_human(total))
@@ -3585,6 +3719,57 @@ fn spawn_upload_job(
                             String::new()
                         };
 
+                        // TMDB rating + runtime on one line
+                        let rating_val = tmdb_data.as_ref()
+                            .and_then(|m| m.vote_average)
+                            .filter(|&r| r > 0.0);
+                        let runtime_val = tmdb_data.as_ref()
+                            .and_then(|m| m.runtime_mins);
+                        let meta_inline_str = match (rating_val, runtime_val) {
+                            (Some(r), Some(mins)) => format!("\n⭐ {:.1}   ⏱️ {}", r, format_runtime(mins)),
+                            (Some(r), None)        => format!("\n⭐ {:.1}", r),
+                            (None, Some(mins))     => format!("\n⏱️ {}", format_runtime(mins)),
+                            (None, None)           => String::new(),
+                        };
+
+                        // Release date + country on one line
+                        let release_date_str = tmdb_data.as_ref()
+                            .and_then(|m| m.release_date.as_deref())
+                            .map(format_date_es)
+                            .unwrap_or_default();
+                        let country_str = tmdb_data.as_ref()
+                            .and_then(|m| m.origin_country.as_deref())
+                            .map(country_name)
+                            .unwrap_or_default();
+                        let date_country_str = match (release_date_str.as_str(), country_str) {
+                            ("", "")    => String::new(),
+                            (d, "")     => format!("\n📅 {d}"),
+                            ("", c)     => format!("\n🌍 {c}"),
+                            (d,  c)     => format!("\n📅 {d}   🌍 {c}"),
+                        };
+
+                        // Genres
+                        let genres_str = tmdb_data.as_ref()
+                            .map(|m| m.genres.as_slice())
+                            .filter(|g| !g.is_empty())
+                            .map(|g| format!("\n🎭 {}", g.join(" · ")))
+                            .unwrap_or_default();
+
+                        // Synopsis (shortened)
+                        let overview_str = tmdb_data.as_ref()
+                            .and_then(|m| m.overview.as_deref())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| {
+                                let truncated = if s.chars().count() > 250 {
+                                    let cut: String = s.chars().take(250).collect();
+                                    format!("{}…", cut)
+                                } else {
+                                    s.to_string()
+                                };
+                                format!("\n\n<i>{}</i>", truncated)
+                            })
+                            .unwrap_or_default();
+
                         let tmdb_link_str = if let Some(tid) = tmdb_id {
                             let tmdb_type_path = if inferred_media_type == "tv" { "tv" } else { "movie" };
                             format!("\n🔗 <a href=\"https://www.themoviedb.org/{tmdb_type_path}/{tid}\">Ver en TMDB</a>")
@@ -3593,7 +3778,7 @@ fn spawn_upload_job(
                         };
 
                         let msg = format!(
-                            "<b>{header}</b>\n\n<b>{display_title}</b>{year_str}{episode_str}{specs_str}{langs_str}{size_str}{rating_str}{overview_str}{tmdb_link_str}\n\n📂 <code>{dest_display}</code>",
+                            "{header} <b>{display_title}</b>{year_str}{episode_str}{specs_str}{audio_str}{subs_str}{size_str}{meta_inline_str}{date_country_str}{genres_str}{overview_str}{tmdb_link_str}\n\n📂 <code>{dest_display}</code>",
                         );
 
                         let poster_url = tmdb_data.as_ref()
@@ -3649,6 +3834,9 @@ pub async fn queue_upload(
     languages: Vec<String>,
     codec: Option<String>,
     audio_codec: Option<String>,
+    subtitle_langs: Vec<String>,
+    audio_tracks: Vec<crate::analysis::AudioTrack>,
+    subtitle_tracks: Vec<crate::analysis::SubtitleTrack>,
     group_id: Option<String>,
     upload_queue: tauri::State<'_, crate::uploads::SharedUploadQueue>,
     db: tauri::State<'_, crate::db::Db>,
@@ -3668,6 +3856,9 @@ pub async fn queue_upload(
             languages.clone(),
             codec.clone(),
             audio_codec.clone(),
+            subtitle_langs.clone(),
+            audio_tracks.clone(),
+            subtitle_tracks.clone(),
             group_id.clone(),
         )
     };
@@ -3707,6 +3898,9 @@ pub async fn queue_upload(
         languages,
         codec,
         audio_codec,
+        subtitle_langs,
+        audio_tracks,
+        subtitle_tracks,
         group_id,
         semaphore,
         cancel_flag,
@@ -3761,6 +3955,9 @@ pub async fn retry_upload(
         item.languages,
         item.codec,
         item.audio_codec,
+        item.subtitle_langs,
+        item.audio_tracks,
+        item.subtitle_tracks,
         item.group_id,
         semaphore,
         cancel_flag,

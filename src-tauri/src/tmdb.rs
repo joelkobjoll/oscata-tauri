@@ -22,6 +22,13 @@ pub struct TmdbMovie {
     pub vote_average: Option<f64>,
     #[serde(default)]
     pub genre_ids: Vec<i64>,
+    /// Localized genre names (from the fetch language, prefer Spanish).
+    #[serde(default)]
+    pub genres: Vec<String>,
+    /// Runtime in minutes (movie) or typical episode runtime (TV).
+    pub runtime_mins: Option<u32>,
+    /// ISO 3166-1 alpha-2 production/origin country code (e.g. "DE", "US").
+    pub origin_country: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +40,9 @@ struct LocalizedTmdbResult {
     poster_path: Option<String>,
     vote_average: Option<f64>,
     genre_ids: Vec<i64>,
+    genres: Vec<String>,
+    runtime_mins: Option<u32>,
+    origin_country: Option<String>,
 }
 
 /// Fold common diacritics to their ASCII base so that
@@ -253,6 +263,9 @@ async fn fetch_search_results_lang(
             poster_path: r.poster_path,
             vote_average: r.vote_average,
             genre_ids: r.genre_ids,
+            genres: vec![],
+            runtime_mins: None,
+            origin_country: None,
         })
         .collect())
 }
@@ -397,6 +410,9 @@ async fn search_endpoint_results(
                 poster_path_en: None,
                 vote_average: result.vote_average,
                 genre_ids: result.genre_ids,
+                genres: result.genres,
+                runtime_mins: result.runtime_mins,
+                origin_country: result.origin_country,
             });
     }
 
@@ -436,6 +452,9 @@ async fn search_endpoint_results(
                 poster_path_en: result.poster_path,
                 vote_average: result.vote_average,
                 genre_ids: result.genre_ids,
+                genres: result.genres,
+                runtime_mins: result.runtime_mins,
+                origin_country: result.origin_country,
             });
     }
 
@@ -597,13 +616,43 @@ async fn fetch_detail_lang(
         vote_average: Option<f64>,
         #[serde(default)]
         genres: Vec<Genre>,
+        // movie runtime in minutes
+        runtime: Option<u32>,
+        // TV show per-episode runtimes
+        #[serde(default)]
+        episode_run_time: Vec<u32>,
+        // country codes, e.g. ["DE", "US"]
+        #[serde(default)]
+        origin_country: Vec<String>,
+        // fallback for movies that don't have origin_country
+        #[serde(default)]
+        production_countries: Vec<ProductionCountry>,
     }
     #[derive(Deserialize)]
     struct Genre {
         id: i64,
+        name: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct ProductionCountry {
+        iso_3166_1: Option<String>,
     }
 
     let detail: Detail = fetch_json_with_retry(&url, "detail request").await?;
+
+    let runtime_mins = detail.runtime
+        .or_else(|| detail.episode_run_time.into_iter().next());
+
+    let genre_ids: Vec<i64> = detail.genres.iter().map(|g| g.id).collect();
+    let genres: Vec<String> = detail.genres.into_iter()
+        .filter_map(|g| g.name)
+        .filter(|n| !n.is_empty())
+        .collect();
+
+    let origin_country = detail.origin_country.into_iter().next()
+        .or_else(|| detail.production_countries.into_iter()
+            .filter_map(|c| c.iso_3166_1)
+            .next());
 
     Ok(LocalizedTmdbResult {
         id: detail.id,
@@ -612,7 +661,10 @@ async fn fetch_detail_lang(
         overview: detail.overview,
         poster_path: detail.poster_path,
         vote_average: detail.vote_average,
-        genre_ids: detail.genres.into_iter().map(|g| g.id).collect(),
+        genre_ids,
+        genres,
+        runtime_mins,
+        origin_country,
     })
 }
 
@@ -681,6 +733,13 @@ pub async fn fetch_movie_by_id(api_key: &str, tmdb_id: i64, media_type: &str) ->
         } else {
             spanish.genre_ids
         },
+        genres: if spanish.genres.is_empty() {
+            english.genres
+        } else {
+            spanish.genres
+        },
+        runtime_mins: spanish.runtime_mins.or(english.runtime_mins),
+        origin_country: spanish.origin_country.or(english.origin_country),
     })
 }
 
