@@ -2772,12 +2772,29 @@ export default function Settings({
                         gap: 12,
                       }}
                     >
+                      {/* info banner in headless mode */}
+                      {!isTauri() && (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "var(--color-text-muted)",
+                            background:
+                              "color-mix(in srgb, var(--color-surface-2) 80%, transparent)",
+                            border:
+                              "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
+                            borderRadius: "var(--radius)",
+                            padding: "8px 12px",
+                          }}
+                        >
+                          El host y puerto se configuran mediante variables de entorno en modo servidor. Edita solo la URL pública y el puerto expuesto si usas un proxy inverso.
+                        </div>
+                      )}
+
+                      {/* host + port on same row, aligned */}
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: isMobile
-                            ? "1fr 80px"
-                            : "1fr 120px",
+                          gridTemplateColumns: isMobile ? "1fr 100px" : "1fr 120px",
                           gap: 10,
                         }}
                       >
@@ -2786,7 +2803,14 @@ export default function Settings({
                             {t(language, "settings.webInterfaceBindHost")}
                           </label>
                           <input
-                            style={inputStyle}
+                            style={{
+                              ...inputStyle,
+                              ...(!isTauri() && {
+                                opacity: 0.45,
+                                cursor: "not-allowed",
+                              }),
+                            }}
+                            disabled={!isTauri()}
                             value={webGuiConfig.host}
                             onChange={(e) =>
                               setWebGuiConfig((c) =>
@@ -2801,7 +2825,14 @@ export default function Settings({
                             {t(language, "settings.port")}
                           </label>
                           <input
-                            style={inputStyle}
+                            style={{
+                              ...inputStyle,
+                              ...(!isTauri() && {
+                                opacity: 0.45,
+                                cursor: "not-allowed",
+                              }),
+                            }}
+                            disabled={!isTauri()}
                             type="number"
                             min={1024}
                             max={65535}
@@ -2820,13 +2851,29 @@ export default function Settings({
                         </div>
                       </div>
 
+                      {/* exposed port + app url aligned to same grid */}
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: isMobile ? "1fr" : "120px 1fr",
+                          gridTemplateColumns: isMobile ? "1fr" : "1fr 120px",
                           gap: 10,
                         }}
                       >
+                        <div style={fieldStyle}>
+                          <label style={labelStyle}>
+                            {t(language, "settings.webInterfaceAppUrl")}
+                          </label>
+                          <input
+                            style={inputStyle}
+                            value={webGuiConfig.app_url}
+                            placeholder="http://192.168.1.x:47860"
+                            onChange={(e) =>
+                              setWebGuiConfig((c) =>
+                                c ? { ...c, app_url: e.target.value } : c,
+                              )
+                            }
+                          />
+                        </div>
                         <div style={fieldStyle}>
                           <label style={labelStyle}>
                             {t(language, "settings.webInterfaceExposedPort")}
@@ -2851,21 +2898,6 @@ export default function Settings({
                                         : null,
                                     }
                                   : c,
-                              )
-                            }
-                          />
-                        </div>
-                        <div style={fieldStyle}>
-                          <label style={labelStyle}>
-                            {t(language, "settings.webInterfaceAppUrl")}
-                          </label>
-                          <input
-                            style={inputStyle}
-                            value={webGuiConfig.app_url}
-                            placeholder="http://192.168.1.x:47860"
-                            onChange={(e) =>
-                              setWebGuiConfig((c) =>
-                                c ? { ...c, app_url: e.target.value } : c,
                               )
                             }
                           />
