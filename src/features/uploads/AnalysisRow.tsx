@@ -103,8 +103,7 @@ function buildEpisodeFilename(
   source: string,
   resolution: string,
   codec: string,
-  audioTracks: { codec: string; channels: string }[],
-  langs: string,
+  audioTracks: { codec: string; channels: string; lang: string }[],
   ext: string,
 ): string {
   const parts: string[] = [];
@@ -123,11 +122,15 @@ function buildEpisodeFilename(
       const ch = t.channels.trim();
       parts.push(ch ? `${t.codec.trim()}.${ch}` : t.codec.trim());
     });
-  const langList = langs
-    .split(/[,\s]+/)
-    .filter(Boolean)
-    .map((l) => l.toUpperCase());
-  parts.push(...langList);
+  // Derive langs from per-track lang field (deduplicated, order preserved)
+  const seen = new Set<string>();
+  for (const t of audioTracks) {
+    const l = t.lang.trim().toUpperCase();
+    if (l && !seen.has(l)) {
+      seen.add(l);
+      parts.push(l);
+    }
+  }
   return parts.join(".") + (ext ? `.${ext}` : "");
 }
 
@@ -174,6 +177,126 @@ function parseQualityFromFilename(name: string): {
   else if (/HDTV/.test(u)) source = "HDTV";
   else if (/REMUX/.test(u)) source = "REMUX";
   return { source, resolution, codec };
+}
+
+// Language options for the audio-track lang selector.
+// code = short ISO-639-2/B tag used in filenames; label = display name in Spanish.
+const LANG_OPTIONS: { code: string; label: string }[] = [
+  { code: "SPA", label: "Español" },
+  { code: "ENG", label: "Inglés" },
+  { code: "FRA", label: "Francés" },
+  { code: "DEU", label: "Alemán" },
+  { code: "ITA", label: "Italiano" },
+  { code: "POR", label: "Portugués" },
+  { code: "JPN", label: "Japonés" },
+  { code: "KOR", label: "Coreano" },
+  { code: "ZHO", label: "Chino" },
+  { code: "ARA", label: "Árabe" },
+  { code: "RUS", label: "Ruso" },
+  { code: "TUR", label: "Turco" },
+  { code: "POL", label: "Polaco" },
+  { code: "NLD", label: "Neerlandés" },
+  { code: "SWE", label: "Sueco" },
+  { code: "NOR", label: "Noruego" },
+  { code: "DAN", label: "Danés" },
+  { code: "FIN", label: "Finlandés" },
+  { code: "HEB", label: "Hebreo" },
+  { code: "HUN", label: "Húngaro" },
+  { code: "CES", label: "Checo" },
+  { code: "SLK", label: "Eslovaco" },
+  { code: "RON", label: "Rumano" },
+  { code: "ELL", label: "Griego" },
+  { code: "THA", label: "Tailandés" },
+  { code: "VIE", label: "Vietnamita" },
+  { code: "IND", label: "Indonesio" },
+  { code: "MSA", label: "Malayo" },
+  { code: "HIN", label: "Hindi" },
+  { code: "CAT", label: "Catalán" },
+  { code: "LAT", label: "Latín" },
+  { code: "EUS", label: "Euskera" },
+  { code: "GLG", label: "Gallego" },
+  { code: "UKR", label: "Ucraniano" },
+  { code: "HRV", label: "Croata" },
+  { code: "SRP", label: "Serbio" },
+  { code: "BUL", label: "Búlgaro" },
+  { code: "SLV", label: "Esloveno" },
+  { code: "LIT", label: "Lituano" },
+  { code: "LAV", label: "Letón" },
+  { code: "EST", label: "Estonio" },
+  { code: "SQI", label: "Albanés" },
+];
+
+// Quick lookup: code → LANG_OPTIONS entry (canonical + legacy aliases)
+const LANG_CODE_MAP: Record<string, string> = (() => {
+  const m: Record<string, string> = {};
+  for (const o of LANG_OPTIONS) m[o.code] = o.code;
+  // legacy / ffprobe aliases → canonical code stored in the dropdown
+  const aliases: [string, string][] = [
+    ["GER", "DEU"],
+    ["FRE", "FRA"],
+    ["CHI", "ZHO"],
+    ["DUT", "NLD"],
+    ["CZE", "CES"],
+    ["SLO", "SLK"],
+    ["ROM", "RON"],
+    ["GRE", "ELL"],
+    ["MAY", "MSA"],
+    ["BAQ", "EUS"],
+    ["ALB", "SQI"],
+    ["ESP", "SPA"],
+    ["ES", "SPA"],
+    ["EN", "ENG"],
+    ["FR", "FRA"],
+    ["DE", "DEU"],
+    ["IT", "ITA"],
+    ["PT", "POR"],
+    ["JA", "JPN"],
+    ["KO", "KOR"],
+    ["ZH", "ZHO"],
+    ["AR", "ARA"],
+    ["RU", "RUS"],
+    ["TR", "TUR"],
+    ["PL", "POL"],
+    ["NL", "NLD"],
+    ["SV", "SWE"],
+    ["NO", "NOR"],
+    ["NOB", "NOR"],
+    ["NNO", "NOR"],
+    ["DA", "DAN"],
+    ["FI", "FIN"],
+    ["HE", "HEB"],
+    ["HU", "HUN"],
+    ["CS", "CES"],
+    ["SK", "SLK"],
+    ["RO", "RON"],
+    ["EL", "ELL"],
+    ["TH", "THA"],
+    ["VI", "VIE"],
+    ["ID", "IND"],
+    ["MS", "MSA"],
+    ["HI", "HIN"],
+    ["CA", "CAT"],
+    ["LA", "LAT"],
+    ["EU", "EUS"],
+    ["GL", "GLG"],
+    ["UK", "UKR"],
+    ["HR", "HRV"],
+    ["SR", "SRP"],
+    ["BG", "BUL"],
+    ["SL", "SLV"],
+    ["LT", "LIT"],
+    ["LV", "LAV"],
+    ["ET", "EST"],
+    ["SQ", "SQI"],
+  ];
+  for (const [alias, canon] of aliases) m[alias] = canon;
+  return m;
+})();
+
+/** Normalise any language code/alias to the canonical code used by LANG_OPTIONS. */
+function normalizeLangCode(raw: string): string {
+  const up = raw.trim().toUpperCase();
+  return LANG_CODE_MAP[up] ?? up;
 }
 
 // Known 3-letter ISO 639-2 language codes commonly found in media filenames
@@ -316,21 +439,22 @@ export default function AnalysisRow({
   const [seasonCodec, setSeasonCodec] = useState(
     info?.codec ?? suggestion?.detected_codec ?? "",
   );
-  const [seasonLangs, setSeasonLangs] = useState(() =>
-    (info?.languages?.length
-      ? info.languages
-      : (suggestion?.detected_languages ?? [])
-    )
-      .map((l) => l.toUpperCase())
-      .join(", "),
-  );
-  // TV audio tracks — one entry per physical track (codec + channels)
-  type SeasonAudioTrackEntry = { codec: string; channels: string };
+  // TV audio tracks — one entry per physical track (codec + channels + lang)
+  type SeasonAudioTrackEntry = {
+    codec: string;
+    channels: string;
+    lang: string;
+  };
   const [seasonAudioTracks, setSeasonAudioTracks] = useState<
     SeasonAudioTrackEntry[]
   >(() => {
+    const detectedLangs = (
+      info?.languages?.length
+        ? info.languages
+        : (suggestion?.detected_languages ?? [])
+    ).map((l) => normalizeLangCode(l));
     if (info?.audio_tracks && info.audio_tracks.length > 0) {
-      return info.audio_tracks.map((t) => ({
+      return info.audio_tracks.map((t, i) => ({
         codec: t.codec ?? "",
         channels:
           t.channels != null
@@ -342,9 +466,10 @@ export default function AnalysisRow({
                   ? "7.1"
                   : `${t.channels}.0`
             : "",
+        lang: normalizeLangCode(t.language ?? detectedLangs[i] ?? ""),
       }));
     }
-    return [{ codec: "", channels: "" }];
+    return [{ codec: "", channels: "", lang: detectedLangs[0] ?? "" }];
   });
   const updateSeasonAudioTrack = (
     idx: number,
@@ -358,12 +483,15 @@ export default function AnalysisRow({
   const removeSeasonAudioTrack = (idx: number) => {
     setSeasonAudioTracks((prev) =>
       prev.length <= 1
-        ? [{ codec: "", channels: "" }]
+        ? [{ codec: "", channels: "", lang: "" }]
         : prev.filter((_, i) => i !== idx),
     );
   };
   const addSeasonAudioTrack = () => {
-    setSeasonAudioTracks((prev) => [...prev, { codec: "", channels: "" }]);
+    setSeasonAudioTracks((prev) => [
+      ...prev,
+      { codec: "", channels: "", lang: "" },
+    ]);
   };
   // Tracks whether the user has manually edited the FTP destination field (typing)
   const destTouchedRef = useRef(false);
@@ -389,14 +517,12 @@ export default function AnalysisRow({
     if (info.resolution && !seasonResolution)
       setSeasonResolution(normalizeResolution(info.resolution));
     if (info.codec && !seasonCodec) setSeasonCodec(info.codec);
-    const l = info.languages
-      .filter(Boolean)
-      .map((x) => x.toUpperCase())
-      .join(", ");
-    if (l && !seasonLangs) setSeasonLangs(l);
     if (info.audio_tracks && info.audio_tracks.length > 0) {
+      const detectedLangs = info.languages
+        .filter(Boolean)
+        .map((x) => normalizeLangCode(x));
       setSeasonAudioTracks(
-        info.audio_tracks.map((t) => ({
+        info.audio_tracks.map((t, i) => ({
           codec: t.codec ?? "",
           channels:
             t.channels != null
@@ -408,6 +534,7 @@ export default function AnalysisRow({
                     ? "7.1"
                     : `${t.channels}.0`
               : "",
+          lang: normalizeLangCode(t.language ?? detectedLangs[i] ?? ""),
         })),
       );
     }
@@ -427,13 +554,12 @@ export default function AnalysisRow({
         if (epInfo.resolution && !seasonResolution)
           setSeasonResolution(epInfo.resolution);
         if (epInfo.codec && !seasonCodec) setSeasonCodec(epInfo.codec);
-        const langs = epInfo.languages
-          .filter(Boolean)
-          .map((l) => l.toUpperCase());
-        if (langs.length > 0 && !seasonLangs) setSeasonLangs(langs.join(", "));
         if (epInfo.audio_tracks && epInfo.audio_tracks.length > 0) {
+          const detectedLangs = epInfo.languages
+            .filter(Boolean)
+            .map((l) => normalizeLangCode(l));
           setSeasonAudioTracks(
-            epInfo.audio_tracks.map((t) => ({
+            epInfo.audio_tracks.map((t, i) => ({
               codec: t.codec ?? "",
               channels:
                 t.channels != null
@@ -445,6 +571,7 @@ export default function AnalysisRow({
                         ? "7.1"
                         : `${t.channels}.0`
                   : "",
+              lang: normalizeLangCode(t.language ?? detectedLangs[i] ?? ""),
             })),
           );
         }
@@ -461,16 +588,21 @@ export default function AnalysisRow({
           setSeasonResolution(fromFolder.resolution || fromEp.resolution);
         if (!seasonCodec) setSeasonCodec(fromFolder.codec || fromEp.codec);
 
-        if (!seasonLangs) {
-          let langs = parseLanguagesFromPath(first);
-          if (langs.length === 0) {
-            for (const fp of episodeFiles.slice(1, 4)) {
-              langs = parseLanguagesFromPath(fp.split(/[\\/]/).pop() ?? "");
-              if (langs.length > 0) break;
-            }
+        let langs = parseLanguagesFromPath(first);
+        if (langs.length === 0) {
+          for (const fp of episodeFiles.slice(1, 4)) {
+            langs = parseLanguagesFromPath(fp.split(/[\\/]/).pop() ?? "");
+            if (langs.length > 0) break;
           }
-          if (langs.length === 0) langs = parseLanguagesFromPath(folderName);
-          if (langs.length > 0) setSeasonLangs(langs.join(", "));
+        }
+        if (langs.length === 0) langs = parseLanguagesFromPath(folderName);
+        if (langs.length > 0) {
+          setSeasonAudioTracks((prev) =>
+            prev.map((t, i) => ({
+              ...t,
+              lang: normalizeLangCode(langs[i] ?? t.lang),
+            })),
+          );
         }
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -528,7 +660,6 @@ export default function AnalysisRow({
           seasonResolution,
           seasonCodec,
           seasonAudioTracks,
-          seasonLangs,
           ext,
         ),
       );
@@ -546,7 +677,6 @@ export default function AnalysisRow({
     seasonResolution,
     seasonCodec,
     seasonAudioTracks,
-    seasonLangs,
     rename,
   ]);
 
@@ -569,7 +699,6 @@ export default function AnalysisRow({
           seasonResolution,
           seasonCodec,
           seasonAudioTracks,
-          seasonLangs,
           epExt,
         ),
       };
@@ -584,7 +713,6 @@ export default function AnalysisRow({
     seasonResolution,
     seasonCodec,
     seasonAudioTracks,
-    seasonLangs,
     rename,
   ]);
 
@@ -1425,27 +1553,7 @@ export default function AnalysisRow({
                       </select>
                     </div>
                   </div>
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: 3 }}
-                  >
-                    <label
-                      style={{
-                        fontSize: 10,
-                        color: "var(--color-text-muted)",
-                        fontWeight: 600,
-                        letterSpacing: "0.04em",
-                      }}
-                    >
-                      IDIOMAS (ej: SPA, ENG)
-                    </label>
-                    <input
-                      value={seasonLangs}
-                      onChange={(e) => setSeasonLangs(e.target.value)}
-                      placeholder="SPA, ENG"
-                      style={formInputCompact}
-                    />
-                  </div>
-                  {/* Audio tracks — one row per physical track */}
+                  {/* Audio tracks — one row per physical track (codec + channels + lang) */}
                   <div
                     style={{ display: "flex", flexDirection: "column", gap: 6 }}
                   >
@@ -1464,11 +1572,32 @@ export default function AnalysisRow({
                         key={idx}
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "1fr 72px 26px",
+                          gridTemplateColumns: "1fr 1fr 60px 26px",
                           gap: "0 6px",
                           alignItems: "center",
                         }}
                       >
+                        <select
+                          value={track.lang}
+                          onChange={(e) =>
+                            updateSeasonAudioTrack(idx, "lang", e.target.value)
+                          }
+                          style={formSelectCompact}
+                        >
+                          <option value="">—</option>
+                          {LANG_OPTIONS.map((o) => (
+                            <option key={o.code} value={o.code}>
+                              {o.code} – {o.label}
+                            </option>
+                          ))}
+                          {/* Keep unknown codes (e.g. raw ffprobe tags not in the list) */}
+                          {track.lang &&
+                            !LANG_OPTIONS.some(
+                              (o) => o.code === track.lang,
+                            ) && (
+                              <option value={track.lang}>{track.lang}</option>
+                            )}
+                        </select>
                         <select
                           value={track.codec}
                           onChange={(e) =>
@@ -1749,7 +1878,6 @@ export default function AnalysisRow({
                               seasonResolution,
                               seasonCodec,
                               seasonAudioTracks,
-                              seasonLangs,
                               ext,
                             )
                           : filename}
