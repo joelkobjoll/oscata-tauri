@@ -6,8 +6,11 @@
  * identical to inputs: same height, same padding, custom chevron, no native OS chrome.
  *
  * Two scales:
- *  - compact  → modals, panels, small cards  (fontSize 13, padding 6px 10px)
- *  - standard → full-page forms, settings    (fontSize 14, padding 0.65rem 0.9rem)
+ *  - compact  → modals, panels, small cards  (fontSize 16, padding 6px 10px)
+ *  - standard → full-page forms, settings    (fontSize 16, padding 0.65rem 0.9rem)
+ *
+ * NOTE: fontSize 16px minimum on all inputs prevents iOS Safari from
+ * auto-zooming the viewport when an input is focused.
  */
 
 import type { CSSProperties } from "react";
@@ -27,7 +30,7 @@ export const formInputCompact: CSSProperties = {
   border: "1px solid var(--color-border)",
   background: "var(--color-surface-2)",
   color: "var(--color-text)",
-  fontSize: 13,
+  fontSize: 16,
   outline: "none",
 };
 
@@ -51,7 +54,7 @@ export const formInputStandard: CSSProperties = {
   border: "1px solid var(--color-border)",
   background: "var(--color-surface-2)",
   color: "var(--color-text)",
-  fontSize: 14,
+  fontSize: 16,
   outline: "none",
 };
 
