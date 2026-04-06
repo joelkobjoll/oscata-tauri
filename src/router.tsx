@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "./lib/AuthContext";
 import { apiBase } from "./lib/transport";
 import Login from "./pages/Login";
 import WebBootstrap from "./pages/WebBootstrap";
+import WebSetupWizard from "./pages/WebSetupWizard";
 import WebUsers from "./pages/WebUsers";
 import InviteAccept from "./pages/InviteAccept";
 import ThemeToggle from "./components/ThemeToggle";
@@ -48,8 +49,9 @@ function WebRouter() {
   const [bootstrapRequired, setBootstrapRequired] = useState<boolean | null>(
     null,
   );
-  const [page, setPage] = useState<"library" | "users">(() =>
-    window.location.pathname === "/usuarios" ? "users" : "library",
+  const [hasConfig, setHasConfig] = useState<boolean | null>(null);
+  const [page, setPage] = useState<"library" | "users">(
+    () => window.location.pathname === "/usuarios" ? "users" : "library"
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -93,6 +95,7 @@ function WebRouter() {
         const info = await response.json();
         if (!cancelled) {
           setBootstrapRequired(Boolean(info.bootstrap_required));
+          setHasConfig(Boolean(info.has_config));
         }
       } catch {
         // Keep loading and retry; never assume login path when bootstrap state is unknown.
@@ -111,12 +114,20 @@ function WebRouter() {
     };
   }, []);
 
-  if (user === null || bootstrapRequired === null) {
+  if (user === null || bootstrapRequired === null || (user !== false && hasConfig === null)) {
     return <LoadingScreen />;
   }
 
   if (bootstrapRequired && user === false) {
-    return <WebBootstrap onComplete={() => setBootstrapRequired(false)} />;
+    return (
+      <WebBootstrap
+        onComplete={() => {
+          setBootstrapRequired(false);
+          // Fresh install: no config yet after bootstrap
+          setHasConfig(false);
+        }}
+      />
+    );
   }
 
   if (user === false && inviteToken) {
@@ -132,6 +143,18 @@ function WebRouter() {
 
   if (user === false) {
     return <Login />;
+  }
+
+  // Logged in but no FTP/TMDB config yet → show the initial setup wizard
+  if (hasConfig === false) {
+    return (
+      <WebSetupWizard
+        onComplete={() => {
+          setHasConfig(true);
+          prefetchConfig();
+        }}
+      />
+    );
   }
 
   const isAdmin = user.role === "admin";
@@ -155,8 +178,7 @@ function WebRouter() {
     fontSize: 13,
     fontWeight: 700,
     boxShadow: "inset 0 1px 0 color-mix(in srgb, white 4%, transparent)",
-    transition:
-      "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
+    transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
     userSelect: "none",
     flexShrink: 0,
   };
@@ -180,8 +202,7 @@ function WebRouter() {
             background: "var(--color-surface)",
             border: "1px solid var(--color-border)",
             borderRadius: "var(--radius-lg)",
-            boxShadow:
-              "0 12px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.2)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.2)",
             minWidth: 200,
             zIndex: 70,
             padding: "4px",
@@ -195,23 +216,10 @@ function WebRouter() {
               marginBottom: 4,
             }}
           >
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: "var(--color-text)",
-                marginBottom: 2,
-              }}
-            >
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text)", marginBottom: 2 }}>
               {user.email}
             </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "var(--color-text-muted)",
-                textTransform: "capitalize",
-              }}
-            >
+            <div style={{ fontSize: 11, color: "var(--color-text-muted)", textTransform: "capitalize" }}>
               {user.role}
             </div>
           </div>
@@ -226,9 +234,7 @@ function WebRouter() {
               gap: 8,
             }}
           >
-            <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-              Tema
-            </span>
+            <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>Tema</span>
             <ThemeToggle />
           </div>
 
@@ -242,11 +248,7 @@ function WebRouter() {
                 }}
               />
               <button
-                onClick={() => {
-                  window.history.pushState({}, "", "/usuarios");
-                  setPage("users");
-                  setMenuOpen(false);
-                }}
+                onClick={() => { window.history.pushState({}, "", "/usuarios"); setPage("users"); setMenuOpen(false); }}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -254,46 +256,29 @@ function WebRouter() {
                   width: "100%",
                   textAlign: "left",
                   padding: "8px 12px",
-                  background:
-                    page === "users"
-                      ? "color-mix(in srgb, var(--color-primary) 14%, transparent)"
-                      : "none",
+                  background: page === "users"
+                    ? "color-mix(in srgb, var(--color-primary) 14%, transparent)"
+                    : "none",
                   border: "none",
                   borderRadius: "6px",
-                  color:
-                    page === "users"
-                      ? "var(--color-primary)"
-                      : "var(--color-text)",
+                  color: page === "users" ? "var(--color-primary)" : "var(--color-text)",
                   fontSize: 13,
                   fontWeight: 500,
                   cursor: "pointer",
                   transition: "background 0.12s ease",
                 }}
                 onMouseEnter={(e) => {
-                  if (page !== "users")
-                    (e.currentTarget as HTMLButtonElement).style.background =
-                      "color-mix(in srgb, var(--color-text) 6%, transparent)";
+                  if (page !== "users") (e.currentTarget as HTMLButtonElement).style.background = "color-mix(in srgb, var(--color-text) 6%, transparent)";
                 }}
                 onMouseLeave={(e) => {
-                  if (page !== "users")
-                    (e.currentTarget as HTMLButtonElement).style.background =
-                      "none";
+                  if (page !== "users") (e.currentTarget as HTMLButtonElement).style.background = "none";
                 }}
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
                 Gestionar usuarios
               </button>
@@ -306,9 +291,7 @@ function WebRouter() {
 
   return (
     <>
-      {page === "library" && (
-        <Library startIndexingOnMount={false} headerSlot={headerSlot} />
-      )}
+      {page === "library" && <Library startIndexingOnMount={false} headerSlot={headerSlot} />}
       {page === "users" && isAdmin && <WebUsers />}
     </>
   );

@@ -203,3 +203,11 @@ pub struct UpdateTelegramSubRequest {
     pub notify_downloads: bool,
 }
 
+
+#[derive(Debug, Deserialize)]
+pub struct TestFtpRequest {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub pass: String,
+}

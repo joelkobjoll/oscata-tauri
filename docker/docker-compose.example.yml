@@ -1,20 +1,14 @@
 services:
-  oscata-vnc:
+  oscata:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: oscata-vnc
+    container_name: oscata
     ports:
-      - "5900:5900"
-      - "6080:6080"
       - "47860:47860"
     environment:
-      VNC_PASSWORD: change-me
-      OSCATA_BOOTSTRAP_WEBGUI: "1"
-      OSCATA_WEBGUI_HOST: 0.0.0.0
       OSCATA_WEBGUI_PORT: "47860"
-      OSCATA_WEBGUI_EXPOSED_PORT: "47860"
-      VNC_RESOLUTION: 1440x960
+      OSCATA_WEBGUI_EXPOSED_PORT: "47860"  # cambia al puerto externo si usas un proxy inverso
     volumes:
       - oscata-config:/config
       - oscata-downloads:/downloads

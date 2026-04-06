@@ -30,14 +30,20 @@ pub struct AppState {
     pub db: crate::db::Db,
     pub queue: crate::downloads::SharedQueue,
     pub app_handle: tauri::AppHandle,
+    /// Overrides the DB-stored exposed_port when OSCATA_WEBGUI_EXPOSED_PORT is set.
+    pub exposed_port_override: Option<u16>,
 }
 
 pub fn spawn_if_enabled(db: crate::db::Db, queue: crate::downloads::SharedQueue, app_handle: tauri::AppHandle) {
+    // OSCATA_WEBGUI=1 forces the web server on regardless of the database setting,
+    // allowing headless / server installs without touching the DB first.
+    let force_enabled = std::env::var("OSCATA_WEBGUI").as_deref() == Ok("1");
+
     let cfg = match db.load_webgui_config() {
         Ok(c) => c,
         Err(e) => { eprintln!("[webgui] config load failed: {e}"); return; }
     };
-    if !cfg.enabled { return; }
+    if !cfg.enabled && !force_enabled { return; }
     if WEBGUI_RUNNING
         .compare_exchange(
             false,
@@ -51,13 +57,38 @@ pub fn spawn_if_enabled(db: crate::db::Db, queue: crate::downloads::SharedQueue,
         return;
     }
 
+    // Exposed port override: used by server_info and invite links so clients
+    // see the correct external port when behind a reverse proxy.
+    let exposed_port_override: Option<u16> = if force_enabled {
+        std::env::var("OSCATA_WEBGUI_EXPOSED_PORT")
+            .ok()
+            .and_then(|v| v.parse::<u16>().ok())
+    } else {
+        None
+    };
+
+    // Env vars override DB config when OSCATA_WEBGUI=1 is set.
+    let host = if force_enabled {
+        std::env::var("OSCATA_WEBGUI_HOST").unwrap_or_else(|_| cfg.host.clone())
+    } else {
+        cfg.host.clone()
+    };
+    let port = if force_enabled {
+        std::env::var("OSCATA_WEBGUI_PORT")
+            .ok()
+            .and_then(|v| v.parse::<u16>().ok())
+            .unwrap_or(cfg.port)
+    } else {
+        cfg.port
+    };
+
     // In debug builds always bind to localhost so dev machines don't try to
     // bind to a production IP set in webgui_host.
     #[cfg(debug_assertions)]
-    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), cfg.port);
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
     #[cfg(not(debug_assertions))]
-    let addr = SocketAddr::new(parse_bind_ip(&cfg.host), cfg.port);
-    let state = AppState { db, queue, app_handle };
+    let addr = SocketAddr::new(parse_bind_ip(&host), port);
+    let state = AppState { db, queue, app_handle, exposed_port_override };
 
     tauri::async_runtime::spawn(async move {
         let listener = match tokio::net::TcpListener::bind(addr).await {
@@ -87,6 +118,7 @@ fn build_router(state: AppState) -> Router {
         .route("/manifest.webmanifest",    get(handlers::pwa_manifest))
         .route("/server-info",             get(handlers::server_info))
         .route("/settings/has-config",     get(handlers::has_config_handler))
+        .route("/ftp/test",                post(handlers::test_ftp_handler))
         .route("/auth/bootstrap",          post(handlers::auth_bootstrap))
         .route("/auth/login",              post(handlers::auth_login))
         .route("/auth/invite/accept",      post(handlers::auth_invite_accept))

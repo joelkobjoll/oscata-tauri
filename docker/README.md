@@ -1,143 +1,71 @@
-# Docker VNC Runtime
+# Docker — Oscata sin interfaz gráfica
 
-This folder adds an isolated Docker path for running the existing Linux Tauri desktop build under VNC, with the existing WebGUI port exposed for power-user access. It does not replace the native desktop release flow.
+Instala Oscata como contenedor Docker con la interfaz web (`OSCATA_WEBGUI=1`) activa y sin escritorio VNC. El binario arranca en modo headless: la ventana de escritorio está oculta y el acceso es exclusivamente por el navegador.
 
-## What It Does
-
-- Builds the app for Linux inside Docker
-- Starts the desktop app automatically under `Xvfb + fluxbox + x11vnc`
-- Exposes raw VNC on port `5900`
-- Exposes browser-based noVNC on port `6080`
-- Exposes the existing WebGUI on port `47860`
-- Persists app state under `/config`
-
-## Build
+## Uso rápido
 
 ```bash
-docker build -f docker/Dockerfile -t oscata-vnc .
+# Construir la imagen
+npm run docker:build
+
+# Arrancar
+npm run docker:up
 ```
 
-Or use the helper script from the repo root:
+La interfaz web queda disponible en `http://localhost:47860`.
+
+## docker-compose
+
+Copia el ejemplo y ajusta los puertos y rutas:
 
 ```bash
-npm run docker:vnc:build
+cp docker/docker-compose.example.yml docker-compose.yml
+docker compose up -d
 ```
 
-Or use the generic wrapper:
+## Variables de entorno
+
+| Variable | Defecto | Descripción |
+|---|---|---|
+| `OSCATA_WEBGUI_PORT` | `47860` | Puerto de escucha interno |
+| `OSCATA_WEBGUI_EXPOSED_PORT` | `47860` | Puerto externo (útil detrás de un proxy inverso) |
+| `OSCATA_WEBGUI_HOST` | `0.0.0.0` | IP de escucha interna |
+| `OSCATA_WEBGUI_APP_URL` | — | URL externa para enlaces en emails |
+| `OSCATA_WEBGUI_OTP_ENABLED` | `0` | Activa OTP por email en el login |
+
+`OSCATA_WEBGUI=1` y `OSCATA_HEADLESS=1` ya están definidos en la imagen; no hace falta pasarlos.
+
+## Proxy inverso (nginx / Caddy / Traefik)
+
+Expón el puerto 47860 internamente y mapea el externo mediante `OSCATA_WEBGUI_EXPOSED_PORT`:
+
+```yaml
+environment:
+  OSCATA_WEBGUI_PORT: "47860"
+  OSCATA_WEBGUI_EXPOSED_PORT: "80"  # o 443
+```
+
+## Datos persistentes
+
+| Ruta en contenedor | Contenido |
+|---|---|
+| `/config` | Base de datos SQLite, configuración, caché |
+| `/downloads` | Archivos descargados |
+
+## Helper script
 
 ```bash
-npm run docker:vnc -- build
+npm run docker:build    # construye la imagen
+npm run docker:run      # arranca el contenedor (restart: unless-stopped)
+npm run docker:up       # build + run en un paso
+npm run docker:stop     # para y elimina el contenedor
+npm run docker:logs     # muestra los logs en tiempo real
 ```
 
-## Run
+Personaliza con variables de entorno o un fichero `.env.docker`:
 
 ```bash
-docker run --rm \
-  --name oscata-vnc \
-  -p 5900:5900 \
-  -p 6080:6080 \
-  -p 47860:47860 \
-  -v /path/to/oscata-config:/config \
-  -v /path/to/oscata-downloads:/downloads \
-  oscata-vnc
+cp .env.docker.example .env.docker
+# Edita .env.docker y luego:
+npm run docker:up
 ```
-
-Optional: add `-e VNC_PASSWORD=your-password` if you want password-protected VNC.
-
-For a local persistent runtime with automatic restart:
-
-```bash
-npm run docker:vnc:up
-```
-
-You can persist your settings in a dotenv-style file instead of passing env vars every time:
-
-```bash
-cp .env.docker-vnc.example .env.docker-vnc
-```
-
-Then edit `.env.docker-vnc` and run:
-
-```bash
-npm run docker:vnc:up
-```
-
-The helper script auto-loads `.env.docker-vnc`. You can override with `ENV_FILE=/path/to/file`.
-
-This helper script:
-
-- builds the image if needed
-- runs the container as `oscata-vnc`
-- uses `--restart unless-stopped`
-- stores config in `.docker-data/config`
-- stores downloads in `.docker-data/downloads`
-
-Other helper commands:
-
-```bash
-npm run docker:vnc -- up
-npm run docker:vnc -- stop
-npm run docker:vnc -- logs
-npm run docker:vnc:run
-npm run docker:vnc:stop
-npm run docker:vnc:logs
-```
-
-You can override runtime settings when invoking it:
-
-```bash
-VNC_PASSWORD=mysecret WEBGUI_PORT=48000 npm run docker:vnc:up
-```
-
-For explicit host port remapping (recommended):
-
-```bash
-VNC_HOST_PORT=5901 NOVNC_HOST_PORT=6081 WEBGUI_HOST_PORT=47861 npm run docker:vnc:up
-```
-
-If you hit `bind: address already in use` on `5900`, change `VNC_HOST_PORT` (host port) instead of container internals.
-
-If `VNC_PASSWORD` is omitted, VNC starts without a password.
-
-## Unraid Notes
-
-- VNC: connect to `<unraid-host>:5900`
-- noVNC: open `http://<unraid-host>:6080/vnc.html`
-- WebGUI: open `http://<unraid-host>:47860`
-- Persistent data lives under `/config/share/oscata-tauri`
-- Downloads can be mounted through `/downloads`
-- An Unraid template is included at `docker/unraid-template.xml`
-
-## First Boot Behavior
-
-By default, the entrypoint performs a one-time WebGUI bootstrap inside the container:
-
-1. Starts the desktop app once so the SQLite database is created.
-2. Writes WebGUI settings into `app_config`.
-3. Restarts the desktop app so the built-in WebGUI binds on startup.
-
-This is controlled by `OSCATA_BOOTSTRAP_WEBGUI=1` and only happens once per persisted config volume.
-
-The container does not auto-fill your FTP/TMDB settings. You still complete those in the desktop UI over VNC or later through the WebGUI.
-
-## Environment Variables
-
-- `VNC_PASSWORD`: optional; if omitted or empty, VNC starts without a password
-- `VNC_HOST_PORT`: defaults to `5900` (or `VNC_PORT` alias)
-- `NOVNC_HOST_PORT`: defaults to `6080` (or `NOVNC_PORT` alias)
-- `WEBGUI_HOST_PORT`: defaults to `47860` (or `WEBGUI_PORT` alias)
-- `VNC_CONTAINER_PORT`: defaults to `5900` (advanced)
-- `NOVNC_CONTAINER_PORT`: defaults to `6080` (advanced)
-- `WEBGUI_CONTAINER_PORT`: defaults to `47860` (advanced)
-- `VNC_RESOLUTION`: defaults to `1440x960`
-- `VNC_COL_DEPTH`: defaults to `24`
-- `OSCATA_BOOTSTRAP_WEBGUI`: defaults to `1`
-- `OSCATA_WEBGUI_HOST`: defaults to `0.0.0.0`
-- `OSCATA_WEBGUI_PORT`: defaults to `47860`
-- `OSCATA_WEBGUI_EXPOSED_PORT`: defaults to `47860`
-- `OSCATA_WEBGUI_APP_URL`: optional external URL for email links
-- `OSCATA_WEBGUI_OTP_ENABLED`: defaults to `0`
-
-## Scope
-
-This runtime is intentionally additive. It packages the current desktop app for Linux and keeps Docker/VNC-specific behavior outside the application code path.

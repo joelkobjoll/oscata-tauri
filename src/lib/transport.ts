@@ -54,6 +54,7 @@ const WEB_ROUTES: Record<
   retry_download: (a) => ["POST", `/downloads/${a.id}/retry`],
   set_max_concurrent: (a) => ["PUT", "/downloads/concurrency", { max: a.max }],
   start_indexing: ["POST", "/indexing/start"],
+  get_indexing_status: ["GET", "/indexing/status"],
   rematch_all: ["POST", "/indexing/rematch"],
   refresh_all_metadata: ["POST", "/indexing/refresh-metadata"],
   clear_item_metadata: (a) => ["DELETE", `/media/${a.id}/metadata`],
@@ -139,10 +140,7 @@ const WEB_ROUTES: Record<
   update_telegram_sub: (a) => [
     "PUT",
     "/notifications/subscription",
-    {
-      notify_new_content: a.notifyNewContent,
-      notify_downloads: a.notifyDownloads,
-    },
+    { notify_new_content: a.notifyNewContent, notify_downloads: a.notifyDownloads },
   ],
   revoke_telegram_sub: ["DELETE", "/notifications/subscription"],
 };

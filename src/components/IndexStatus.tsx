@@ -3,6 +3,8 @@ import AppIcon from "./AppIcon";
 import type { AppLanguage } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 
+const MOBILE_BOTTOM_NAV_HEIGHT = 64;
+
 export default function IndexStatus({
   progress,
   isIndexing,
@@ -12,6 +14,7 @@ export default function IndexStatus({
   activityLogOpen,
   language,
   tmdbProgress,
+  isMobile,
 }: {
   progress: { current: number; total: number } | null;
   isIndexing: boolean;
@@ -21,10 +24,12 @@ export default function IndexStatus({
   activityLogOpen: boolean;
   language: AppLanguage;
   tmdbProgress?: { done: number; total: number } | null;
+  isMobile?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [scanBarOffset, setScanBarOffset] = useState(-45);
-  const bottomOffset = activityLogOpen ? 236 : 22;
+  const mobileInset = isMobile ? MOBILE_BOTTOM_NAV_HEIGHT : 0;
+  const bottomOffset = (activityLogOpen ? 236 : 22) + mobileInset;
 
   // Auto-dismiss completion summary after 8 seconds
   useEffect(() => {

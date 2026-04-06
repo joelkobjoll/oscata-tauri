@@ -50,7 +50,7 @@ RUN cargo build --manifest-path src-tauri/Cargo.toml --release --locked
 FROM ubuntu:22.04 AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV DISPLAY=:0
+ENV DISPLAY=:99
 ENV GDK_BACKEND=x11
 ENV LIBGL_ALWAYS_SOFTWARE=1
 ENV NO_AT_BRIDGE=1
@@ -59,20 +59,18 @@ ENV HOME=/config/home
 ENV XDG_CONFIG_HOME=/config/config
 ENV XDG_CACHE_HOME=/config/cache
 ENV XDG_DATA_HOME=/config/share
-ENV VNC_PORT=5900
-ENV NOVNC_PORT=6080
-ENV VNC_RESOLUTION=1440x960
-ENV VNC_COL_DEPTH=24
+# Headless web-UI mode: force-enable the built-in web server and hide
+# the Tauri desktop window. Override these in docker-compose or docker run.
+ENV OSCATA_WEBGUI=1
+ENV OSCATA_HEADLESS=1
 ENV OSCATA_WEBGUI_HOST=0.0.0.0
 ENV OSCATA_WEBGUI_PORT=47860
 ENV OSCATA_WEBGUI_EXPOSED_PORT=47860
-ENV OSCATA_BOOTSTRAP_WEBGUI=1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         dbus-x11 \
-        fluxbox \
         libasound2 \
         libatk-bridge2.0-0 \
         libayatana-appindicator3-1 \
@@ -84,14 +82,7 @@ RUN apt-get update \
         librsvg2-2 \
         libwebkit2gtk-4.1-0 \
         libxss1 \
-        novnc \
-        procps \
         sqlite3 \
-        websockify \
-        x11-utils \
-        x11vnc \
-        xauth \
-        xdg-utils \
         xvfb \
     && rm -rf /var/lib/apt/lists/*
 
@@ -105,8 +96,7 @@ COPY docker/entrypoint.sh /usr/local/bin/oscata-entrypoint
 RUN chmod +x /usr/local/bin/oscata-entrypoint /opt/oscata/oscata-tauri \
     && mkdir -p /config/home /config/config /config/cache /config/share /downloads
 
-EXPOSE 5900 6080 47860
+EXPOSE 47860
 VOLUME ["/config", "/downloads"]
 
 ENTRYPOINT ["/usr/local/bin/oscata-entrypoint"]
-

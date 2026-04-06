@@ -57,7 +57,7 @@ pub async fn server_info(State(state): State<AppState>) -> ApiResult<Json<Server
     Ok(Json(ServerInfoResponse {
         bind_host: cfg.host,
         bind_port: cfg.port,
-        exposed_port: cfg.exposed_port,
+        exposed_port: state.exposed_port_override.or(cfg.exposed_port),
         app_url: cfg.app_url,
         otp_enabled: cfg.otp_enabled,
         has_config,
@@ -240,7 +240,7 @@ pub async fn invite_user(
     let base_url = if !cfg.app_url.trim().is_empty() {
         cfg.app_url.trim().trim_end_matches('/').to_string()
     } else {
-        let port = cfg.exposed_port.unwrap_or(cfg.port);
+        let port = state.exposed_port_override.or(cfg.exposed_port).unwrap_or(cfg.port);
         format!("http://localhost:{port}")
     };
     let invite_link = format!("{base_url}/?invite={invite_token}");
@@ -585,6 +585,16 @@ pub async fn put_settings(
 
 pub async fn has_config_handler(State(state): State<AppState>) -> Json<Value> {
     Json(serde_json::json!({"has_config": state.db.has_config().unwrap_or(false)}))
+}
+
+pub async fn test_ftp_handler(
+    AuthUser(_u): AuthUser,
+    Json(body): Json<TestFtpRequest>,
+) -> ApiResult<Json<Value>> {
+    crate::ftp::test_connection(&body.host, body.port, &body.user, &body.pass)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(serde_json::json!({"ok": true})))
 }
 
 // ── WEBGUI config ─────────────────────────────────────────────────────────────

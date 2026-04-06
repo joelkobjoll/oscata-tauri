@@ -37,12 +37,19 @@ pub struct AppConfig {
     pub download_folder: String,
     pub folder_types: String, // JSON: {"Movies": "movie", "TV Shows": "tv"}
     pub max_concurrent_downloads: u8,
+    #[serde(default)]
     pub emby_url: String,
+    #[serde(default)]
     pub emby_api_key: String,
+    #[serde(default)]
     pub plex_url: String,
+    #[serde(default)]
     pub plex_token: String,
+    #[serde(default)]
     pub auto_check_updates: bool,
+    #[serde(default)]
     pub updater_endpoint: String,
+    #[serde(default)]
     pub updater_pubkey: String,
     #[serde(default)]
     pub movie_destination: String,       // "" = use download_folder/Movies

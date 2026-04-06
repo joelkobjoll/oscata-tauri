@@ -253,23 +253,38 @@ export function useIndexing() {
     };
   }, []);
 
-  // In web mode there are no Tauri push events, so poll the library
-  // periodically to keep the UI in sync with background indexing on the server.
+  // In web mode there are no Tauri push events, so poll /indexing/status and
+  // the library to keep the UI in sync with background indexing on the server.
   useEffect(() => {
     if (isTauri()) return;
 
-    const POLL_INTERVAL_MS = 4000;
+    const POLL_INTERVAL_MS = 3000;
+    let wasRunning = false;
 
-    const poll = () => {
-      call<MediaItem[]>("get_all_media")
-        .then((loaded) => {
+    const poll = async () => {
+      try {
+        const status = await call<{ running: boolean }>("get_indexing_status");
+        const running = status.running;
+        setIsIndexing(running);
+
+        // When indexing transitions from running → done, reload the library.
+        if (wasRunning && !running) {
+          const loaded = await call<MediaItem[]>("get_all_media");
           rebuildIndex(loaded);
           setItems(loaded);
-        })
-        .catch(() => {});
+        } else if (!wasRunning && running) {
+          // Just started — signal via setProgress so the indicator appears.
+          setProgress({ current: 0, total: 0 });
+        }
+
+        wasRunning = running;
+      } catch {
+        // Server unreachable — ignore
+      }
     };
 
     const timerId = window.setInterval(poll, POLL_INTERVAL_MS);
+    poll(); // Immediate first fetch
     return () => window.clearInterval(timerId);
   }, []);
 
