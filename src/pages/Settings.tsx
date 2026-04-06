@@ -10,10 +10,11 @@ import {
   mergeInferredFolderTypes,
   parseFolderTypes,
 } from "../utils/folderTypes";
-import { call, isTauri } from "../lib/transport";
+import { call, isTauri, apiBase } from "../lib/transport";
 import { getConfig, invalidateConfig } from "../lib/configCache";
 import { useAuth } from "../lib/AuthContext";
 import { useTheme } from "../hooks/useTheme";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { GENRE_LIST } from "../utils/genres";
 
 interface Config {
@@ -64,9 +65,23 @@ interface WebGuiConfig {
   smtp_user: string;
   smtp_pass: string;
   smtp_from: string;
+  pwa_name: string;
+  pwa_short_name: string;
+  pwa_enabled: boolean;
 }
 
 type ConnectionState = "idle" | "testing" | "ok" | "error";
+
+interface TelegramSub {
+  user_id: number;
+  telegram_bot_token: string;
+  telegram_chat_id: string;
+  notify_new_content: boolean;
+  notify_downloads: boolean;
+  created_at: string;
+}
+
+type NotifLinkState = "unlinked" | "linked";
 
 const inputStyle = formInputStandard;
 
@@ -377,6 +392,7 @@ function ProfileEditor({
 }) {
   const set = (key: keyof ProfileFormState, val: unknown) =>
     onChange({ ...form, [key]: val });
+  const isMobile = useIsMobile();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -398,7 +414,13 @@ function ProfileEditor({
           placeholder={t(language, "qualityProfile.namePlaceholder")}
         />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+          gap: 10,
+        }}
+      >
         <div>
           <div
             style={{
@@ -805,9 +827,10 @@ export default function Settings({
 }) {
   const { theme, setTheme } = useTheme();
   const { user } = useAuth();
-  // True in Tauri (always admin) or when the web user has admin/editor role
+  const [ftpWriteOk, setFtpWriteOk] = useState(false);
+  // True when the Tauri user has FTP write access, or when the web user has admin/editor role
   const canWrite =
-    isTauri() ||
+    ftpWriteOk ||
     Boolean(user && (user.role === "admin" || user.role === "editor"));
   const [form, setForm] = useState<Config | null>(null);
   const [ftpStatus, setFtpStatus] = useState<ConnectionState>("idle");
@@ -824,6 +847,17 @@ export default function Settings({
   const [plexMsg, setPlexMsg] = useState("");
   const [telegramStatus, setTelegramStatus] = useState<ConnectionState>("idle");
   const [telegramMsg, setTelegramMsg] = useState("");
+
+  // Personal subscription state
+  const [notifTab, setNotifTab] = useState<"bot" | "personal">("bot");
+  const [personalSub, setPersonalSub] = useState<TelegramSub | null>(null);
+  const [notifLinkState, setNotifLinkState] =
+    useState<NotifLinkState>("unlinked");
+  const [personalBotToken, setPersonalBotToken] = useState("");
+  const [notifLinkStatus, setNotifLinkStatus] = useState<
+    "idle" | "linking" | "error"
+  >("idle");
+  const [notifLinkMsg, setNotifLinkMsg] = useState("");
   const [backupMessage, setBackupMessage] = useState("");
   const [backupError, setBackupError] = useState("");
   const [backupBusy, setBackupBusy] = useState(false);
@@ -846,6 +880,20 @@ export default function Settings({
   );
   const webGuiSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webMode = !isTauri();
+  const isMobile = useIsMobile();
+  // Responsive 2-column grid: 2 cols on desktop, 1 col on mobile
+  const c2 = isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))";
+
+  useEffect(() => {
+    if (!isTauri()) {
+      fetch(`${apiBase}/server-info`)
+        .then((r) => r.json())
+        .then((info) => {
+          if (info.version) setAppVersion(info.version);
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     getConfig<Config>()
@@ -891,8 +939,28 @@ export default function Settings({
       invoke<boolean>("is_portable_mode")
         .then(setIsPortable)
         .catch(() => {});
+      invoke<boolean>("check_ftp_write_permission")
+        .then((ok) => setFtpWriteOk(ok))
+        .catch(() => setFtpWriteOk(false));
     });
   }, []);
+
+  // Load personal Telegram subscription
+  useEffect(() => {
+    call<TelegramSub | null>("get_telegram_sub")
+      .then((sub) => {
+        if (sub) {
+          setPersonalSub(sub);
+          setNotifLinkState("linked");
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Non-admin users go straight to personal tab
+  useEffect(() => {
+    if (!canWrite) setNotifTab("personal");
+  }, [canWrite]);
 
   const changeDbPath = async () => {
     if (!isTauri()) return;
@@ -1096,6 +1164,52 @@ export default function Settings({
     } catch (error: unknown) {
       setTelegramMsg(String(error));
       setTelegramStatus("error");
+    }
+  };
+
+  const handleLinkBot = async () => {
+    setNotifLinkStatus("linking");
+    setNotifLinkMsg("");
+    try {
+      const sub = await call<TelegramSub>("link_telegram_bot", {
+        botToken: personalBotToken,
+      });
+      setPersonalSub(sub);
+      setNotifLinkState("linked");
+      setNotifLinkStatus("idle");
+    } catch (error: unknown) {
+      setNotifLinkMsg(String(error));
+      setNotifLinkStatus("error");
+    }
+  };
+
+  const handleUpdateSubPref = async (
+    field: "notify_new_content" | "notify_downloads",
+    value: boolean,
+  ) => {
+    if (!personalSub) return;
+    const updated = { ...personalSub, [field]: value };
+    setPersonalSub(updated);
+    try {
+      await call("update_telegram_sub", {
+        notifyNewContent: updated.notify_new_content,
+        notifyDownloads: updated.notify_downloads,
+      });
+    } catch {
+      setPersonalSub(personalSub); // revert on error
+    }
+  };
+
+  const handleRevokeSub = async () => {
+    try {
+      await call("revoke_telegram_sub");
+      setPersonalSub(null);
+      setNotifLinkState("unlinked");
+      setPersonalBotToken("");
+      setNotifLinkStatus("idle");
+      setNotifLinkMsg("");
+    } catch (error: unknown) {
+      console.error(error);
     }
   };
 
@@ -1316,28 +1430,32 @@ export default function Settings({
       style={{
         position: "fixed",
         inset: 0,
-        background: "color-mix(in srgb, black 58%, transparent)",
-        backdropFilter: "blur(8px)",
+        background: isMobile
+          ? "var(--color-bg)"
+          : "color-mix(in srgb, black 58%, transparent)",
+        backdropFilter: isMobile ? "none" : "blur(8px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         zIndex: 200,
-        padding: "1.5rem",
+        padding: isMobile ? 0 : "1.5rem",
       }}
       onClick={(event) => event.target === event.currentTarget && onClose()}
     >
       <div
         className="modal-panel-enter settings-panel"
         style={{
-          width: 980,
-          maxWidth: "calc(100vw - 3rem)",
-          maxHeight: "calc(100dvh - 3rem)",
+          width: isMobile ? "100vw" : 980,
+          maxWidth: isMobile ? "100vw" : "calc(100vw - 3rem)",
+          maxHeight: isMobile ? "100dvh" : "calc(100dvh - 3rem)",
+          height: isMobile ? "100dvh" : undefined,
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          borderRadius: "calc(var(--radius-lg) + 6px)",
-          border:
-            "1px solid color-mix(in srgb, var(--color-border) 82%, transparent)",
+          borderRadius: isMobile ? 0 : "calc(var(--radius-lg) + 6px)",
+          border: isMobile
+            ? "none"
+            : "1px solid color-mix(in srgb, var(--color-border) 82%, transparent)",
           background:
             "linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 97%, transparent), color-mix(in srgb, var(--color-surface-2) 94%, transparent))",
           boxShadow: "0 24px 80px color-mix(in srgb, black 34%, transparent)",
@@ -1345,7 +1463,7 @@ export default function Settings({
       >
         <div
           style={{
-            padding: "1.25rem 1.5rem 1rem",
+            padding: isMobile ? "0.875rem 1rem 0.75rem" : "1.25rem 1.5rem 1rem",
             borderBottom:
               "1px solid color-mix(in srgb, var(--color-border) 72%, transparent)",
             display: "flex",
@@ -1356,27 +1474,29 @@ export default function Settings({
           }}
         >
           <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-            <div
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 14,
-                background:
-                  "color-mix(in srgb, var(--color-primary) 16%, transparent)",
-                color: "var(--color-primary)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <AppIcon name="settings" size={20} strokeWidth={2.1} />
-            </div>
+            {!isMobile && (
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 14,
+                  background:
+                    "color-mix(in srgb, var(--color-primary) 16%, transparent)",
+                  color: "var(--color-primary)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <AppIcon name="settings" size={20} strokeWidth={2.1} />
+              </div>
+            )}
             <div>
               <h2
                 style={{
                   margin: 0,
-                  fontSize: 20,
+                  fontSize: isMobile ? 17 : 20,
                   fontWeight: 800,
                   color: "var(--color-text)",
                   letterSpacing: "-0.02em",
@@ -1384,15 +1504,17 @@ export default function Settings({
               >
                 {t(language, "settings.title")}
               </h2>
-              <p
-                style={{
-                  margin: "0.35rem 0 0",
-                  ...subtextStyle,
-                  maxWidth: 560,
-                }}
-              >
-                {t(language, "settings.subtitle")}
-              </p>
+              {!isMobile && (
+                <p
+                  style={{
+                    margin: "0.35rem 0 0",
+                    ...subtextStyle,
+                    maxWidth: 560,
+                  }}
+                >
+                  {t(language, "settings.subtitle")}
+                </p>
+              )}
               <div
                 style={{
                   marginTop: 10,
@@ -1445,7 +1567,9 @@ export default function Settings({
           style={{
             flex: 1,
             overflowY: "auto",
-            padding: "1.25rem 1.5rem 1.5rem",
+            padding: isMobile
+              ? "1rem 0.875rem 1.5rem"
+              : "1.25rem 1.5rem 1.5rem",
           }}
         >
           <div style={{ display: "grid", gap: 16 }}>
@@ -1518,7 +1642,9 @@ export default function Settings({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(0, 1fr) 120px",
+                  gridTemplateColumns: isMobile
+                    ? "1fr 80px"
+                    : "minmax(0, 1fr) 120px",
                   gap: 12,
                   marginBottom: 12,
                 }}
@@ -1549,7 +1675,7 @@ export default function Settings({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gridTemplateColumns: c2,
                   gap: 12,
                   marginBottom: 12,
                 }}
@@ -1700,7 +1826,7 @@ export default function Settings({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gridTemplateColumns: c2,
                 gap: 16,
               }}
             >
@@ -2016,8 +2142,7 @@ export default function Settings({
                             <div
                               style={{
                                 display: "grid",
-                                gridTemplateColumns:
-                                  "minmax(0,1fr) minmax(0,1fr)",
+                                gridTemplateColumns: c2,
                                 gap: 10,
                                 marginBottom: 10,
                               }}
@@ -2234,8 +2359,10 @@ export default function Settings({
                       key={dir}
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(0, 1fr) 220px",
-                        gap: 12,
+                        gridTemplateColumns: isMobile
+                          ? "1fr"
+                          : "minmax(0, 1fr) 220px",
+                        gap: isMobile ? 8 : 12,
                         alignItems: "center",
                         padding: "0.8rem 0.9rem",
                         borderRadius: "var(--radius)",
@@ -2323,7 +2450,7 @@ export default function Settings({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gridTemplateColumns: c2,
                   gap: 12,
                 }}
               >
@@ -2646,7 +2773,9 @@ export default function Settings({
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "1fr 120px",
+                          gridTemplateColumns: isMobile
+                            ? "1fr 80px"
+                            : "1fr 120px",
                           gap: 10,
                         }}
                       >
@@ -2692,7 +2821,7 @@ export default function Settings({
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "120px 1fr",
+                          gridTemplateColumns: isMobile ? "1fr" : "120px 1fr",
                           gap: 10,
                         }}
                       >
@@ -2795,7 +2924,9 @@ export default function Settings({
                           <div
                             style={{
                               display: "grid",
-                              gridTemplateColumns: "1fr 100px",
+                              gridTemplateColumns: isMobile
+                                ? "1fr"
+                                : "1fr 100px",
                               gap: 10,
                             }}
                           >
@@ -2840,7 +2971,7 @@ export default function Settings({
                           <div
                             style={{
                               display: "grid",
-                              gridTemplateColumns: "1fr 1fr",
+                              gridTemplateColumns: c2,
                               gap: 10,
                             }}
                           >
@@ -2894,6 +3025,95 @@ export default function Settings({
                       )}
                     </div>
                   )}
+
+                  {/* ── PWA settings ─────────────────────────────────────── */}
+                  <div
+                    style={{
+                      borderTop:
+                        "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
+                      paddingTop: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 700,
+                            color: "var(--color-text)",
+                            marginBottom: 2,
+                          }}
+                        >
+                          {t(language, "settings.pwaTitle")}
+                        </div>
+                        <div style={subtextStyle}>
+                          {t(language, "settings.pwaDescription")}
+                        </div>
+                      </div>
+                      <Toggle
+                        checked={webGuiConfig.pwa_enabled}
+                        onChange={(v) =>
+                          setWebGuiConfig((c) =>
+                            c ? { ...c, pwa_enabled: v } : c,
+                          )
+                        }
+                      />
+                    </div>
+                    {webGuiConfig.pwa_enabled && (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: c2,
+                          gap: 12,
+                        }}
+                      >
+                        <div style={fieldStyle}>
+                          <label style={labelStyle}>
+                            {t(language, "settings.pwaName")}
+                          </label>
+                          <input
+                            style={inputStyle}
+                            value={webGuiConfig.pwa_name}
+                            onChange={(e) =>
+                              setWebGuiConfig((c) =>
+                                c ? { ...c, pwa_name: e.target.value } : c,
+                              )
+                            }
+                            placeholder="Oscata"
+                          />
+                        </div>
+                        <div style={fieldStyle}>
+                          <label style={labelStyle}>
+                            {t(language, "settings.pwaShortName")}
+                          </label>
+                          <input
+                            style={inputStyle}
+                            value={webGuiConfig.pwa_short_name}
+                            onChange={(e) =>
+                              setWebGuiConfig((c) =>
+                                c
+                                  ? { ...c, pwa_short_name: e.target.value }
+                                  : c,
+                              )
+                            }
+                            placeholder="Oscata"
+                            maxLength={12}
+                          />
+                          <span style={subtextStyle}>
+                            {t(language, "settings.pwaShortNameHelp")}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <div
                     style={{ display: "flex", gap: 10, alignItems: "center" }}
@@ -3060,74 +3280,538 @@ export default function Settings({
               <SectionCard
                 icon="activity"
                 title="Notificaciones"
-                description="Recibe avisos por Telegram cuando terminen las subidas al servidor FTP."
+                description={
+                  canWrite
+                    ? "Configura el canal de anuncios de subidas y tus avisos personales por Telegram."
+                    : "Recibe avisos en tu Telegram personal cuando llegue contenido nuevo o tus descargas estén listas."
+                }
                 defaultOpen={false}
               >
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 14 }}
-                >
-                  <div style={fieldStyle}>
-                    <label style={labelStyle}>Token del bot de Telegram</label>
-                    <input
-                      style={inputStyle}
-                      type="password"
-                      value={form.telegram_bot_token ?? ""}
-                      onChange={set("telegram_bot_token")}
-                      placeholder="1234567890:ABCdef..."
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div style={fieldStyle}>
-                    <label style={labelStyle}>Chat ID</label>
-                    <input
-                      style={inputStyle}
-                      value={form.telegram_chat_id ?? ""}
-                      onChange={set("telegram_chat_id")}
-                      placeholder="-1001234567890"
-                    />
-                    <span style={subtextStyle}>
-                      Puedes obtener el Chat ID enviando un mensaje a tu bot y
-                      usando la API getUpdates.
-                    </span>
-                  </div>
+                {/* Tab strip — only for users who can upload */}
+                {canWrite && (
                   <div
                     style={{
                       display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
+                      gap: 4,
+                      marginBottom: 16,
+                      borderBottom: "1px solid var(--color-border)",
+                      paddingBottom: 0,
                     }}
                   >
-                    <button
-                      onClick={testTelegram}
-                      disabled={
-                        telegramStatus === "testing" ||
-                        !form.telegram_bot_token ||
-                        !form.telegram_chat_id
-                      }
-                      style={{
-                        ...ghostBtn,
-                        opacity:
-                          telegramStatus === "testing" ||
-                          !form.telegram_bot_token ||
-                          !form.telegram_chat_id
-                            ? 0.5
-                            : 1,
-                      }}
-                    >
-                      {telegramStatus === "testing"
-                        ? "Enviando..."
-                        : "Probar notificación"}
-                    </button>
-                    <StatusPill
-                      state={telegramStatus}
-                      text={
-                        telegramMsg ||
-                        (telegramStatus === "ok" ? "Enviado" : "Error")
-                      }
-                    />
+                    {(["bot", "personal"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setNotifTab(tab)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: "6px 14px",
+                          fontSize: 13,
+                          fontWeight: notifTab === tab ? 600 : 400,
+                          color:
+                            notifTab === tab
+                              ? "var(--color-primary)"
+                              : "var(--color-text-muted)",
+                          borderBottom:
+                            notifTab === tab
+                              ? "2px solid var(--color-primary)"
+                              : "2px solid transparent",
+                          transition:
+                            "color 0.15s ease, border-color 0.15s ease",
+                          marginBottom: -1,
+                        }}
+                      >
+                        {tab === "bot" ? "Canal de anuncios" : "Mis avisos"}
+                      </button>
+                    ))}
                   </div>
-                </div>
+                )}
+
+                {/* Tab: Bot global (admin-only) */}
+                {notifTab === "bot" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
+                    {!canWrite && (
+                      <span style={{ ...subtextStyle }}>
+                        Solo los administradores pueden configurar el bot
+                        global.
+                      </span>
+                    )}
+                    {canWrite && (
+                      <>
+                        <div style={fieldStyle}>
+                          <label style={labelStyle}>
+                            Token del bot de Telegram
+                          </label>
+                          <input
+                            style={inputStyle}
+                            type="password"
+                            value={form.telegram_bot_token ?? ""}
+                            onChange={set("telegram_bot_token")}
+                            placeholder="1234567890:ABCdef..."
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div style={fieldStyle}>
+                          <label style={labelStyle}>
+                            Chat ID del canal o grupo
+                          </label>
+                          <input
+                            style={inputStyle}
+                            value={form.telegram_chat_id ?? ""}
+                            onChange={set("telegram_chat_id")}
+                            placeholder="-1001234567890"
+                          />
+                          <span style={subtextStyle}>
+                            Puedes obtener el Chat ID enviando un mensaje a tu
+                            bot y usando la API getUpdates.
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <button
+                            onClick={testTelegram}
+                            disabled={
+                              telegramStatus === "testing" ||
+                              !form.telegram_bot_token ||
+                              !form.telegram_chat_id
+                            }
+                            style={{
+                              ...ghostBtn,
+                              opacity:
+                                telegramStatus === "testing" ||
+                                !form.telegram_bot_token ||
+                                !form.telegram_chat_id
+                                  ? 0.5
+                                  : 1,
+                            }}
+                          >
+                            {telegramStatus === "testing"
+                              ? "Enviando..."
+                              : "Probar notificación"}
+                          </button>
+                          <StatusPill
+                            state={telegramStatus}
+                            text={
+                              telegramMsg ||
+                              (telegramStatus === "ok" ? "Enviado" : "Error")
+                            }
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Tab: Mis avisos */}
+                {notifTab === "personal" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
+                    {notifLinkState === "unlinked" && (
+                      <>
+                        <span style={subtextStyle}>
+                          Crea un bot en Telegram con @BotFather, copia su token
+                          y pégalo aquí. Después abre Telegram, busca tu bot y
+                          envíale cualquier mensaje para activarlo.
+                        </span>
+                        <div style={fieldStyle}>
+                          <label style={labelStyle}>
+                            Token de tu bot de Telegram
+                          </label>
+                          <input
+                            style={inputStyle}
+                            type="password"
+                            value={personalBotToken}
+                            onChange={(e) =>
+                              setPersonalBotToken(e.target.value)
+                            }
+                            placeholder="1234567890:ABCdef..."
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <button
+                            onClick={handleLinkBot}
+                            disabled={
+                              notifLinkStatus === "linking" ||
+                              !personalBotToken.trim()
+                            }
+                            style={{
+                              ...ghostBtn,
+                              opacity:
+                                notifLinkStatus === "linking" ||
+                                !personalBotToken.trim()
+                                  ? 0.5
+                                  : 1,
+                            }}
+                          >
+                            {notifLinkStatus === "linking"
+                              ? "Vinculando..."
+                              : "Vincular bot"}
+                          </button>
+                          {notifLinkStatus === "error" && (
+                            <span
+                              style={{
+                                fontSize: 12,
+                                color: "var(--color-danger)",
+                              }}
+                            >
+                              {notifLinkMsg}
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {notifLinkState === "linked" && personalSub && (
+                      <>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <AppIcon name="check" size={14} />
+                          <span
+                            style={{
+                              fontSize: 13,
+                              color: "var(--color-success)",
+                            }}
+                          >
+                            Bot vinculado — Chat ID:{" "}
+                            <strong>{personalSub.telegram_chat_id}</strong>
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 10,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 13,
+                                color: "var(--color-text)",
+                              }}
+                            >
+                              Notificar nuevo contenido en la biblioteca
+                            </span>
+                            <Toggle
+                              checked={personalSub.notify_new_content}
+                              onChange={(v) =>
+                                handleUpdateSubPref("notify_new_content", v)
+                              }
+                            />
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 13,
+                                color: "var(--color-text)",
+                              }}
+                            >
+                              Notificar cuando terminen mis descargas
+                            </span>
+                            <Toggle
+                              checked={personalSub.notify_downloads}
+                              onChange={(v) =>
+                                handleUpdateSubPref("notify_downloads", v)
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <button
+                            onClick={handleRevokeSub}
+                            style={{
+                              ...ghostBtn,
+                              color: "var(--color-danger)",
+                              borderColor:
+                                "color-mix(in srgb, var(--color-danger) 40%, transparent)",
+                            }}
+                          >
+                            Desvincular bot
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </SectionCard>
+            )}
+
+            {!isTauri() && (
+              <SectionCard
+                icon="activity"
+                title="Notificaciones"
+                description={
+                  canWrite
+                    ? "Configura el canal de anuncios de subidas y tus avisos personales por Telegram."
+                    : "Recibe avisos en tu Telegram personal cuando llegue contenido nuevo o tus descargas estén listas."
+                }
+                defaultOpen={false}
+              >
+                {/* Tab strip — only for admins/editors */}
+                {canWrite && (
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 4,
+                      marginBottom: 16,
+                      borderBottom: "1px solid var(--color-border)",
+                      paddingBottom: 0,
+                    }}
+                  >
+                    {(["bot", "personal"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setNotifTab(tab)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: "6px 14px",
+                          fontSize: 13,
+                          fontWeight: notifTab === tab ? 600 : 400,
+                          color:
+                            notifTab === tab
+                              ? "var(--color-primary)"
+                              : "var(--color-text-muted)",
+                          borderBottom:
+                            notifTab === tab
+                              ? "2px solid var(--color-primary)"
+                              : "2px solid transparent",
+                          transition:
+                            "color 0.15s ease, border-color 0.15s ease",
+                          marginBottom: -1,
+                        }}
+                      >
+                        {tab === "bot" ? "Canal de anuncios" : "Mis avisos"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Tab: Canal de anuncios (admin-only) */}
+                {notifTab === "bot" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
+                    <span style={subtextStyle}>
+                      La configuración del canal de anuncios se gestiona desde
+                      la aplicación de escritorio.
+                    </span>
+                  </div>
+                )}
+
+                {/* Tab: Mis avisos */}
+                {notifTab === "personal" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
+                    {notifLinkState === "unlinked" && (
+                      <>
+                        <span style={subtextStyle}>
+                          Crea un bot en Telegram con @BotFather, copia su token
+                          y pégalo aquí. Después abre Telegram, busca tu bot y
+                          envíale cualquier mensaje para activarlo.
+                        </span>
+                        <div style={fieldStyle}>
+                          <label style={labelStyle}>
+                            Token de tu bot de Telegram
+                          </label>
+                          <input
+                            style={inputStyle}
+                            type="password"
+                            value={personalBotToken}
+                            onChange={(e) =>
+                              setPersonalBotToken(e.target.value)
+                            }
+                            placeholder="1234567890:ABCdef..."
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <button
+                            onClick={handleLinkBot}
+                            disabled={
+                              notifLinkStatus === "linking" ||
+                              !personalBotToken.trim()
+                            }
+                            style={{
+                              ...ghostBtn,
+                              opacity:
+                                notifLinkStatus === "linking" ||
+                                !personalBotToken.trim()
+                                  ? 0.5
+                                  : 1,
+                            }}
+                          >
+                            {notifLinkStatus === "linking"
+                              ? "Vinculando..."
+                              : "Vincular bot"}
+                          </button>
+                          {notifLinkStatus === "error" && (
+                            <span
+                              style={{
+                                fontSize: 12,
+                                color: "var(--color-danger)",
+                              }}
+                            >
+                              {notifLinkMsg}
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {notifLinkState === "linked" && personalSub && (
+                      <>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <AppIcon name="check" size={14} />
+                          <span
+                            style={{
+                              fontSize: 13,
+                              color: "var(--color-success)",
+                            }}
+                          >
+                            Bot vinculado — Chat ID:{" "}
+                            <strong>{personalSub.telegram_chat_id}</strong>
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 10,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 13,
+                                color: "var(--color-text)",
+                              }}
+                            >
+                              Notificar nuevo contenido en la biblioteca
+                            </span>
+                            <Toggle
+                              checked={personalSub.notify_new_content}
+                              onChange={(v) =>
+                                handleUpdateSubPref("notify_new_content", v)
+                              }
+                            />
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 13,
+                                color: "var(--color-text)",
+                              }}
+                            >
+                              Notificar cuando terminen mis descargas
+                            </span>
+                            <Toggle
+                              checked={personalSub.notify_downloads}
+                              onChange={(v) =>
+                                handleUpdateSubPref("notify_downloads", v)
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <button
+                            onClick={handleRevokeSub}
+                            style={{
+                              ...ghostBtn,
+                              color: "var(--color-danger)",
+                              borderColor:
+                                "color-mix(in srgb, var(--color-danger) 40%, transparent)",
+                            }}
+                          >
+                            Desvincular bot
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </SectionCard>
             )}
 
@@ -3187,33 +3871,42 @@ export default function Settings({
 
         <div
           style={{
-            padding: "1rem 1.5rem",
+            padding: isMobile ? "0.875rem 1rem" : "1rem 1.5rem",
             borderTop:
               "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
             background:
               "color-mix(in srgb, var(--color-surface-2) 46%, transparent)",
             display: "flex",
-            alignItems: "center",
+            flexDirection: isMobile ? "column" : "row",
+            alignItems: isMobile ? "stretch" : "center",
             justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
+            gap: isMobile ? 10 : 12,
             flexShrink: 0,
           }}
         >
-          <div style={subtextStyle}>{t(language, "settings.footerHelp")}</div>
+          <div style={subtextStyle}>
+            {!isMobile && t(language, "settings.footerHelp")}
+          </div>
 
           <div
             style={{
               display: "flex",
               gap: 8,
-              flexWrap: "wrap",
-              justifyContent: "flex-end",
+              flexWrap: isMobile ? "nowrap" : "wrap",
+              justifyContent: isMobile ? "stretch" : "flex-end",
+              width: isMobile ? "100%" : undefined,
             }}
           >
-            <button onClick={onClose} style={ghostBtn}>
-              {t(language, "common.cancel")}
-            </button>
-            <button onClick={saveConfig} disabled={saving} style={primaryBtn}>
+            {!isMobile && (
+              <button onClick={onClose} style={ghostBtn}>
+                {t(language, "common.cancel")}
+              </button>
+            )}
+            <button
+              onClick={saveConfig}
+              disabled={saving}
+              style={{ ...primaryBtn, flex: isMobile ? 1 : undefined }}
+            >
               {saved
                 ? t(language, "common.saved")
                 : saving
@@ -3223,7 +3916,11 @@ export default function Settings({
             <button
               onClick={saveAndReindex}
               disabled={saving}
-              style={successBtn}
+              style={{
+                ...successBtn,
+                flex: isMobile ? 1 : undefined,
+                justifyContent: "center",
+              }}
             >
               <AppIcon name="refresh" size={15} />
               {t(language, "settings.saveAndReindex")}

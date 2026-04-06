@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import type { WatchlistItem } from "./types";
 import { AppLanguage } from "../../utils/mediaLanguage";
+import { useIsMobile } from "../../hooks/useIsMobile";
 
 interface WatchlistCardProps {
   item: WatchlistItem;
@@ -19,6 +20,9 @@ export default function WatchlistCard({
   onRemove,
 }: WatchlistCardProps) {
   const [hovered, setHovered] = useState(false);
+  const isMobile = useIsMobile();
+
+  const showRemove = isMobile || hovered;
 
   const poster = item.poster
     ? item.poster.startsWith("http")
@@ -200,8 +204,8 @@ export default function WatchlistCard({
         )}
       </div>
 
-      {/* Hover overlay: remove button */}
-      {hovered && (
+      {/* Remove button — always visible on mobile, hover-only on desktop */}
+      {showRemove && (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -209,24 +213,23 @@ export default function WatchlistCard({
           }}
           style={{
             position: "absolute",
-            top: 8,
-            right: 8,
-            background: "rgba(0,0,0,0.75)",
+            top: 6,
+            right: 6,
+            background: isMobile ? "rgba(0,0,0,0.65)" : "rgba(0,0,0,0.75)",
             border: "none",
             borderRadius: "50%",
-            width: 28,
-            height: 28,
+            width: isMobile ? 24 : 28,
+            height: isMobile ? 24 : 28,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             cursor: "pointer",
             color: "var(--color-danger)",
-            transition: "background 0.15s ease",
             padding: 0,
           }}
           title="Quitar del watchlist"
         >
-          <X size={14} strokeWidth={2.5} aria-hidden="true" />
+          <X size={isMobile ? 12 : 14} strokeWidth={2.5} aria-hidden="true" />
         </button>
       )}
     </div>

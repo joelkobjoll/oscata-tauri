@@ -4,6 +4,7 @@ import type { TmdbSeason, WatchlistCoverageItem, WatchlistItem } from "./types";
 import type { AppLanguage } from "../../utils/mediaLanguage";
 import { t } from "../../utils/i18n";
 import { useQualityProfiles } from "./useQualityProfiles";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import Toggle from "../../components/Toggle";
 import { formSelectStandard } from "../../lib/formStyles";
 
@@ -62,6 +63,7 @@ export default function WatchlistDetailPanel({
   const [profileId, setProfileId] = useState<number>(item.profile_id ?? 1);
   const [saving, setSaving] = useState(false);
   const { profiles } = useQualityProfiles();
+  const isMobile = useIsMobile();
   const [coverage, setCoverage] = useState<WatchlistCoverageItem[]>([]);
   const [seasons, setSeasons] = useState<TmdbSeason[]>([]);
   const [loadingSeasons, setLoadingSeasons] = useState(false);
@@ -143,21 +145,38 @@ export default function WatchlistDetailPanel({
         }}
       />
 
-      {/* Side panel */}
+      {/* Side panel (desktop) or bottom sheet (mobile) */}
       <div
-        style={{
-          position: "fixed",
-          top: 68,
-          right: 0,
-          bottom: 0,
-          width: 360,
-          background: "var(--color-surface)",
-          borderLeft: "1px solid var(--color-border)",
-          zIndex: 501,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
+        style={
+          isMobile
+            ? {
+                position: "fixed",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                maxHeight: "82vh",
+                background: "var(--color-surface)",
+                borderTop: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-lg) var(--radius-lg) 0 0",
+                zIndex: 501,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }
+            : {
+                position: "fixed",
+                top: 68,
+                right: 0,
+                bottom: 0,
+                width: 360,
+                background: "var(--color-surface)",
+                borderLeft: "1px solid var(--color-border)",
+                zIndex: 501,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }
+        }
       >
         {/* Header */}
         <div
@@ -167,8 +186,23 @@ export default function WatchlistDetailPanel({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            flexShrink: 0,
           }}
         >
+          {isMobile && (
+            <div
+              style={{
+                position: "absolute",
+                top: 8,
+                left: "50%",
+                transform: "translateX(-50%)",
+                width: 36,
+                height: 4,
+                borderRadius: 2,
+                background: "var(--color-border)",
+              }}
+            />
+          )}
           <span
             style={{
               fontWeight: 600,

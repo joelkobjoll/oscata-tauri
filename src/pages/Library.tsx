@@ -10,6 +10,7 @@ import {
   FileText,
   Filter,
   LayoutGrid,
+  Menu,
   MoreHorizontal,
   Pencil,
   Settings as SettingsIcon,
@@ -71,6 +72,25 @@ const TABS: { id: TabId; labelKey: string; icon: LucideIcon }[] = [
     ? [{ id: "uploads" as const, labelKey: "nav.uploads", icon: Upload }]
     : []),
 ];
+
+// ─── URL slug ↔ tab mapping (web mode only) ──────────────────────────────────
+const TAB_SLUGS: Record<TabId, string> = {
+  all: "/",
+  movie: "/peliculas",
+  tv: "/series",
+  documentary: "/documentales",
+  downloads: "/descargas",
+  watchlist: "/watchlist",
+  uploads: "/subidas",
+};
+const SLUG_TO_TAB: Record<string, TabId> = Object.fromEntries(
+  Object.entries(TAB_SLUGS).map(([k, v]) => [v, k as TabId]),
+) as Record<string, TabId>;
+function tabFromPathname(): TabId {
+  if (isTauri()) return "all";
+  const path = window.location.pathname || "/";
+  return SLUG_TO_TAB[path] ?? "all";
+}
 
 const defaultFilters = (): Filters => ({
   search: "",
@@ -228,8 +248,10 @@ function EpisodeListView({
 
 export default function Library({
   startIndexingOnMount = false,
+  headerSlot,
 }: {
   startIndexingOnMount?: boolean;
+  headerSlot?: React.ReactNode;
 }) {
   const showDevLog = import.meta.env.DEV;
   const {
@@ -272,7 +294,7 @@ export default function Library({
     () => new Map(downloads.map((d) => [d.ftp_path, d])),
     [downloads],
   );
-  const [activeTab, setActiveTab] = useState<TabId>("all");
+  const [activeTab, setActiveTab] = useState<TabId>(() => tabFromPathname());
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const isMobile = useIsMobile();
   const [filters, setFilters] = useState<Filters>(defaultFilters());
@@ -297,6 +319,8 @@ export default function Library({
   const [movieView, setMovieView] = useState<"grouped" | "files">("grouped");
   const [tvView, setTvView] = useState<"shows" | "episodes">("shows");
   const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const [showMobileNavMenu, setShowMobileNavMenu] = useState(false);
+  const mobileNavMenuRef = useRef<HTMLDivElement>(null);
   const [language, setLanguage] = useState<AppLanguage>("es");
   const [badgeMap, setBadgeMap] = useState<
     Record<
@@ -335,6 +359,27 @@ export default function Library({
       switchTab("all");
     }
   }, [ftpWriteOk, activeTab]);
+
+  // Sync activeTab with browser back/forward in web mode.
+  useEffect(() => {
+    if (isTauri()) return;
+    const handlePop = () => {
+      const tab = tabFromPathname();
+      setActiveTab(tab);
+      setSelected(null);
+      setSelectedGroupedView(false);
+      setTvShow(null);
+      setSelecting(false);
+      setCheckedIds(new Set());
+      setFilters(defaultFilters());
+      setPage(1);
+      setMovieView("grouped");
+      setTvView("shows");
+      setFilterDrawerOpen(false);
+    };
+    window.addEventListener("popstate", handlePop);
+    return () => window.removeEventListener("popstate", handlePop);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!startIndexingOnMount || hasStartedInitialIndexRef.current) {
@@ -435,6 +480,9 @@ export default function Library({
 
   const switchTab = (tab: TabId) => {
     setActiveTab(tab);
+    if (!isTauri()) {
+      window.history.pushState({}, "", TAB_SLUGS[tab]);
+    }
     setSelected(null);
     setSelectedGroupedView(false);
     setTvShow(null);
@@ -609,6 +657,9 @@ export default function Library({
     );
 
   const visibleTabs = TABS.filter((tab) => tab.id !== "uploads" || ftpWriteOk);
+  const mobileBottomTabs = visibleTabs.filter((tab) =>
+    (["all", "movie", "tv", "downloads"] as TabId[]).includes(tab.id),
+  );
 
   const tabCounts = useMemo(
     () =>
@@ -838,6 +889,9 @@ export default function Library({
     const onPointerDown = (event: MouseEvent) => {
       if (!actionsMenuRef.current?.contains(event.target as Node)) {
         setShowActionsMenu(false);
+      }
+      if (!mobileNavMenuRef.current?.contains(event.target as Node)) {
+        setShowMobileNavMenu(false);
       }
     };
     document.addEventListener("mousedown", onPointerDown);
@@ -1259,6 +1313,7 @@ export default function Library({
       {/* TOP NAVBAR */}
       <nav
         style={{
+          display: "flex",
           position: "sticky",
           top: 0,
           zIndex: 50,
@@ -1269,7 +1324,6 @@ export default function Library({
           WebkitBackdropFilter: "blur(16px) saturate(150%)",
           borderBottom: "1px solid color-mix(in srgb, white 10%, transparent)",
           boxShadow: "0 1px 24px color-mix(in srgb, black 28%, transparent)",
-          display: "flex",
           alignItems: "center",
           padding: "0 1.5rem",
           gap: "1rem",
@@ -1452,6 +1506,123 @@ export default function Library({
             </button>
           )}
           {isTauri() && <ThemeToggle />}
+          {headerSlot}
+          {/* Mobile burger — shows hidden tabs (Docu, Watchlist, Uploads) */}
+          {isMobile && (
+            <div ref={mobileNavMenuRef} style={{ position: "relative" }}>
+              <button
+                onClick={() => setShowMobileNavMenu((v) => !v)}
+                title="Más secciones"
+                style={{
+                  ...iconButton,
+                  background: showMobileNavMenu
+                    ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
+                    : iconButton.background,
+                  color: showMobileNavMenu
+                    ? "var(--color-primary)"
+                    : "var(--color-text-muted)",
+                  border: showMobileNavMenu
+                    ? "1px solid color-mix(in srgb, var(--color-primary) 40%, transparent)"
+                    : "1px solid transparent",
+                }}
+              >
+                <Menu
+                  size={16}
+                  strokeWidth={2.2}
+                  aria-hidden="true"
+                  style={{ display: "block" }}
+                />
+              </button>
+
+              {showMobileNavMenu && (
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "calc(100% + 8px)",
+                    background: "var(--color-surface)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: "var(--radius-lg)",
+                    boxShadow:
+                      "0 12px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.2)",
+                    minWidth: 200,
+                    overflow: "hidden",
+                    zIndex: 80,
+                    padding: "4px",
+                  }}
+                >
+                  {visibleTabs
+                    .filter(
+                      (tab) =>
+                        !(
+                          ["all", "movie", "tv", "downloads"] as TabId[]
+                        ).includes(tab.id),
+                    )
+                    .map((tab) => {
+                      const active = activeTab === tab.id;
+                      const count = tabCounts[tab.id];
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => {
+                            switchTab(tab.id);
+                            setShowMobileNavMenu(false);
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            width: "100%",
+                            textAlign: "left",
+                            padding: "10px 12px",
+                            background: active
+                              ? "color-mix(in srgb, var(--color-primary) 14%, transparent)"
+                              : "none",
+                            border: "none",
+                            borderRadius: "6px",
+                            color: active
+                              ? "var(--color-primary)"
+                              : "var(--color-text)",
+                            fontSize: 14,
+                            fontWeight: active ? 700 : 500,
+                            cursor: "pointer",
+                            transition: "background 0.12s ease",
+                          }}
+                        >
+                          <tab.icon
+                            size={16}
+                            strokeWidth={active ? 2.4 : 2.0}
+                          />
+                          <span style={{ flex: 1 }}>
+                            {t(language, tab.labelKey as never)}
+                          </span>
+                          {count > 0 && (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                background: active
+                                  ? "color-mix(in srgb, var(--color-primary) 25%, transparent)"
+                                  : "var(--color-surface-2)",
+                                color: active
+                                  ? "var(--color-primary)"
+                                  : "var(--color-text-muted)",
+                                borderRadius: 999,
+                                padding: "1px 7px",
+                                minWidth: 20,
+                                textAlign: "center",
+                              }}
+                            >
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          )}
           {/* Settings button */}
           <button
             onClick={() => setShowSettings(true)}
@@ -1486,7 +1657,7 @@ export default function Library({
             WebkitBackdropFilter: "blur(16px)",
           }}
         >
-          {visibleTabs.map((tab) => {
+          {mobileBottomTabs.map((tab) => {
             const active = activeTab === tab.id;
             return (
               <button
@@ -1498,7 +1669,7 @@ export default function Library({
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  padding: "10px 4px 8px",
+                  padding: "10px 4px 10px",
                   gap: 3,
                   border: "none",
                   background: "transparent",
@@ -1655,452 +1826,625 @@ export default function Library({
         {/* Toolbar row */}
         <div
           style={{
-            padding: "12px 1.5rem",
+            padding: isMobile ? "10px 1.5rem" : "12px 1.5rem",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
+            flexDirection: "column",
+            gap:
+              isMobile && (activeTab === "tv" || activeTab === "movie") ? 8 : 0,
             borderBottom:
               "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <h1
+          {/* Main row: title + action buttons */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            <div
               style={{
-                margin: 0,
-                fontSize: 18,
-                fontWeight: 700,
-                color: "var(--color-text)",
-                letterSpacing: "-0.01em",
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                minWidth: 0,
+                overflow: "hidden",
               }}
             >
-              {sectionTitle[activeTab]}
-              {activeTab !== "downloads" && (
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 400,
-                    color: "var(--color-text-muted)",
-                    marginLeft: 10,
-                  }}
-                >
-                  {activeTab === "watchlist"
-                    ? watchlist.items.length
-                    : filtered.length}{" "}
-                  titles
-                </span>
-              )}
-            </h1>
-
-            {activeTab === "tv" && (
-              <div
+              <h1
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "0.2rem",
-                  borderRadius: "var(--radius-full)",
-                  border:
-                    "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
-                  background:
-                    "color-mix(in srgb, var(--color-surface) 94%, transparent)",
+                  margin: 0,
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: "var(--color-text)",
+                  letterSpacing: "-0.01em",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
               >
-                {(["shows", "episodes"] as const).map((mode) => {
-                  const active = tvView === mode;
-                  return (
-                    <button
-                      key={mode}
-                      onClick={() => {
-                        setTvView(mode);
-                        setPage(1);
-                      }}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: "var(--radius-full)",
-                        border: "none",
-                        background: active
-                          ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
-                          : "transparent",
-                        color: active
-                          ? "var(--color-primary)"
-                          : "var(--color-text-muted)",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {mode === "shows"
-                        ? t(language, "library.shows")
-                        : t(language, "library.episodes")}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {activeTab === "movie" && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "0.2rem",
-                  borderRadius: "var(--radius-full)",
-                  border:
-                    "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
-                  background:
-                    "color-mix(in srgb, var(--color-surface) 94%, transparent)",
-                }}
-              >
-                {(["grouped", "files"] as const).map((mode) => {
-                  const active = movieView === mode;
-                  return (
-                    <button
-                      key={mode}
-                      onClick={() => {
-                        setMovieView(mode);
-                        setPage(1);
-                      }}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: "var(--radius-full)",
-                        border: "none",
-                        background: active
-                          ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
-                          : "transparent",
-                        color: active
-                          ? "var(--color-primary)"
-                          : "var(--color-text-muted)",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {t(
-                        language,
-                        mode === "grouped"
-                          ? "library.grouped"
-                          : "library.files",
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {/* Filter button — mobile only, opens the filter drawer */}
-            {isMobile &&
-              activeTab !== "downloads" &&
-              activeTab !== "watchlist" && (
-                <button
-                  onClick={() => setFilterDrawerOpen(true)}
-                  title={t(language, "filter.filters" as never)}
-                  style={ghostBtn}
-                >
-                  <Filter
-                    size={14}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                    style={{ display: "block", flexShrink: 0 }}
-                  />
-                </button>
-              )}
-            {activeTab === "downloads" ||
-            activeTab === "watchlist" ||
-            activeTab === "uploads" ? null : selecting ? (
-              <>
-                <span
-                  style={{ color: "var(--color-text-muted)", fontSize: 13 }}
-                >
-                  {t(language, "library.selectedCount", {
-                    count: checkedIds.size,
-                  })}
-                </span>
-                <button
-                  onClick={() =>
-                    setCheckedIds(new Set(filtered.map((item) => item.id)))
-                  }
-                  disabled={filtered.length === 0}
-                  style={{
-                    ...ghostBtn,
-                    opacity: filtered.length === 0 ? 0.5 : 1,
-                    cursor: filtered.length === 0 ? "default" : "pointer",
-                  }}
-                >
-                  {t(language, "library.selectAll")}
-                </button>
-                <button
-                  onClick={() => setShowBulkFix(true)}
-                  disabled={checkedIds.size === 0}
-                  style={{
-                    ...primaryBtn,
-                    opacity: checkedIds.size === 0 ? 0.5 : 1,
-                    cursor: checkedIds.size === 0 ? "default" : "pointer",
-                  }}
-                >
-                  <Pencil
-                    size={14}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                    style={{ display: "block", flexShrink: 0 }}
-                  />
-                  {t(language, "library.fixMatch")} ({checkedIds.size})
-                </button>
-                <button onClick={exitSelect} style={ghostBtn}>
-                  {t(language, "library.cancel")}
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => setSelecting(true)}
-                  title={t(language, "library.selectMultiple")}
-                  style={ghostBtn}
-                >
-                  <CheckSquare
-                    size={14}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                    style={{ display: "block", flexShrink: 0 }}
-                  />
-                  {t(language, "library.select")}
-                </button>
-                <div ref={actionsMenuRef} style={{ position: "relative" }}>
-                  <button
-                    onClick={() => setShowActionsMenu((open) => !open)}
-                    title={t(language, "library.actions")}
-                    style={{ ...ghostBtn, padding: "7px 11px" }}
+                {sectionTitle[activeTab]}
+                {activeTab !== "downloads" && (
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 400,
+                      color: "var(--color-text-muted)",
+                      marginLeft: 10,
+                    }}
                   >
-                    <MoreHorizontal
-                      size={16}
+                    {activeTab === "watchlist"
+                      ? watchlist.items.length
+                      : filtered.length}{" "}
+                    titles
+                  </span>
+                )}
+              </h1>
+
+              {/* Desktop-only view toggles — mobile renders them in the sub-row below */}
+              {!isMobile && activeTab === "tv" && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "0.2rem",
+                    borderRadius: "var(--radius-full)",
+                    border:
+                      "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                    background:
+                      "color-mix(in srgb, var(--color-surface) 94%, transparent)",
+                  }}
+                >
+                  {(["shows", "episodes"] as const).map((mode) => {
+                    const active = tvView === mode;
+                    return (
+                      <button
+                        key={mode}
+                        onClick={() => {
+                          setTvView(mode);
+                          setPage(1);
+                        }}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: "var(--radius-full)",
+                          border: "none",
+                          background: active
+                            ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
+                            : "transparent",
+                          color: active
+                            ? "var(--color-primary)"
+                            : "var(--color-text-muted)",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {mode === "shows"
+                          ? t(language, "library.shows")
+                          : t(language, "library.episodes")}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {!isMobile && activeTab === "movie" && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "0.2rem",
+                    borderRadius: "var(--radius-full)",
+                    border:
+                      "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                    background:
+                      "color-mix(in srgb, var(--color-surface) 94%, transparent)",
+                  }}
+                >
+                  {(["grouped", "files"] as const).map((mode) => {
+                    const active = movieView === mode;
+                    return (
+                      <button
+                        key={mode}
+                        onClick={() => {
+                          setMovieView(mode);
+                          setPage(1);
+                        }}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: "var(--radius-full)",
+                          border: "none",
+                          background: active
+                            ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
+                            : "transparent",
+                          color: active
+                            ? "var(--color-primary)"
+                            : "var(--color-text-muted)",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {t(
+                          language,
+                          mode === "grouped"
+                            ? "library.grouped"
+                            : "library.files",
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {/* Filter button — mobile only, opens the filter drawer */}
+              {isMobile &&
+                activeTab !== "downloads" &&
+                activeTab !== "watchlist" && (
+                  <button
+                    onClick={() => setFilterDrawerOpen(true)}
+                    title={t(language, "filter.filters" as never)}
+                    style={ghostBtn}
+                  >
+                    <Filter
+                      size={14}
                       strokeWidth={2.2}
                       aria-hidden="true"
                       style={{ display: "block", flexShrink: 0 }}
                     />
                   </button>
-
-                  {showActionsMenu && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "calc(100% + 8px)",
-                        right: 0,
-                        minWidth: 220,
-                        padding: 6,
-                        borderRadius: "var(--radius-lg)",
-                        border:
-                          "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
-                        background:
-                          "color-mix(in srgb, var(--color-surface) 96%, transparent)",
-                        boxShadow:
-                          "0 16px 34px color-mix(in srgb, black 26%, transparent)",
-                        zIndex: 30,
-                      }}
+                )}
+              {activeTab === "downloads" ||
+              activeTab === "watchlist" ||
+              activeTab === "uploads" ? null : selecting ? (
+                <>
+                  <span
+                    style={{ color: "var(--color-text-muted)", fontSize: 13 }}
+                  >
+                    {t(language, "library.selectedCount", {
+                      count: checkedIds.size,
+                    })}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setCheckedIds(new Set(filtered.map((item) => item.id)))
+                    }
+                    disabled={filtered.length === 0}
+                    style={{
+                      ...ghostBtn,
+                      opacity: filtered.length === 0 ? 0.5 : 1,
+                      cursor: filtered.length === 0 ? "default" : "pointer",
+                    }}
+                  >
+                    {t(language, "library.selectAll")}
+                  </button>
+                  <button
+                    onClick={() => setShowBulkFix(true)}
+                    disabled={checkedIds.size === 0}
+                    style={{
+                      ...primaryBtn,
+                      opacity: checkedIds.size === 0 ? 0.5 : 1,
+                      cursor: checkedIds.size === 0 ? "default" : "pointer",
+                    }}
+                  >
+                    <Pencil
+                      size={14}
+                      strokeWidth={2.2}
+                      aria-hidden="true"
+                      style={{ display: "block", flexShrink: 0 }}
+                    />
+                    {t(language, "library.fixMatch")} ({checkedIds.size})
+                  </button>
+                  <button onClick={exitSelect} style={ghostBtn}>
+                    {t(language, "library.cancel")}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setSelecting(true)}
+                    title={t(language, "library.selectMultiple")}
+                    style={ghostBtn}
+                  >
+                    <CheckSquare
+                      size={14}
+                      strokeWidth={2.2}
+                      aria-hidden="true"
+                      style={{ display: "block", flexShrink: 0 }}
+                    />
+                    {!isMobile && t(language, "library.select")}
+                  </button>
+                  <div ref={actionsMenuRef} style={{ position: "relative" }}>
+                    <button
+                      onClick={() => setShowActionsMenu((open) => !open)}
+                      title={t(language, "library.actions")}
+                      style={{ ...ghostBtn, padding: "7px 11px" }}
                     >
-                      <button
-                        onClick={refreshLibrary}
-                        disabled={
-                          isIndexing ||
-                          refreshingLibrary ||
-                          rematching ||
-                          clearingAll ||
-                          refreshingMetadata
-                        }
+                      <MoreHorizontal
+                        size={16}
+                        strokeWidth={2.2}
+                        aria-hidden="true"
+                        style={{ display: "block", flexShrink: 0 }}
+                      />
+                    </button>
+
+                    {showActionsMenu && (
+                      <div
                         style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: "var(--radius)",
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--color-text)",
-                          textAlign: "left",
-                          cursor:
+                          position: "absolute",
+                          top: "calc(100% + 8px)",
+                          right: 0,
+                          minWidth: 220,
+                          padding: 6,
+                          borderRadius: "var(--radius-lg)",
+                          border:
+                            "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                          background:
+                            "color-mix(in srgb, var(--color-surface) 96%, transparent)",
+                          boxShadow:
+                            "0 16px 34px color-mix(in srgb, black 26%, transparent)",
+                          zIndex: 30,
+                        }}
+                      >
+                        {/* Mobile-only tab shortcuts for tabs hidden from bottom bar */}
+                        {isMobile && (
+                          <>
+                            {(
+                              [
+                                {
+                                  id: "documentary" as TabId,
+                                  label: t(language, "nav.docs" as never),
+                                },
+                                {
+                                  id: "watchlist" as TabId,
+                                  label: t(language, "nav.watchlist" as never),
+                                },
+                              ] as { id: TabId; label: string }[]
+                            ).map(({ id, label }) => (
+                              <button
+                                key={id}
+                                onClick={() => {
+                                  switchTab(id);
+                                  setShowActionsMenu(false);
+                                }}
+                                style={{
+                                  width: "100%",
+                                  padding: "10px 12px",
+                                  borderRadius: "var(--radius)",
+                                  border: "none",
+                                  background:
+                                    activeTab === id
+                                      ? "color-mix(in srgb, var(--color-primary) 14%, transparent)"
+                                      : "transparent",
+                                  color:
+                                    activeTab === id
+                                      ? "var(--color-primary)"
+                                      : "var(--color-text)",
+                                  textAlign: "left",
+                                  cursor: "pointer",
+                                  fontSize: 13,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                            <div
+                              style={{
+                                height: 1,
+                                background: "var(--color-border)",
+                                margin: "4px 0",
+                              }}
+                            />
+                          </>
+                        )}
+                        <button
+                          onClick={refreshLibrary}
+                          disabled={
                             isIndexing ||
                             refreshingLibrary ||
                             rematching ||
                             clearingAll ||
                             refreshingMetadata
-                              ? "default"
-                              : "pointer",
-                          opacity:
-                            isIndexing ||
-                            refreshingLibrary ||
-                            rematching ||
-                            clearingAll ||
-                            refreshingMetadata
-                              ? 0.5
-                              : 1,
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {isIndexing || refreshingLibrary
-                          ? t(language, "library.refreshing")
-                          : t(language, "library.refresh")}
-                      </button>
-                      <button
-                        onClick={refreshAllMetadata}
-                        disabled={
-                          refreshingMetadata ||
-                          rematching ||
-                          clearingAll ||
-                          refreshingLibrary ||
-                          isIndexing
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: "var(--radius)",
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--color-text)",
-                          textAlign: "left",
-                          cursor:
+                          }
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: "var(--radius)",
+                            border: "none",
+                            background: "transparent",
+                            color: "var(--color-text)",
+                            textAlign: "left",
+                            cursor:
+                              isIndexing ||
+                              refreshingLibrary ||
+                              rematching ||
+                              clearingAll ||
+                              refreshingMetadata
+                                ? "default"
+                                : "pointer",
+                            opacity:
+                              isIndexing ||
+                              refreshingLibrary ||
+                              rematching ||
+                              clearingAll ||
+                              refreshingMetadata
+                                ? 0.5
+                                : 1,
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {isIndexing || refreshingLibrary
+                            ? t(language, "library.refreshing")
+                            : t(language, "library.refresh")}
+                        </button>
+                        <button
+                          onClick={refreshAllMetadata}
+                          disabled={
                             refreshingMetadata ||
                             rematching ||
                             clearingAll ||
                             refreshingLibrary ||
                             isIndexing
-                              ? "default"
-                              : "pointer",
-                          opacity:
-                            refreshingMetadata ||
-                            rematching ||
-                            clearingAll ||
-                            refreshingLibrary ||
-                            isIndexing
-                              ? 0.5
-                              : 1,
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {refreshingMetadata
-                          ? t(language, "library.refreshingMetadata")
-                          : t(language, "library.refreshAllMetadata")}
-                      </button>
-                      <button
-                        onClick={runRematchAll}
-                        disabled={
-                          rematching ||
-                          clearingAll ||
-                          refreshingLibrary ||
-                          refreshingMetadata
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: "var(--radius)",
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--color-text)",
-                          textAlign: "left",
-                          cursor:
-                            rematching ||
-                            clearingAll ||
-                            refreshingLibrary ||
-                            refreshingMetadata
-                              ? "default"
-                              : "pointer",
-                          opacity:
+                          }
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: "var(--radius)",
+                            border: "none",
+                            background: "transparent",
+                            color: "var(--color-text)",
+                            textAlign: "left",
+                            cursor:
+                              refreshingMetadata ||
+                              rematching ||
+                              clearingAll ||
+                              refreshingLibrary ||
+                              isIndexing
+                                ? "default"
+                                : "pointer",
+                            opacity:
+                              refreshingMetadata ||
+                              rematching ||
+                              clearingAll ||
+                              refreshingLibrary ||
+                              isIndexing
+                                ? 0.5
+                                : 1,
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {refreshingMetadata
+                            ? t(language, "library.refreshingMetadata")
+                            : t(language, "library.refreshAllMetadata")}
+                        </button>
+                        <button
+                          onClick={runRematchAll}
+                          disabled={
                             rematching ||
                             clearingAll ||
                             refreshingLibrary ||
                             refreshingMetadata
-                              ? 0.5
-                              : 1,
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {rematching
-                          ? t(language, "library.matching")
-                          : t(language, "library.rematchAll")}
-                      </button>
-                      <button
-                        onClick={runRematchAllPlex}
-                        disabled={
-                          rematching ||
-                          clearingAll ||
-                          refreshingLibrary ||
-                          refreshingMetadata
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: "var(--radius)",
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--color-text)",
-                          textAlign: "left",
-                          cursor:
+                          }
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: "var(--radius)",
+                            border: "none",
+                            background: "transparent",
+                            color: "var(--color-text)",
+                            textAlign: "left",
+                            cursor:
+                              rematching ||
+                              clearingAll ||
+                              refreshingLibrary ||
+                              refreshingMetadata
+                                ? "default"
+                                : "pointer",
+                            opacity:
+                              rematching ||
+                              clearingAll ||
+                              refreshingLibrary ||
+                              refreshingMetadata
+                                ? 0.5
+                                : 1,
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {rematching
+                            ? t(language, "library.matching")
+                            : t(language, "library.rematchAll")}
+                        </button>
+                        <button
+                          onClick={runRematchAllPlex}
+                          disabled={
                             rematching ||
                             clearingAll ||
                             refreshingLibrary ||
                             refreshingMetadata
-                              ? "default"
-                              : "pointer",
-                          opacity:
-                            rematching ||
-                            clearingAll ||
-                            refreshingLibrary ||
-                            refreshingMetadata
-                              ? 0.5
-                              : 1,
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {rematching
-                          ? t(language, "library.matching")
-                          : t(language, "library.rematchAllPlex")}
-                      </button>
-                      <button
-                        onClick={clearAllMetadata}
-                        disabled={
-                          clearingAll ||
-                          rematching ||
-                          refreshingLibrary ||
-                          refreshingMetadata
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: "var(--radius)",
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--color-danger)",
-                          textAlign: "left",
-                          cursor:
-                            clearingAll ||
-                            rematching ||
-                            refreshingLibrary ||
-                            refreshingMetadata
-                              ? "default"
-                              : "pointer",
-                          opacity:
+                          }
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: "var(--radius)",
+                            border: "none",
+                            background: "transparent",
+                            color: "var(--color-text)",
+                            textAlign: "left",
+                            cursor:
+                              rematching ||
+                              clearingAll ||
+                              refreshingLibrary ||
+                              refreshingMetadata
+                                ? "default"
+                                : "pointer",
+                            opacity:
+                              rematching ||
+                              clearingAll ||
+                              refreshingLibrary ||
+                              refreshingMetadata
+                                ? 0.5
+                                : 1,
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {rematching
+                            ? t(language, "library.matching")
+                            : t(language, "library.rematchAllPlex")}
+                        </button>
+                        <button
+                          onClick={clearAllMetadata}
+                          disabled={
                             clearingAll ||
                             rematching ||
                             refreshingLibrary ||
                             refreshingMetadata
-                              ? 0.5
-                              : 1,
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {clearingAll
-                          ? t(language, "library.clearing")
-                          : t(language, "library.clearAllMetadata")}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
+                          }
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: "var(--radius)",
+                            border: "none",
+                            background: "transparent",
+                            color: "var(--color-danger)",
+                            textAlign: "left",
+                            cursor:
+                              clearingAll ||
+                              rematching ||
+                              refreshingLibrary ||
+                              refreshingMetadata
+                                ? "default"
+                                : "pointer",
+                            opacity:
+                              clearingAll ||
+                              rematching ||
+                              refreshingLibrary ||
+                              refreshingMetadata
+                                ? 0.5
+                                : 1,
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {clearingAll
+                            ? t(language, "library.clearing")
+                            : t(language, "library.clearAllMetadata")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
+          {/* closes main row */}
+
+          {/* Mobile-only view toggle sub-row */}
+          {isMobile && activeTab === "tv" && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "0.2rem",
+                borderRadius: "var(--radius-full)",
+                border:
+                  "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                background:
+                  "color-mix(in srgb, var(--color-surface) 94%, transparent)",
+                alignSelf: "flex-start",
+              }}
+            >
+              {(["shows", "episodes"] as const).map((mode) => {
+                const active = tvView === mode;
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      setTvView(mode);
+                      setPage(1);
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "var(--radius-full)",
+                      border: "none",
+                      background: active
+                        ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
+                        : "transparent",
+                      color: active
+                        ? "var(--color-primary)"
+                        : "var(--color-text-muted)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {mode === "shows"
+                      ? t(language, "library.shows")
+                      : t(language, "library.episodes")}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {isMobile && activeTab === "movie" && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "0.2rem",
+                borderRadius: "var(--radius-full)",
+                border:
+                  "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                background:
+                  "color-mix(in srgb, var(--color-surface) 94%, transparent)",
+                alignSelf: "flex-start",
+              }}
+            >
+              {(["grouped", "files"] as const).map((mode) => {
+                const active = movieView === mode;
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      setMovieView(mode);
+                      setPage(1);
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "var(--radius-full)",
+                      border: "none",
+                      background: active
+                        ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
+                        : "transparent",
+                      color: active
+                        ? "var(--color-primary)"
+                        : "var(--color-text-muted)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t(
+                      language,
+                      mode === "grouped" ? "library.grouped" : "library.files",
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div
@@ -2266,7 +2610,10 @@ export default function Library({
           </span>
         </div>
       )}
-      <DownloadFeedbackToast language={language} />
+      <DownloadFeedbackToast
+        language={language}
+        onGoToDownloads={() => switchTab("downloads")}
+      />
       {indexError && (
         <IndexErrorToast
           message={indexError}
@@ -2282,7 +2629,7 @@ export default function Library({
           style={{
             position: "fixed",
             left: "50%",
-            bottom: 18,
+            bottom: isMobile ? 80 : 18,
             transform: "translateX(-50%)",
             display: "flex",
             justifyContent: "center",

@@ -3795,6 +3795,18 @@ fn spawn_upload_job(
                         if let Err(e) = notify_result {
                             eprintln!("[upload] Telegram notify failed: {e}");
                         }
+
+                        // Personal subscriber notifications (each user's own bot)
+                        if let Ok(subs) = db.list_telegram_subs() {
+                            for sub in subs {
+                                if sub.notify_downloads && !sub.telegram_bot_token.is_empty() {
+                                    let sub_msg = format!(
+                                        "✅ Descarga completada: <b>{display_title}</b>",
+                                    );
+                                    crate::telegram::send_message(&sub.telegram_bot_token, &sub.telegram_chat_id, &sub_msg).await.ok();
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -4021,6 +4033,62 @@ pub async fn test_telegram(token: String, chat_id: String) -> Result<(), String>
         "✅ Oscata — conexión con Telegram correcta",
     )
     .await
+}
+
+// ─── Personal Telegram subscription commands ───────────────────────────────
+
+/// Returns the current personal subscription for the desktop user (user_id=0).
+#[tauri::command]
+pub async fn get_telegram_sub(
+    app: tauri::AppHandle,
+) -> Result<Option<crate::db::TelegramSub>, String> {
+    let db = app.state::<crate::db::Db>();
+    db.get_telegram_sub(0)
+}
+
+/// Generates a 6-digit verification code and sends it to the specified chat_id.
+/// The code is stored in the DB with a 24h expiry.
+#[tauri::command]
+pub async fn link_telegram_bot(
+    app: tauri::AppHandle,
+    bot_token: String,
+) -> Result<crate::db::TelegramSub, String> {
+    // Discover the user's chat_id by polling their bot's updates
+    let chat_id = crate::telegram::get_updates_first_chat_id(&bot_token)
+        .await?
+        .ok_or_else(|| {
+            "Aún no hay mensajes en tu bot. Abre Telegram, busca tu bot y envíale cualquier mensaje, luego vuelve a intentarlo.".to_string()
+        })?;
+
+    let db = app.state::<crate::db::Db>();
+    db.upsert_telegram_sub(0, &bot_token, &chat_id, true, true)?;
+
+    // Send a welcome confirmation via the user's own bot
+    let welcome = "✅ <b>Oscata</b> — Tu bot está vinculado correctamente.\n\nA partir de ahora recibirás avisos personales aquí.";
+    crate::telegram::send_message(&bot_token, &chat_id, welcome).await.ok();
+
+    db.get_telegram_sub(0)?.ok_or_else(|| "Error al guardar la suscripción.".to_string())
+}
+
+/// Updates notification preferences for the desktop user's personal subscription.
+#[tauri::command]
+pub async fn update_telegram_sub(
+    app: tauri::AppHandle,
+    notify_new_content: bool,
+    notify_downloads: bool,
+) -> Result<(), String> {
+    let db = app.state::<crate::db::Db>();
+    let sub = db
+        .get_telegram_sub(0)?
+        .ok_or_else(|| "No hay suscripción activa.".to_string())?;
+    db.upsert_telegram_sub(0, &sub.telegram_bot_token, &sub.telegram_chat_id, notify_new_content, notify_downloads)
+}
+
+/// Removes the personal subscription for the desktop user.
+#[tauri::command]
+pub async fn revoke_telegram_sub(app: tauri::AppHandle) -> Result<(), String> {
+    let db = app.state::<crate::db::Db>();
+    db.delete_telegram_sub(0)
 }
 
 // `start_indexing_internal` requires a live FTP connection and a Tauri

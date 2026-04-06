@@ -23,6 +23,7 @@ import {
 } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 import { GENRE_MAP } from "../utils/genres";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 function getGroupFolder(ftpPath: string): string {
   return ftpPath.split("/").slice(-2, -1)[0] ?? "";
@@ -297,6 +298,7 @@ function EpisodeRow({
   downloadMap,
   isDownloadPending,
   downloadedBadgeMap,
+  isMobile,
 }: {
   episode: MediaItem;
   language: AppLanguage;
@@ -315,12 +317,16 @@ function EpisodeRow({
       debug?: string;
     }
   >;
+  isMobile: boolean;
 }) {
   const episodeData = resolvedEpisodeData(episode);
   const season = resolvedSeason(episode);
+  const seasonPrefix = season != null
+    ? `${language === "es" ? "T" : "S"}${String(season).padStart(2, "0")}`
+    : "";
   const epLabel =
     episodeData.episode != null
-      ? `E${String(episodeData.episode).padStart(2, "0")}${episodeData.episodeEnd != null ? `-E${String(episodeData.episodeEnd).padStart(2, "0")}` : ""}`
+      ? `${seasonPrefix}E${String(episodeData.episode).padStart(2, "0")}${episodeData.episodeEnd != null ? `-E${String(episodeData.episodeEnd).padStart(2, "0")}` : ""}`
       : t(language, "tv.episodeUnknown");
   const langs =
     episode.languages
@@ -348,10 +354,12 @@ function EpisodeRow({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "84px minmax(0, 1fr) auto auto",
-        gap: 12,
+        gridTemplateColumns: isMobile
+          ? "64px minmax(0, 1fr) auto"
+          : "84px minmax(0, 1fr) auto auto",
+        gap: isMobile ? 8 : 12,
         alignItems: "center",
-        padding: "0.9rem 1rem",
+        padding: isMobile ? "0.7rem 0.75rem" : "0.9rem 1rem",
         borderBottom:
           "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
         background: "transparent",
@@ -367,11 +375,6 @@ function EpisodeRow({
         >
           {epLabel}
         </span>
-        {season != null && (
-          <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
-            {t(language, "tv.seasonLabel", { season })}
-          </span>
-        )}
       </div>
 
       <div style={{ minWidth: 0 }}>
@@ -387,7 +390,7 @@ function EpisodeRow({
           {inEmby && <EmbyIcon size={13} />}
           <div
             style={{
-              fontSize: 14,
+              fontSize: isMobile ? 13 : 14,
               fontWeight: 600,
               color: "var(--color-text)",
               whiteSpace: "nowrap",
@@ -399,17 +402,44 @@ function EpisodeRow({
             {episode.title ?? episode.filename}
           </div>
         </div>
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--color-text-muted)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {episode.filename}
-        </div>
+        {!isMobile && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--color-text-muted)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {episode.filename}
+          </div>
+        )}
+        {isMobile && (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 4,
+              marginTop: 4,
+            }}
+          >
+            {episode.release_type &&
+              miniBadge(
+                RELEASE_TYPE_COLORS[episode.release_type] ?? "var(--color-surface)",
+                episode.release_type,
+                "#fff",
+              )}
+            {episode.resolution &&
+              miniBadge("var(--color-surface-2)", episode.resolution)}
+            {episode.hdr &&
+              miniBadge(
+                "color-mix(in srgb, var(--color-primary) 20%, var(--color-surface-2))",
+                episode.hdr,
+                "var(--color-primary)",
+              )}
+          </div>
+        )}
         {import.meta.env.DEV && (
           <div
             style={{
@@ -428,41 +458,43 @@ function EpisodeRow({
         )}
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 6,
-          justifyContent: "flex-end",
-        }}
-      >
-        {episode.release_type &&
-          miniBadge(
-            RELEASE_TYPE_COLORS[episode.release_type] ?? "var(--color-surface)",
-            episode.release_type,
-            "#fff",
-          )}
-        {episode.resolution &&
-          miniBadge("var(--color-surface-2)", episode.resolution)}
-        {episode.codec && miniBadge("var(--color-surface-2)", episode.codec)}
-        {episode.hdr &&
-          miniBadge(
-            "color-mix(in srgb, var(--color-primary) 20%, var(--color-surface-2))",
-            episode.hdr,
-            "var(--color-primary)",
-          )}
-        {langs
-          .slice(0, 2)
-          .map((lang) =>
+      {!isMobile && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            justifyContent: "flex-end",
+          }}
+        >
+          {episode.release_type &&
             miniBadge(
-              LANG_COLORS[lang] ?? "var(--color-surface-2)",
-              lang,
+              RELEASE_TYPE_COLORS[episode.release_type] ?? "var(--color-surface)",
+              episode.release_type,
               "#fff",
-            ),
-          )}
-      </div>
+            )}
+          {episode.resolution &&
+            miniBadge("var(--color-surface-2)", episode.resolution)}
+          {episode.codec && miniBadge("var(--color-surface-2)", episode.codec)}
+          {episode.hdr &&
+            miniBadge(
+              "color-mix(in srgb, var(--color-primary) 20%, var(--color-surface-2))",
+              episode.hdr,
+              "var(--color-primary)",
+            )}
+          {langs
+            .slice(0, 2)
+            .map((lang) =>
+              miniBadge(
+                LANG_COLORS[lang] ?? "var(--color-surface-2)",
+                lang,
+                "#fff",
+              ),
+            )}
+        </div>
+      )}
 
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: isMobile ? 5 : 8 }}>
         <IconActionButton
           title={t(language, "library.fixMatch")}
           icon={Pencil}
@@ -591,6 +623,7 @@ function SeasonGroup({
   downloadMap,
   isDownloadPending,
   downloadedBadgeMap,
+  isMobile,
 }: {
   season: number | null;
   episodes: MediaItem[];
@@ -611,6 +644,7 @@ function SeasonGroup({
       debug?: string;
     }
   >;
+  isMobile: boolean;
 }) {
   const [open, setOpen] = useState(true);
 
@@ -800,6 +834,7 @@ function SeasonGroup({
                     downloadMap={downloadMap}
                     isDownloadPending={isDownloadPending}
                     downloadedBadgeMap={downloadedBadgeMap}
+                    isMobile={isMobile}
                   />
                 ))}
             </div>
@@ -856,6 +891,7 @@ export default function TVShowPanel({
   const [filterSeason, setFilterSeason] = useState("all");
   const [openingUrl, setOpeningUrl] = useState<string | null>(null);
   const [devChecking, setDevChecking] = useState(false);
+  const isMobile = useIsMobile();
 
   const handleOpenUrl = (url: string) => {
     setOpeningUrl(url);
@@ -1007,423 +1043,819 @@ export default function TVShowPanel({
           top: 0,
           right: 0,
           bottom: 0,
-          width: "min(920px, calc(100vw - 24px))",
+          width: isMobile ? "100vw" : "min(920px, calc(100vw - 24px))",
           background: "var(--color-bg)",
-          borderLeft:
-            "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+          borderLeft: isMobile
+            ? "none"
+            : "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
           boxShadow: "-4px 0 36px color-mix(in srgb, black 48%, transparent)",
           zIndex: "var(--z-tv-panel)",
           overflowY: "auto",
         }}
       >
-        <div
-          style={{
-            position: "relative",
-            overflow: "hidden",
-            borderBottom:
-              "1px solid color-mix(in srgb, var(--color-border) 65%, transparent)",
-          }}
-        >
-          {heroPoster && (
-            <div
-              style={{
-                position: "absolute",
-                inset: "1.4rem auto auto -4rem",
-                width: "min(42vw, 28rem)",
-                height: "20rem",
-                opacity: 0.16,
-                backgroundImage: `url(${heroPoster})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-                filter: "blur(42px) saturate(120%)",
-                transform: "scale(1.08)",
-                pointerEvents: "none",
-              }}
-            />
-          )}
-
-          <div
-            style={{
-              position: "absolute",
-              inset: "1.6rem -10% auto 22%",
-              height: "14rem",
-              background:
-                "radial-gradient(circle, color-mix(in srgb, var(--color-primary) 14%, transparent), transparent 72%)",
-              filter: "blur(10px)",
-              pointerEvents: "none",
-            }}
-          />
-
+        {isMobile ? (
+          /* ── Mobile hero: compact card ────────────────────────── */
           <div
             style={{
               position: "relative",
-              padding: "1.5rem 1.5rem 1.25rem",
-              display: "grid",
-              gridTemplateColumns: "minmax(180px, 220px) minmax(0, 1fr)",
-              gap: "1.4rem",
-              alignItems: "start",
+              overflow: "hidden",
+              borderBottom:
+                "1px solid color-mix(in srgb, var(--color-border) 65%, transparent)",
             }}
           >
-            <div>
+            {/* Blurred backdrop */}
+            {heroPoster && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  backgroundImage: `url(${heroPoster})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center top",
+                  filter: "blur(22px) saturate(130%)",
+                  transform: "scale(1.12)",
+                  opacity: 0.22,
+                  pointerEvents: "none",
+                }}
+              />
+            )}
+            {/* Gradient vignette */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background:
+                  "linear-gradient(to bottom, color-mix(in srgb, var(--color-bg) 20%, transparent) 0%, var(--color-bg) 82%)",
+                pointerEvents: "none",
+              }}
+            />
+
+            {/* Top row: poster + info + close */}
+            <div
+              style={{
+                position: "relative",
+                display: "flex",
+                gap: 12,
+                alignItems: "flex-start",
+                padding: "14px 14px 0",
+              }}
+            >
               {heroPoster ? (
                 <img
                   src={heroPoster}
                   alt={showTitle}
                   style={{
-                    width: "100%",
+                    width: 90,
                     aspectRatio: "2 / 3",
                     objectFit: "cover",
-                    borderRadius: "calc(var(--radius-lg) + 0.15rem)",
+                    borderRadius: "var(--radius-lg)",
                     boxShadow:
-                      "0 20px 46px color-mix(in srgb, black 34%, transparent)",
+                      "0 10px 30px color-mix(in srgb, black 55%, transparent)",
                     border:
-                      "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+                      "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
+                    flexShrink: 0,
                   }}
                 />
               ) : (
                 <div
                   style={{
-                    width: "100%",
+                    width: 90,
                     aspectRatio: "2 / 3",
-                    borderRadius: "calc(var(--radius-lg) + 0.15rem)",
+                    borderRadius: "var(--radius-lg)",
                     background: "var(--color-surface-2)",
                     border:
-                      "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+                      "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     color: "var(--color-text-muted)",
+                    flexShrink: 0,
                   }}
                 >
                   <Tv2
-                    size={38}
+                    size={28}
                     strokeWidth={1.8}
                     aria-hidden="true"
                     style={{ display: "block" }}
                   />
                 </div>
               )}
+
+              {/* Info */}
+              <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "0.09em",
+                    textTransform: "uppercase",
+                    color: "var(--color-text-muted)",
+                    marginBottom: 5,
+                  }}
+                >
+                  {t(language, "tv.show")}
+                </div>
+                <h2
+                  style={{
+                    margin: "0 0 8px",
+                    fontSize: "1.3rem",
+                    lineHeight: 1.18,
+                    letterSpacing: "-0.03em",
+                    color: "var(--color-text)",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
+                  {showTitle}
+                </h2>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {(show.tmdb_release_date || show.year) &&
+                    miniBadge(
+                      "color-mix(in srgb, var(--color-surface-2) 80%, transparent)",
+                      String(
+                        show.tmdb_release_date
+                          ? new Date(show.tmdb_release_date).getFullYear()
+                          : show.year,
+                      ),
+                    )}
+                  {show.tmdb_rating != null &&
+                    miniBadge(
+                      "color-mix(in srgb, var(--color-warning) 20%, transparent)",
+                      `★ ${show.tmdb_rating.toFixed(1)}`,
+                      "var(--color-warning)",
+                    )}
+                  {showGenres.slice(0, 2).map((g) =>
+                    miniBadge(
+                      "color-mix(in srgb, var(--color-teal) 14%, transparent)",
+                      g,
+                      "var(--color-teal)",
+                    ),
+                  )}
+                  {showBadge?.plexInLibrary && (
+                    <span
+                      title="In Plex"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "0.18rem 0.36rem",
+                        borderRadius: 6,
+                        background: "#282a2d",
+                        border: "1px solid #282a2d",
+                      }}
+                    >
+                      <PlexIcon size={12} />
+                    </span>
+                  )}
+                  {showBadge?.embyInLibrary && (
+                    <span
+                      title="In Emby"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "0.18rem 0.36rem",
+                        borderRadius: 6,
+                        background:
+                          "color-mix(in srgb, var(--color-border) 55%, transparent)",
+                        border:
+                          "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                      }}
+                    >
+                      <EmbyIcon size={12} />
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Close button */}
+              <IconActionButton
+                title={t(language, "tv.close")}
+                icon={X}
+                onClick={onClose}
+              />
             </div>
+
+            {/* Stats strip */}
+            <div
+              style={{
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "10px 14px 0",
+                fontSize: 12,
+                color: "var(--color-text-muted)",
+              }}
+            >
+              <span style={{ fontWeight: 700, color: "var(--color-text)" }}>
+                {actualSeasonCount}
+              </span>
+              <span>
+                {actualSeasonCount !== 1
+                  ? t(language, "tv.seasons").toLowerCase()
+                  : "temporada"}
+              </span>
+              <span style={{ color: "var(--color-border)", margin: "0 3px" }}>
+                ·
+              </span>
+              <span style={{ fontWeight: 700, color: "var(--color-text)" }}>
+                {allEpisodes.length}
+              </span>
+              <span>
+                {allEpisodes.length !== 1
+                  ? t(language, "tv.episodes").toLowerCase()
+                  : "episodio"}
+              </span>
+            </div>
+
+            {/* Overview — clamped to 3 lines */}
+            {showOverview && (
+              <p
+                style={{
+                  position: "relative",
+                  margin: 0,
+                  padding: "10px 14px 0",
+                  fontSize: "0.82rem",
+                  lineHeight: 1.6,
+                  color:
+                    "color-mix(in srgb, var(--color-text) 72%, var(--color-text-muted))",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
+              >
+                {showOverview}
+              </p>
+            )}
+
+            {/* Action bar */}
+            <div
+              style={{
+                position: "relative",
+                display: "flex",
+                gap: 8,
+                padding: "12px 14px 14px",
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <button
+                onClick={() => onFixMatch(filtered)}
+                disabled={filtered.length === 0}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "0.5rem 0.78rem",
+                  borderRadius: "var(--radius-full)",
+                  border:
+                    "1px solid color-mix(in srgb, var(--color-primary) 38%, transparent)",
+                  background:
+                    "color-mix(in srgb, var(--color-primary) 14%, transparent)",
+                  color:
+                    filtered.length === 0
+                      ? "var(--color-text-muted)"
+                      : "var(--color-primary)",
+                  cursor: filtered.length === 0 ? "default" : "pointer",
+                  opacity: filtered.length === 0 ? 0.5 : 1,
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                <Pencil
+                  size={13}
+                  strokeWidth={2.2}
+                  aria-hidden="true"
+                  style={{ display: "block" }}
+                />
+                {filtered.length === allEpisodes.length
+                  ? t(language, "tv.fixShow")
+                  : t(language, "tv.fixVisible")}
+              </button>
+              <button
+                onClick={() => handleOpenUrl(tmdbUrl)}
+                style={{
+                  ...externalLinkBtn,
+                  ...(openingUrl === tmdbUrl && { opacity: 0.6 }),
+                }}
+              >
+                {openingUrl === tmdbUrl ? "↗ …" : t(language, "detail.openTmdb")}
+              </button>
+              <button
+                onClick={() => handleOpenUrl(imdbUrl)}
+                style={{
+                  ...externalLinkBtn,
+                  ...(openingUrl === imdbUrl && { opacity: 0.6 }),
+                }}
+              >
+                {openingUrl === imdbUrl ? "↗ …" : t(language, "detail.openImdb")}
+              </button>
+              {show.tmdb_id != null &&
+                watchlistedTmdbIds &&
+                onAddToWatchlist && (
+                  <WatchlistButton
+                    tmdbId={show.tmdb_id}
+                    tmdbType="tv"
+                    title={showTitle}
+                    titleEn={
+                      show.tmdb_title_en ??
+                      show.tmdb_title ??
+                      show.title ??
+                      showTitle
+                    }
+                    poster={show.tmdb_poster}
+                    year={
+                      show.year ??
+                      (show.tmdb_release_date
+                        ? new Date(show.tmdb_release_date).getFullYear()
+                        : undefined)
+                    }
+                    language={language}
+                    watchlistedTmdbIds={watchlistedTmdbIds}
+                    onAdd={onAddToWatchlist}
+                    onNavigateToWatchlist={onOpenWatchlist}
+                  />
+                )}
+              <div style={{ marginLeft: "auto" }}>
+                <IconActionButton
+                  title={t(language, "tv.downloadAllVisible")}
+                  icon={Download}
+                  tone="primary"
+                  onClick={() => onDownloadSeason(downloadableFiltered)}
+                  disabled={downloadableFiltered.length === 0}
+                />
+              </div>
+            </div>
+
+            {showDevMeta && (
+              <div
+                style={{
+                  position: "relative",
+                  margin: "0 14px 14px",
+                  padding: "0.65rem 0.8rem",
+                  borderRadius: "var(--radius)",
+                  border:
+                    "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+                  background:
+                    "color-mix(in srgb, var(--color-surface-2) 72%, transparent)",
+                  fontFamily: "monospace",
+                  fontSize: 11,
+                  color: "var(--color-text-muted)",
+                  display: "grid",
+                  gap: 2,
+                }}
+              >
+                <div>debug.item_id: {show.id}</div>
+                <div>debug.tmdb_id: {show.tmdb_id ?? "-"}</div>
+                <div>debug.ftp_path: {show.ftp_path}</div>
+                {onDevCheckInLibrary && (
+                  <button
+                    onClick={() => {
+                      setDevChecking(true);
+                      onDevCheckInLibrary(show)
+                        .catch(() => {})
+                        .finally(() => setDevChecking(false));
+                    }}
+                    disabled={devChecking}
+                    style={{
+                      marginTop: 6,
+                      padding: "6px 9px",
+                      borderRadius: "var(--radius)",
+                      border:
+                        "1px solid color-mix(in srgb, var(--color-primary) 50%, transparent)",
+                      background:
+                        "color-mix(in srgb, var(--color-primary) 14%, transparent)",
+                      color: "var(--color-primary)",
+                      cursor: devChecking ? "default" : "pointer",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      width: "fit-content",
+                      opacity: devChecking ? 0.7 : 1,
+                    }}
+                  >
+                    {devChecking ? "Checking…" : "Check In Library (dev)"}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ── Desktop hero: full-width cinematic ──────────────── */
+          <div
+            style={{
+              position: "relative",
+              overflow: "hidden",
+              borderBottom:
+                "1px solid color-mix(in srgb, var(--color-border) 65%, transparent)",
+            }}
+          >
+            {heroPoster && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: "1.4rem auto auto -4rem",
+                  width: "min(42vw, 28rem)",
+                  height: "20rem",
+                  opacity: 0.16,
+                  backgroundImage: `url(${heroPoster})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                  filter: "blur(42px) saturate(120%)",
+                  transform: "scale(1.08)",
+                  pointerEvents: "none",
+                }}
+              />
+            )}
 
             <div
               style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "1rem",
-                minWidth: 0,
+                position: "absolute",
+                inset: "1.6rem -10% auto 22%",
+                height: "14rem",
+                background:
+                  "radial-gradient(circle, color-mix(in srgb, var(--color-primary) 14%, transparent), transparent 72%)",
+                filter: "blur(10px)",
+                pointerEvents: "none",
+              }}
+            />
+
+            <div
+              style={{
+                position: "relative",
+                padding: "1.5rem 1.5rem 1.25rem",
+                display: "grid",
+                gridTemplateColumns: "minmax(180px, 220px) minmax(0, 1fr)",
+                gap: "1.4rem",
+                alignItems: "start",
               }}
             >
+              <div>
+                {heroPoster ? (
+                  <img
+                    src={heroPoster}
+                    alt={showTitle}
+                    style={{
+                      width: "100%",
+                      aspectRatio: "2 / 3",
+                      objectFit: "cover",
+                      borderRadius: "calc(var(--radius-lg) + 0.15rem)",
+                      boxShadow:
+                        "0 20px 46px color-mix(in srgb, black 34%, transparent)",
+                      border:
+                        "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      aspectRatio: "2 / 3",
+                      borderRadius: "calc(var(--radius-lg) + 0.15rem)",
+                      background: "var(--color-surface-2)",
+                      border:
+                        "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--color-text-muted)",
+                    }}
+                  >
+                    <Tv2
+                      size={38}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                      style={{ display: "block" }}
+                    />
+                  </div>
+                )}
+              </div>
+
               <div
                 style={{
                   display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
+                  flexDirection: "column",
+                  gap: "1rem",
+                  minWidth: 0,
                 }}
               >
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      letterSpacing: "0.08em",
-                      textTransform: "uppercase",
-                      color: "var(--color-text-muted)",
-                      marginBottom: 8,
-                    }}
-                  >
-                    {t(language, "tv.show")}
-                  </div>
-                  <h2
-                    style={{
-                      margin: 0,
-                      fontSize: "clamp(2rem, 4vw, 2.8rem)",
-                      lineHeight: 0.98,
-                      letterSpacing: "-0.045em",
-                      color: "var(--color-text)",
-                    }}
-                  >
-                    {showTitle}
-                  </h2>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                  {show.tmdb_id != null &&
-                    watchlistedTmdbIds &&
-                    onAddToWatchlist && (
-                      <WatchlistButton
-                        tmdbId={show.tmdb_id}
-                        tmdbType="tv"
-                        title={showTitle}
-                        titleEn={
-                          show.tmdb_title_en ??
-                          show.tmdb_title ??
-                          show.title ??
-                          showTitle
-                        }
-                        poster={show.tmdb_poster}
-                        year={
-                          show.year ??
-                          (show.tmdb_release_date
-                            ? new Date(show.tmdb_release_date).getFullYear()
-                            : undefined)
-                        }
-                        language={language}
-                        watchlistedTmdbIds={watchlistedTmdbIds}
-                        onAdd={onAddToWatchlist}
-                        onNavigateToWatchlist={onOpenWatchlist}
-                      />
-                    )}
-                  <IconActionButton
-                    title={t(language, "tv.downloadAllVisible")}
-                    icon={Download}
-                    tone="primary"
-                    onClick={() => onDownloadSeason(downloadableFiltered)}
-                    disabled={downloadableFiltered.length === 0}
-                  />
-                  <IconActionButton
-                    title={t(language, "tv.close")}
-                    icon={X}
-                    onClick={onClose}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                <StatCard
-                  label={t(language, "tv.seasons")}
-                  value={String(actualSeasonCount || 0)}
-                />
-                <StatCard
-                  label={t(language, "tv.episodes")}
-                  value={String(allEpisodes.length)}
-                />
-                <StatCard
-                  label={t(language, "tv.groups")}
-                  value={String(
-                    new Set(
-                      allEpisodes.map(
-                        (ep) =>
-                          getGroupFolder(ep.ftp_path) ||
-                          t(language, "tv.unknownFolder"),
-                      ),
-                    ).size,
-                  )}
-                />
-                {show.tmdb_rating != null && (
-                  <StatCard label="TMDB" value={show.tmdb_rating.toFixed(1)} />
-                )}
-              </div>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {(show.tmdb_release_date || show.year) &&
-                  miniBadge(
-                    "color-mix(in srgb, var(--color-surface-2) 68%, transparent)",
-                    String(
-                      show.tmdb_release_date
-                        ? new Date(show.tmdb_release_date).getFullYear()
-                        : show.year,
-                    ),
-                  )}
-                {show.tmdb_rating != null &&
-                  miniBadge(
-                    "color-mix(in srgb, var(--color-primary) 18%, transparent)",
-                    `TMDB ${show.tmdb_rating.toFixed(1)}`,
-                    "var(--color-primary)",
-                  )}
-                {show.media_type &&
-                  miniBadge("var(--color-surface-2)", show.media_type)}
-                {showGenres.map((g) =>
-                  miniBadge(
-                    "color-mix(in srgb, var(--color-teal) 14%, transparent)",
-                    g,
-                    "var(--color-teal)",
-                  ),
-                )}
-                {showBadge?.plexInLibrary && (
-                  <span
-                    title="In Plex"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "0.2rem",
-                      borderRadius: 6,
-                      background: "#282a2d",
-                      border: "1px solid #282a2d",
-                    }}
-                  >
-                    <PlexIcon size={14} />
-                  </span>
-                )}
-                {showBadge?.embyInLibrary && (
-                  <span
-                    title="In Emby"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "0.2rem",
-                      borderRadius: 6,
-                      background:
-                        "color-mix(in srgb, var(--color-border) 55%, transparent)",
-                      border:
-                        "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
-                    }}
-                  >
-                    <EmbyIcon size={14} />
-                  </span>
-                )}
-              </div>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                <button
-                  onClick={() => onFixMatch(filtered)}
-                  disabled={filtered.length === 0}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "0.78rem 1rem",
-                    borderRadius: "var(--radius-full)",
-                    border:
-                      "1px solid color-mix(in srgb, var(--color-primary) 38%, transparent)",
-                    background:
-                      "color-mix(in srgb, var(--color-primary) 14%, transparent)",
-                    color:
-                      filtered.length === 0
-                        ? "var(--color-text-muted)"
-                        : "var(--color-primary)",
-                    cursor: filtered.length === 0 ? "default" : "pointer",
-                    opacity: filtered.length === 0 ? 0.5 : 1,
-                    fontSize: 13,
-                    fontWeight: 700,
-                  }}
-                >
-                  <Pencil
-                    size={15}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                    style={{ display: "block" }}
-                  />
-                  {filtered.length === allEpisodes.length
-                    ? t(language, "tv.fixShow")
-                    : t(language, "tv.fixVisible")}
-                </button>
-                <button
-                  onClick={() => handleOpenUrl(tmdbUrl)}
-                  style={{
-                    ...externalLinkBtn,
-                    ...(openingUrl === tmdbUrl && { opacity: 0.6 }),
-                  }}
-                  title={tmdbUrl}
-                >
-                  {openingUrl === tmdbUrl
-                    ? "↗ …"
-                    : t(language, "detail.openTmdb")}
-                </button>
-                <button
-                  onClick={() => handleOpenUrl(imdbUrl)}
-                  style={{
-                    ...externalLinkBtn,
-                    ...(openingUrl === imdbUrl && { opacity: 0.6 }),
-                  }}
-                  title={imdbUrl}
-                >
-                  {openingUrl === imdbUrl
-                    ? "↗ …"
-                    : t(language, "detail.openImdb")}
-                </button>
-              </div>
-
-              {showDevMeta && (
                 <div
                   style={{
-                    marginTop: 2,
-                    padding: "0.65rem 0.8rem",
-                    borderRadius: "var(--radius)",
-                    border:
-                      "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
-                    background:
-                      "color-mix(in srgb, var(--color-surface-2) 72%, transparent)",
-                    fontFamily: "monospace",
-                    fontSize: 11,
-                    color: "var(--color-text-muted)",
-                    display: "grid",
-                    gap: 2,
-                    maxWidth: "100%",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "flex-start",
                   }}
                 >
-                  <div>debug.item_id: {show.id}</div>
-                  <div>debug.ftp_path: {show.ftp_path}</div>
-                  <div>debug.filename: {show.filename}</div>
-                  <div>debug.imdb_id: {show.imdb_id ?? "-"}</div>
-                  <div>debug.tmdb_id: {show.tmdb_id ?? "-"}</div>
-                  <div>
-                    debug.badge.in_library:{" "}
-                    {showBadge?.inEmby ? "true" : "false"}
-                  </div>
-                  <div>
-                    debug.badge.plex:{" "}
-                    {showBadge?.plexInLibrary ? "true" : "false"}
-                  </div>
-                  <div>
-                    debug.badge.emby:{" "}
-                    {showBadge?.embyInLibrary ? "true" : "false"}
-                  </div>
-                  <div>debug.badge.cache: {showBadge?.cache ?? "-"}</div>
-                  <div>debug.badge.reason: {showBadge?.debug ?? "-"}</div>
-                  {onDevCheckInLibrary && (
-                    <button
-                      onClick={() => {
-                        setDevChecking(true);
-                        onDevCheckInLibrary(show)
-                          .catch(() => {})
-                          .finally(() => setDevChecking(false));
-                      }}
-                      disabled={devChecking}
+                  <div style={{ minWidth: 0 }}>
+                    <div
                       style={{
-                        marginTop: 6,
-                        padding: "6px 9px",
-                        borderRadius: "var(--radius)",
-                        border:
-                          "1px solid color-mix(in srgb, var(--color-primary) 50%, transparent)",
-                        background:
-                          "color-mix(in srgb, var(--color-primary) 14%, transparent)",
-                        color: "var(--color-primary)",
-                        cursor: devChecking ? "default" : "pointer",
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 700,
-                        width: "fit-content",
-                        opacity: devChecking ? 0.7 : 1,
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                        color: "var(--color-text-muted)",
+                        marginBottom: 8,
                       }}
                     >
-                      {devChecking ? "Checking…" : "Check In Library (dev)"}
-                    </button>
+                      {t(language, "tv.show")}
+                    </div>
+                    <h2
+                      style={{
+                        margin: 0,
+                        fontSize: "clamp(2rem, 4vw, 2.8rem)",
+                        lineHeight: 0.98,
+                        letterSpacing: "-0.045em",
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      {showTitle}
+                    </h2>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                    {show.tmdb_id != null &&
+                      watchlistedTmdbIds &&
+                      onAddToWatchlist && (
+                        <WatchlistButton
+                          tmdbId={show.tmdb_id}
+                          tmdbType="tv"
+                          title={showTitle}
+                          titleEn={
+                            show.tmdb_title_en ??
+                            show.tmdb_title ??
+                            show.title ??
+                            showTitle
+                          }
+                          poster={show.tmdb_poster}
+                          year={
+                            show.year ??
+                            (show.tmdb_release_date
+                              ? new Date(show.tmdb_release_date).getFullYear()
+                              : undefined)
+                          }
+                          language={language}
+                          watchlistedTmdbIds={watchlistedTmdbIds}
+                          onAdd={onAddToWatchlist}
+                          onNavigateToWatchlist={onOpenWatchlist}
+                        />
+                      )}
+                    <IconActionButton
+                      title={t(language, "tv.downloadAllVisible")}
+                      icon={Download}
+                      tone="primary"
+                      onClick={() => onDownloadSeason(downloadableFiltered)}
+                      disabled={downloadableFiltered.length === 0}
+                    />
+                    <IconActionButton
+                      title={t(language, "tv.close")}
+                      icon={X}
+                      onClick={onClose}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  <StatCard
+                    label={t(language, "tv.seasons")}
+                    value={String(actualSeasonCount || 0)}
+                  />
+                  <StatCard
+                    label={t(language, "tv.episodes")}
+                    value={String(allEpisodes.length)}
+                  />
+                  <StatCard
+                    label={t(language, "tv.groups")}
+                    value={String(
+                      new Set(
+                        allEpisodes.map(
+                          (ep) =>
+                            getGroupFolder(ep.ftp_path) ||
+                            t(language, "tv.unknownFolder"),
+                        ),
+                      ).size,
+                    )}
+                  />
+                  {show.tmdb_rating != null && (
+                    <StatCard
+                      label="TMDB"
+                      value={show.tmdb_rating.toFixed(1)}
+                    />
                   )}
                 </div>
-              )}
 
-              {showOverview && (
-                <p
-                  style={{
-                    margin: 0,
-                    maxWidth: "72ch",
-                    fontSize: "0.96rem",
-                    lineHeight: 1.7,
-                    color:
-                      "color-mix(in srgb, var(--color-text) 78%, var(--color-text-muted))",
-                  }}
-                >
-                  {showOverview}
-                </p>
-              )}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {(show.tmdb_release_date || show.year) &&
+                    miniBadge(
+                      "color-mix(in srgb, var(--color-surface-2) 68%, transparent)",
+                      String(
+                        show.tmdb_release_date
+                          ? new Date(show.tmdb_release_date).getFullYear()
+                          : show.year,
+                      ),
+                    )}
+                  {show.tmdb_rating != null &&
+                    miniBadge(
+                      "color-mix(in srgb, var(--color-primary) 18%, transparent)",
+                      `TMDB ${show.tmdb_rating.toFixed(1)}`,
+                      "var(--color-primary)",
+                    )}
+                  {show.media_type &&
+                    miniBadge("var(--color-surface-2)", show.media_type)}
+                  {showGenres.map((g) =>
+                    miniBadge(
+                      "color-mix(in srgb, var(--color-teal) 14%, transparent)",
+                      g,
+                      "var(--color-teal)",
+                    ),
+                  )}
+                  {showBadge?.plexInLibrary && (
+                    <span
+                      title="In Plex"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "0.2rem",
+                        borderRadius: 6,
+                        background: "#282a2d",
+                        border: "1px solid #282a2d",
+                      }}
+                    >
+                      <PlexIcon size={14} />
+                    </span>
+                  )}
+                  {showBadge?.embyInLibrary && (
+                    <span
+                      title="In Emby"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "0.2rem",
+                        borderRadius: 6,
+                        background:
+                          "color-mix(in srgb, var(--color-border) 55%, transparent)",
+                        border:
+                          "1px solid color-mix(in srgb, var(--color-border) 80%, transparent)",
+                      }}
+                    >
+                      <EmbyIcon size={14} />
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  <button
+                    onClick={() => onFixMatch(filtered)}
+                    disabled={filtered.length === 0}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "0.78rem 1rem",
+                      borderRadius: "var(--radius-full)",
+                      border:
+                        "1px solid color-mix(in srgb, var(--color-primary) 38%, transparent)",
+                      background:
+                        "color-mix(in srgb, var(--color-primary) 14%, transparent)",
+                      color:
+                        filtered.length === 0
+                          ? "var(--color-text-muted)"
+                          : "var(--color-primary)",
+                      cursor: filtered.length === 0 ? "default" : "pointer",
+                      opacity: filtered.length === 0 ? 0.5 : 1,
+                      fontSize: 13,
+                      fontWeight: 700,
+                    }}
+                  >
+                    <Pencil
+                      size={15}
+                      strokeWidth={2.2}
+                      aria-hidden="true"
+                      style={{ display: "block" }}
+                    />
+                    {filtered.length === allEpisodes.length
+                      ? t(language, "tv.fixShow")
+                      : t(language, "tv.fixVisible")}
+                  </button>
+                  <button
+                    onClick={() => handleOpenUrl(tmdbUrl)}
+                    style={{
+                      ...externalLinkBtn,
+                      ...(openingUrl === tmdbUrl && { opacity: 0.6 }),
+                    }}
+                    title={tmdbUrl}
+                  >
+                    {openingUrl === tmdbUrl
+                      ? "↗ …"
+                      : t(language, "detail.openTmdb")}
+                  </button>
+                  <button
+                    onClick={() => handleOpenUrl(imdbUrl)}
+                    style={{
+                      ...externalLinkBtn,
+                      ...(openingUrl === imdbUrl && { opacity: 0.6 }),
+                    }}
+                    title={imdbUrl}
+                  >
+                    {openingUrl === imdbUrl
+                      ? "↗ …"
+                      : t(language, "detail.openImdb")}
+                  </button>
+                </div>
+
+                {showDevMeta && (
+                  <div
+                    style={{
+                      marginTop: 2,
+                      padding: "0.65rem 0.8rem",
+                      borderRadius: "var(--radius)",
+                      border:
+                        "1px solid color-mix(in srgb, var(--color-border) 78%, transparent)",
+                      background:
+                        "color-mix(in srgb, var(--color-surface-2) 72%, transparent)",
+                      fontFamily: "monospace",
+                      fontSize: 11,
+                      color: "var(--color-text-muted)",
+                      display: "grid",
+                      gap: 2,
+                      maxWidth: "100%",
+                    }}
+                  >
+                    <div>debug.item_id: {show.id}</div>
+                    <div>debug.ftp_path: {show.ftp_path}</div>
+                    <div>debug.filename: {show.filename}</div>
+                    <div>debug.imdb_id: {show.imdb_id ?? "-"}</div>
+                    <div>debug.tmdb_id: {show.tmdb_id ?? "-"}</div>
+                    <div>
+                      debug.badge.in_library:{" "}
+                      {showBadge?.inEmby ? "true" : "false"}
+                    </div>
+                    <div>
+                      debug.badge.plex:{" "}
+                      {showBadge?.plexInLibrary ? "true" : "false"}
+                    </div>
+                    <div>
+                      debug.badge.emby:{" "}
+                      {showBadge?.embyInLibrary ? "true" : "false"}
+                    </div>
+                    <div>debug.badge.cache: {showBadge?.cache ?? "-"}</div>
+                    <div>debug.badge.reason: {showBadge?.debug ?? "-"}</div>
+                    {onDevCheckInLibrary && (
+                      <button
+                        onClick={() => {
+                          setDevChecking(true);
+                          onDevCheckInLibrary(show)
+                            .catch(() => {})
+                            .finally(() => setDevChecking(false));
+                        }}
+                        disabled={devChecking}
+                        style={{
+                          marginTop: 6,
+                          padding: "6px 9px",
+                          borderRadius: "var(--radius)",
+                          border:
+                            "1px solid color-mix(in srgb, var(--color-primary) 50%, transparent)",
+                          background:
+                            "color-mix(in srgb, var(--color-primary) 14%, transparent)",
+                          color: "var(--color-primary)",
+                          cursor: devChecking ? "default" : "pointer",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          width: "fit-content",
+                          opacity: devChecking ? 0.7 : 1,
+                        }}
+                      >
+                        {devChecking ? "Checking…" : "Check In Library (dev)"}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {showOverview && (
+                  <p
+                    style={{
+                      margin: 0,
+                      maxWidth: "72ch",
+                      fontSize: "0.96rem",
+                      lineHeight: 1.7,
+                      color:
+                        "color-mix(in srgb, var(--color-text) 78%, var(--color-text-muted))",
+                    }}
+                  >
+                    {showOverview}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div
           style={{
-            padding: "1rem 1.5rem 1.5rem",
+            padding: isMobile ? "0.75rem 0.75rem 1rem" : "1rem 1.5rem 1.5rem",
             display: "flex",
             flexDirection: "column",
             gap: 16,
@@ -1633,6 +2065,7 @@ export default function TVShowPanel({
                 downloadMap={downloadMap}
                 isDownloadPending={isDownloadPending}
                 downloadedBadgeMap={downloadedBadgeMap}
+                isMobile={isMobile}
               />
             ))
           )}

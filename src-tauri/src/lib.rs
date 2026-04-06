@@ -176,6 +176,10 @@ pub fn run() {
             commands::delete_upload,
             commands::clear_completed_uploads,
             commands::test_telegram,
+            commands::get_telegram_sub,
+            commands::link_telegram_bot,
+            commands::update_telegram_sub,
+            commands::revoke_telegram_sub,
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {

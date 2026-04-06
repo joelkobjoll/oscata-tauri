@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 import type { UseWatchlistReturn } from "./useWatchlist";
 import type { WatchlistItem } from "./types";
 import type { AppLanguage } from "../../utils/mediaLanguage";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import WatchlistCard from "./WatchlistCard";
 import WatchlistAddModal from "./WatchlistAddModal";
 import WatchlistDetailPanel from "./WatchlistDetailPanel";
@@ -25,6 +27,7 @@ export default function WatchlistTab({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<WatchlistItem | null>(null);
+  const isMobile = useIsMobile();
 
   const filtered = useMemo(() => {
     return watchlist.items.filter((item) => {
@@ -77,37 +80,70 @@ export default function WatchlistTab({
       <div
         style={{
           display: "flex",
+          flexDirection: "column",
           gap: 8,
-          alignItems: "center",
-          flexWrap: "wrap",
-          padding: "12px 16px",
+          padding: isMobile ? "10px 1.5rem" : "12px 16px",
           borderBottom: "1px solid var(--color-border)",
           background: "var(--color-surface)",
+          flexShrink: 0,
         }}
       >
-        {/* Search */}
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={language === "es" ? "Filtrar…" : "Filter…"}
-          style={{
-            flex: 1,
-            minWidth: 160,
-            background: "var(--color-surface-2)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius)",
-            color: "var(--color-text)",
-            padding: "6px 12px",
-            fontSize: 13,
-            outline: "none",
-          }}
-        />
+        {/* Row 1: Search + Add */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={language === "es" ? "Buscar…" : "Search…"}
+            style={{
+              flex: 1,
+              background: "var(--color-surface-2)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius)",
+              color: "var(--color-text)",
+              padding: "7px 12px",
+              fontSize: 13,
+              outline: "none",
+            }}
+          />
+          <button
+            onClick={() => setShowAdd(true)}
+            style={{
+              background: "var(--color-primary)",
+              border: "none",
+              color: "#fff",
+              borderRadius: "var(--radius)",
+              padding: isMobile ? "7px 10px" : "7px 14px",
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            <Plus size={14} strokeWidth={2.5} aria-hidden="true" />
+            {!isMobile && (language === "es" ? "Agregar" : "Add")}
+          </button>
+        </div>
 
-        {/* Type filter */}
-        <div style={{ display: "flex", gap: 4 }}>
+        {/* Row 2: Filter chips — scrollable on mobile */}
+        <div
+          style={
+            {
+              display: "flex",
+              gap: 6,
+              overflowX: "auto",
+              scrollbarWidth: "none",
+              WebkitOverflowScrolling: "touch",
+            } as React.CSSProperties
+          }
+        >
+          {/* Type chips */}
           {(["all", "movie", "tv"] as TypeFilter[]).map((t) => (
             <button
-              key={t}
+              key={`type-${t}`}
               onClick={() => setTypeFilter(t)}
               style={chipStyle(typeFilter === t)}
             >
@@ -122,13 +158,18 @@ export default function WatchlistTab({
                   : "TV"}
             </button>
           ))}
-        </div>
-
-        {/* Status filter */}
-        <div style={{ display: "flex", gap: 4 }}>
+          <div
+            style={{
+              width: 1,
+              background: "var(--color-border)",
+              flexShrink: 0,
+              margin: "0 2px",
+            }}
+          />
+          {/* Status chips */}
           {(["all", "pending", "available"] as StatusFilter[]).map((s) => (
             <button
-              key={s}
+              key={`status-${s}`}
               onClick={() => setStatusFilter(s)}
               style={chipStyle(statusFilter === s)}
             >
@@ -146,27 +187,16 @@ export default function WatchlistTab({
             </button>
           ))}
         </div>
-
-        <button
-          onClick={() => setShowAdd(true)}
-          style={{
-            background: "var(--color-primary)",
-            border: "none",
-            color: "#fff",
-            borderRadius: "var(--radius)",
-            padding: "6px 14px",
-            cursor: "pointer",
-            fontSize: 13,
-            fontWeight: 500,
-            whiteSpace: "nowrap",
-          }}
-        >
-          + {language === "es" ? "Agregar" : "Add"}
-        </button>
       </div>
 
       {/* Grid */}
-      <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: isMobile ? "12px 1.5rem 80px" : 16,
+        }}
+      >
         {watchlist.loading ? (
           <div
             style={{
@@ -223,8 +253,10 @@ export default function WatchlistTab({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-              gap: 16,
+              gridTemplateColumns: isMobile
+                ? "repeat(3, 1fr)"
+                : "repeat(auto-fill, minmax(140px, 1fr))",
+              gap: isMobile ? 10 : 16,
             }}
           >
             {filtered.map((item) => (

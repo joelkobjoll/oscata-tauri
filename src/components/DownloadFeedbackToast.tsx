@@ -16,8 +16,10 @@ type DownloadFeedbackDetail = {
 
 export default function DownloadFeedbackToast({
   language,
+  onGoToDownloads,
 }: {
   language: AppLanguage;
+  onGoToDownloads?: () => void;
 }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
@@ -77,6 +79,7 @@ export default function DownloadFeedbackToast({
                 "0 18px 40px color-mix(in srgb, black 24%, transparent)",
               backdropFilter: "blur(16px) saturate(150%)",
               WebkitBackdropFilter: "blur(16px) saturate(150%)",
+              pointerEvents: "auto",
             }}
           >
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
@@ -143,6 +146,32 @@ export default function DownloadFeedbackToast({
                     ? t(language, "downloads.toastErrorBody")
                     : t(language, "downloads.toastQueuedBody")}
                 </div>
+                {!isError && onGoToDownloads && (
+                  <button
+                    onClick={onGoToDownloads}
+                    style={{
+                      marginTop: 8,
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "var(--color-primary)",
+                      textDecoration: "none",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      transition: "opacity 0.15s ease",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.opacity = "0.75")
+                    }
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+                  >
+                    {t(language, "downloads.toastGoToDownloads")}
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { isTauri } from "../lib/transport";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import type { DownloadItem } from "../hooks/useDownloads";
 import type { MediaItem } from "../hooks/useIndexing";
@@ -92,6 +93,7 @@ export default function DetailPanel({
   const [showFix, setShowFix] = useState(false);
   const [openingUrl, setOpeningUrl] = useState<string | null>(null);
   const [devChecking, setDevChecking] = useState(false);
+  const isMobile = useIsMobile();
 
   const handleOpenUrl = (url: string) => {
     setOpeningUrl(url);
@@ -176,12 +178,13 @@ export default function DetailPanel({
           top: 0,
           right: 0,
           bottom: 0,
-          width: 500,
+          width: isMobile ? "100vw" : 500,
           background: "var(--color-bg)",
           zIndex: "var(--z-detail-panel)",
           overflowY: "auto",
-          borderLeft:
-            "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
+          borderLeft: isMobile
+            ? "none"
+            : "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
           boxShadow: "-4px 0 32px color-mix(in srgb, black 50%, transparent)",
           display: "flex",
           flexDirection: "column",
@@ -246,9 +249,11 @@ export default function DetailPanel({
           style={{
             background:
               "linear-gradient(135deg, var(--color-surface) 0%, var(--color-bg) 100%)",
-            padding: "1.5rem",
+            padding: isMobile ? "1rem" : "1.5rem",
             display: "flex",
             gap: "1rem",
+            flexDirection: isMobile ? "column" : "row",
+            alignItems: isMobile ? "center" : "flex-start",
             borderBottom:
               "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
           }}
@@ -258,7 +263,7 @@ export default function DetailPanel({
               src={`${TMDB_IMG}${posterPath}`}
               alt={title}
               style={{
-                width: 110,
+                width: isMobile ? 110 : 110,
                 aspectRatio: "2/3",
                 borderRadius: "var(--radius-lg)",
                 objectFit: "cover",
@@ -294,22 +299,31 @@ export default function DetailPanel({
               flexDirection: "column",
               gap: 8,
               minWidth: 0,
+              width: isMobile ? "100%" : undefined,
             }}
           >
             <h2
               style={{
                 margin: 0,
-                fontSize: "1.1rem",
+                fontSize: isMobile ? "1.25rem" : "1.1rem",
                 fontWeight: 700,
                 color: "var(--color-text)",
                 lineHeight: 1.3,
                 letterSpacing: "-0.02em",
+                textAlign: isMobile ? "center" : "left",
               }}
             >
               {title}
             </h2>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.4rem",
+                justifyContent: isMobile ? "center" : "flex-start",
+              }}
+            >
               {(item.tmdb_release_date || item.year) && (
                 <span style={metaPill}>
                   {item.tmdb_release_date
@@ -682,7 +696,7 @@ export default function DetailPanel({
           >
             {t(language, "detail.links")}
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               onClick={() => handleOpenUrl(tmdbUrl)}
               style={{

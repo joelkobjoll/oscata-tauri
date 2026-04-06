@@ -84,6 +84,7 @@ fn build_router(state: AppState) -> Router {
     let api = Router::new()
         // public
         .route("/health",                  get(handlers::health))
+        .route("/manifest.webmanifest",    get(handlers::pwa_manifest))
         .route("/server-info",             get(handlers::server_info))
         .route("/settings/has-config",     get(handlers::has_config_handler))
         .route("/auth/bootstrap",          post(handlers::auth_bootstrap))
@@ -121,6 +122,8 @@ fn build_router(state: AppState) -> Router {
         .route("/watchlist/{tmdb_id}/coverage", get(handlers::watchlist_coverage_handler))
         .route("/quality-profiles",             get(handlers::get_profiles_handler).post(handlers::create_profile_handler))
         .route("/quality-profiles/{id}",        put(handlers::update_profile_handler).delete(handlers::delete_profile_handler))
+        .route("/notifications/subscription",         get(handlers::get_telegram_sub_handler).put(handlers::update_telegram_sub_handler).delete(handlers::revoke_telegram_sub_handler))
+        .route("/notifications/subscription/link",      post(handlers::link_telegram_bot_handler))
         .layer(auth_mw)
         .with_state(api_state);
 

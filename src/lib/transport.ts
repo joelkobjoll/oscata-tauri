@@ -129,6 +129,22 @@ const WEB_ROUTES: Record<
     },
   ],
   delete_quality_profile: (a) => ["DELETE", `/quality-profiles/${a.id}`],
+  // Personal Telegram subscription
+  get_telegram_sub: ["GET", "/notifications/subscription"],
+  link_telegram_bot: (a) => [
+    "POST",
+    "/notifications/subscription/link",
+    { bot_token: a.botToken },
+  ],
+  update_telegram_sub: (a) => [
+    "PUT",
+    "/notifications/subscription",
+    {
+      notify_new_content: a.notifyNewContent,
+      notify_downloads: a.notifyDownloads,
+    },
+  ],
+  revoke_telegram_sub: ["DELETE", "/notifications/subscription"],
 };
 
 export async function call<T>(

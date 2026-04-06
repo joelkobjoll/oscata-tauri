@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { call } from "../../lib/transport";
+import { call, isTauri } from "../../lib/transport";
 import type { UploadItem } from "./types";
 
 export function useUploads() {
@@ -48,6 +48,8 @@ export function useUploads() {
   };
 
   useEffect(() => {
+    if (!isTauri()) return;
+
     call<UploadItem[]>("get_uploads")
       .then((items) => setUploads(applySnapshotSpeed(items)))
       .catch(console.error);

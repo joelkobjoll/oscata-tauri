@@ -24,6 +24,32 @@ pub async fn health() -> &'static str {
     "ok"
 }
 
+pub async fn pwa_manifest(State(state): State<AppState>) -> impl axum::response::IntoResponse {
+    let cfg = state.db.load_webgui_config().unwrap_or_default();
+    let start_url = if cfg.app_url.is_empty() { "/".to_string() } else { cfg.app_url.clone() };
+    let manifest = serde_json::json!({
+        "name": cfg.pwa_name,
+        "short_name": cfg.pwa_short_name,
+        "description": "Gestiona tu biblioteca de medios FTP con enriquecimiento TMDB y cola de descargas.",
+        "start_url": start_url,
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "natural",
+        "background_color": "#0d0d0f",
+        "theme_color": "#7c6ef7",
+        "categories": ["entertainment"],
+        "icons": [
+            { "src": "/icons/icon-128.png", "sizes": "128x128", "type": "image/png" },
+            { "src": "/icons/icon-256.png", "sizes": "256x256", "type": "image/png" },
+            { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+        ]
+    });
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/manifest+json")],
+        manifest.to_string(),
+    )
+}
+
 pub async fn server_info(State(state): State<AppState>) -> ApiResult<Json<ServerInfoResponse>> {
     let cfg = state.db.load_webgui_config().map_err(ApiError::from)?;
     let has_config = state.db.has_config().unwrap_or(false);
@@ -36,6 +62,7 @@ pub async fn server_info(State(state): State<AppState>) -> ApiResult<Json<Server
         otp_enabled: cfg.otp_enabled,
         has_config,
         bootstrap_required,
+        version: env!("CARGO_PKG_VERSION").to_string(),
     }))
 }
 
@@ -713,7 +740,7 @@ pub async fn create_profile_handler(
         &body.preferred_release_types,
         body.min_size_gb,
         body.max_size_gb,
-    ).map_err(ApiError::from)?;;
+    ).map_err(ApiError::from)?;
     Ok(Json(profile))
 }
 
@@ -795,4 +822,74 @@ pub async fn send_otp_email(cfg: &crate::db::WebGuiConfig, to: &str, code: &str)
 
     mailer.send(email).await.map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ─── Personal Telegram subscription handlers ───────────────────────────────────
+
+/// GET /notifications/subscription — returns the calling user's subscription, if any.
+pub async fn get_telegram_sub_handler(
+    AuthUser(user): AuthUser,
+    State(state): State<AppState>,
+) -> ApiResult<Json<Value>> {
+    let sub = state.db.get_telegram_sub(user.id).map_err(ApiError::from)?;
+    Ok(Json(serde_json::to_value(sub).unwrap_or(Value::Null)))
+}
+
+/// POST /notifications/subscription/link — discovers chat_id via the user's bot and creates the subscription.
+pub async fn link_telegram_bot_handler(
+    AuthUser(user): AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<LinkTelegramBotRequest>,
+) -> ApiResult<Json<Value>> {
+    let chat_id = crate::telegram::get_updates_first_chat_id(&body.bot_token)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| {
+            ApiError::bad_request(
+                "Aún no hay mensajes en tu bot. Abre Telegram, busca tu bot y envíale cualquier mensaje, luego vuelve a intentarlo.",
+            )
+        })?;
+
+    state
+        .db
+        .upsert_telegram_sub(user.id, &body.bot_token, &chat_id, true, true)
+        .map_err(ApiError::from)?;
+
+    let welcome = "✅ <b>Oscata</b> — Tu bot está vinculado correctamente.\n\nA partir de ahora recibirás avisos personales aquí.";
+    crate::telegram::send_message(&body.bot_token, &chat_id, welcome)
+        .await
+        .ok();
+
+    let sub = state.db.get_telegram_sub(user.id).map_err(ApiError::from)?;
+    Ok(Json(serde_json::to_value(sub).unwrap_or(Value::Null)))
+}
+
+/// PUT /notifications/subscription — updates notification preferences.
+pub async fn update_telegram_sub_handler(
+    AuthUser(user): AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<UpdateTelegramSubRequest>,
+) -> ApiResult<Json<Value>> {
+    let sub = state
+        .db
+        .get_telegram_sub(user.id)
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found("No hay suscripción activa."))?;
+    state
+        .db
+        .upsert_telegram_sub(user.id, &sub.telegram_bot_token, &sub.telegram_chat_id, body.notify_new_content, body.notify_downloads)
+        .map_err(ApiError::from)?;
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+/// DELETE /notifications/subscription — removes the subscription.
+pub async fn revoke_telegram_sub_handler(
+    AuthUser(user): AuthUser,
+    State(state): State<AppState>,
+) -> ApiResult<Json<Value>> {
+    state
+        .db
+        .delete_telegram_sub(user.id)
+        .map_err(ApiError::from)?;
+    Ok(Json(serde_json::json!({"ok": true})))
 }

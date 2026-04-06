@@ -70,7 +70,7 @@ fn default_close_to_tray() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WebGuiConfig {
     pub enabled: bool,
     pub host: String,
@@ -83,6 +83,9 @@ pub struct WebGuiConfig {
     pub smtp_user: String,
     pub smtp_pass: String,
     pub smtp_from: String,
+    pub pwa_name: String,
+    pub pwa_short_name: String,
+    pub pwa_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,6 +94,16 @@ pub struct WebUser {
     pub email: String,
     pub role: String,
     pub is_active: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramSub {
+    pub user_id: i64,
+    pub telegram_bot_token: String,
+    pub telegram_chat_id: String,
+    pub notify_new_content: bool,
+    pub notify_downloads: bool,
     pub created_at: String,
 }
 
@@ -602,6 +615,30 @@ impl Db {
                  ELSE 1
                END
              WHERE profile_id = 1;",
+        ).ok();
+
+        // Personal Telegram subscription tables
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS telegram_subscriptions (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id              INTEGER UNIQUE NOT NULL DEFAULT 0,
+                telegram_bot_token   TEXT    NOT NULL DEFAULT '',
+                telegram_chat_id     TEXT    NOT NULL,
+                notify_new_content   INTEGER NOT NULL DEFAULT 1,
+                notify_downloads     INTEGER NOT NULL DEFAULT 1,
+                created_at           TEXT    NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS telegram_verify_tokens (
+                token      TEXT    PRIMARY KEY,
+                user_id    INTEGER NOT NULL DEFAULT 0,
+                chat_id    TEXT    NOT NULL,
+                expires_at TEXT    NOT NULL
+             );",
+        ).ok();
+        // Additive migration: add telegram_bot_token column if it doesn't exist yet
+        conn.execute(
+            "ALTER TABLE telegram_subscriptions ADD COLUMN telegram_bot_token TEXT NOT NULL DEFAULT ''",
+            [],
         ).ok();
 
         Ok(())
@@ -1414,6 +1451,9 @@ impl Db {
         self.save_app_value("webgui_smtp_user", &c.smtp_user)?;
         self.save_app_value("webgui_smtp_pass", &c.smtp_pass)?;
         self.save_app_value("webgui_smtp_from", &c.smtp_from)?;
+        self.save_app_value("webgui_pwa_name", &c.pwa_name)?;
+        self.save_app_value("webgui_pwa_short_name", &c.pwa_short_name)?;
+        self.save_app_value("webgui_pwa_enabled", if c.pwa_enabled { "1" } else { "0" })?;
         Ok(())
     }
 
@@ -1445,6 +1485,9 @@ impl Db {
             smtp_user:    str_val("webgui_smtp_user"),
             smtp_pass:    str_val("webgui_smtp_pass"),
             smtp_from:    str_val("webgui_smtp_from"),
+            pwa_name:     { let v = str_val("webgui_pwa_name"); if v.is_empty() { "Oscata".into() } else { v } },
+            pwa_short_name: { let v = str_val("webgui_pwa_short_name"); if v.is_empty() { "Oscata".into() } else { v } },
+            pwa_enabled:  bool_val("webgui_pwa_enabled"),
         })
     }
 
@@ -2643,6 +2686,148 @@ impl Db {
         conn.execute("DELETE FROM quality_profiles WHERE id=?1", params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    // ── Telegram personal subscriptions ──────────────────────────────────────
+
+    pub fn get_telegram_sub(&self, user_id: i64) -> Result<Option<TelegramSub>, String> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT user_id, telegram_bot_token, telegram_chat_id, notify_new_content, notify_downloads, created_at
+                 FROM telegram_subscriptions WHERE user_id=?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query(params![user_id]).map_err(|e| e.to_string())?;
+        if let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            Ok(Some(TelegramSub {
+                user_id: row.get(0).map_err(|e| e.to_string())?,
+                telegram_bot_token: row.get(1).map_err(|e| e.to_string())?,
+                telegram_chat_id: row.get(2).map_err(|e| e.to_string())?,
+                notify_new_content: row.get::<_, i64>(3).map_err(|e| e.to_string())? != 0,
+                notify_downloads: row.get::<_, i64>(4).map_err(|e| e.to_string())? != 0,
+                created_at: row.get(5).map_err(|e| e.to_string())?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn upsert_telegram_sub(
+        &self,
+        user_id: i64,
+        bot_token: &str,
+        chat_id: &str,
+        notify_new_content: bool,
+        notify_downloads: bool,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO telegram_subscriptions
+                 (user_id, telegram_bot_token, telegram_chat_id, notify_new_content, notify_downloads, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(user_id) DO UPDATE SET
+                 telegram_bot_token = excluded.telegram_bot_token,
+                 telegram_chat_id   = excluded.telegram_chat_id,
+                 notify_new_content = excluded.notify_new_content,
+                 notify_downloads   = excluded.notify_downloads",
+            params![
+                user_id,
+                bot_token,
+                chat_id,
+                notify_new_content as i64,
+                notify_downloads as i64,
+                now,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn delete_telegram_sub(&self, user_id: i64) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM telegram_subscriptions WHERE user_id=?1",
+            params![user_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Returns all active personal subscribers (for broadcast notifications).
+    pub fn list_telegram_subs(&self) -> Result<Vec<TelegramSub>, String> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT user_id, telegram_bot_token, telegram_chat_id, notify_new_content, notify_downloads, created_at
+                 FROM telegram_subscriptions",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(TelegramSub {
+                    user_id: row.get(0)?,
+                    telegram_bot_token: row.get(1)?,
+                    telegram_chat_id: row.get(2)?,
+                    notify_new_content: row.get::<_, i64>(3)? != 0,
+                    notify_downloads: row.get::<_, i64>(4)? != 0,
+                    created_at: row.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    // ── Telegram verify tokens ────────────────────────────────────────────────
+
+    pub fn create_telegram_verify_token(
+        &self,
+        token: &str,
+        user_id: i64,
+        chat_id: &str,
+        expires_at: &str,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        // Clean up old tokens for this user first
+        conn.execute(
+            "DELETE FROM telegram_verify_tokens WHERE user_id=?1",
+            params![user_id],
+        )
+        .ok();
+        conn.execute(
+            "INSERT INTO telegram_verify_tokens (token, user_id, chat_id, expires_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![token, user_id, chat_id, expires_at],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Validates the token. Returns the chat_id and user_id if valid and not expired.
+    pub fn consume_telegram_verify_token(
+        &self,
+        token: &str,
+    ) -> Result<Option<(i64, String)>, String> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        let result: rusqlite::Result<Option<(i64, String)>> = conn
+            .query_row(
+                "SELECT user_id, chat_id FROM telegram_verify_tokens
+                 WHERE token=?1 AND expires_at > ?2",
+                params![token, now],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional();
+        let opt = result.map_err(|e| e.to_string())?;
+        if opt.is_some() {
+            conn.execute(
+                "DELETE FROM telegram_verify_tokens WHERE token=?1",
+                params![token],
+            )
+            .ok();
+        }
+        Ok(opt)
     }
 }
 

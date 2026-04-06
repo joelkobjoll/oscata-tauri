@@ -1,0 +1,32 @@
+{
+    "name": "Oscata",
+    "short_name": "Oscata",
+    "description": "Gestiona tu biblioteca de medios FTP con enriquecimiento TMDB y cola de descargas.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "natural",
+    "background_color": "#0d0d0f",
+    "theme_color": "#7c6ef7",
+    "categories": [
+        "entertainment"
+    ],
+    "icons": [
+        {
+            "src": "/icons/icon-128.png",
+            "sizes": "128x128",
+            "type": "image/png"
+        },
+        {
+            "src": "/icons/icon-256.png",
+            "sizes": "256x256",
+            "type": "image/png"
+        },
+        {
+            "src": "/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}

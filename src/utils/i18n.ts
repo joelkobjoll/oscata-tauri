@@ -327,6 +327,10 @@ const messages = {
     es: "La descarga fue enviada a la cola.",
     en: "The download was added to the queue.",
   },
+  "downloads.toastGoToDownloads": {
+    es: "Ver descargas →",
+    en: "View downloads →",
+  },
   "downloads.toastErrorTitle": {
     es: "Error al agregar descarga",
     en: "Download failed",
@@ -897,6 +901,21 @@ const messages = {
     en: "Failed to initialize WebGUI",
   },
 
+  "settings.pwaTitle": {
+    es: "App instalable (PWA)",
+    en: "Installable App (PWA)",
+  },
+  "settings.pwaDescription": {
+    es: "Permite instalar Oscata como aplicación nativa en dispositivos móviles y escritorio desde el navegador.",
+    en: "Allow Oscata to be installed as a native app on mobile and desktop from the browser.",
+  },
+  "settings.pwaName": { es: "Nombre completo de la app", en: "Full app name" },
+  "settings.pwaShortName": { es: "Nombre corto", en: "Short name" },
+  "settings.pwaShortNameHelp": {
+    es: "Máximo 12 caracteres. Se muestra bajo el icono en la pantalla de inicio.",
+    en: "Max 12 characters. Shown under the icon on the home screen.",
+  },
+
   "toast.tmdb": { es: "Enriqueciendo", en: "Enriching" },
   "toast.tmdbTitle": {
     es: "Enriqueciendo metadatos",
@@ -1078,13 +1097,19 @@ const messages = {
   "upload.status.done": { es: "Completada", en: "Done" },
   "upload.status.error": { es: "Error", en: "Error" },
   "upload.status.cancelled": { es: "Cancelada", en: "Cancelled" },
-  "upload.filenamePreview": { es: "Vista previa del nombre", en: "Filename preview" },
+  "upload.filenamePreview": {
+    es: "Vista previa del nombre",
+    en: "Filename preview",
+  },
   "upload.stepSelect": { es: "Seleccionar", en: "Select" },
   "upload.stepAnalyse": { es: "Analizar", en: "Analyse" },
   "upload.stepConfigure": { es: "Configurar", en: "Configure" },
   "upload.next": { es: "Siguiente", en: "Next" },
   "upload.back": { es: "Atrás", en: "Back" },
-  "upload.noFilesSelected": { es: "No has seleccionado ningún archivo.", en: "No files selected." },
+  "upload.noFilesSelected": {
+    es: "No has seleccionado ningún archivo.",
+    en: "No files selected.",
+  },
   "upload.retry": { es: "Reintentar", en: "Retry" },
   "upload.cancel": { es: "Cancelar", en: "Cancel" },
   "upload.delete": { es: "Eliminar", en: "Delete" },
@@ -1098,7 +1123,10 @@ const messages = {
   "telegram.token": { es: "Token del bot", en: "Bot token" },
   "telegram.tokenPlaceholder": { es: "123456:ABCdef…", en: "123456:ABCdef…" },
   "telegram.chatId": { es: "Chat ID / canal", en: "Chat ID / channel" },
-  "telegram.chatIdPlaceholder": { es: "@micanal o -100123456789", en: "@mychannel or -100123456789" },
+  "telegram.chatIdPlaceholder": {
+    es: "@micanal o -100123456789",
+    en: "@mychannel or -100123456789",
+  },
   "telegram.test": { es: "Probar", en: "Test" },
   "telegram.testing": { es: "Probando…", en: "Testing…" },
   "telegram.ok": { es: "Mensaje enviado", en: "Message sent" },

@@ -117,6 +117,7 @@ pub struct ServerInfoResponse {
     pub otp_enabled: bool,
     pub has_config: bool,
     pub bootstrap_required: bool,
+    pub version: String,
 }
 
 // ── TMDB ─────────────────────────────────────────────────────────────────────
@@ -189,4 +190,16 @@ pub struct UpdateQualityProfileRequest {
     pub max_size_gb: Option<f64>,
 }
 
+// ─── Telegram personal subscription DTOs ──────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct LinkTelegramBotRequest {
+    pub bot_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateTelegramSubRequest {
+    pub notify_new_content: bool,
+    pub notify_downloads: bool,
+}
 

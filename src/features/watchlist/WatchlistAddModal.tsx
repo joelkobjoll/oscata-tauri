@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Search } from "lucide-react";
 import { call } from "../../lib/transport";
 import type { AppLanguage } from "../../utils/mediaLanguage";
 import { t } from "../../utils/i18n";
 import type { AddWatchlistParams } from "./types";
 import { useQualityProfiles } from "./useQualityProfiles";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import Toggle from "../../components/Toggle";
 import { formSelectStandard } from "../../lib/formStyles";
 
@@ -47,6 +49,7 @@ export default function WatchlistAddModal({
   const [profileId, setProfileId] = useState<number>(0);
   const [adding, setAdding] = useState(false);
   const { profiles } = useQualityProfiles();
+  const isMobile = useIsMobile();
   const inputRef = useRef<HTMLInputElement>(null);
 
   // When profiles load, default to the first available profile.
@@ -132,28 +135,50 @@ export default function WatchlistAddModal({
         backdropFilter: "blur(4px)",
         zIndex: 1000,
         display: "flex",
-        alignItems: "center",
+        alignItems: isMobile ? "flex-end" : "center",
         justifyContent: "center",
-        padding: 16,
+        padding: isMobile ? 0 : 16,
       }}
     >
       <div
         style={{
           background: "var(--color-surface)",
           border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
+          borderRadius: isMobile
+            ? "var(--radius-lg) var(--radius-lg) 0 0"
+            : "var(--radius-lg)",
           width: "100%",
-          maxWidth: 600,
-          maxHeight: "85vh",
+          maxWidth: isMobile ? "100%" : 600,
+          maxHeight: isMobile ? "88vh" : "85vh",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
         }}
       >
+        {/* Drag handle on mobile */}
+        {isMobile && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              padding: "10px 0 4px",
+            }}
+          >
+            <div
+              style={{
+                width: 36,
+                height: 4,
+                borderRadius: 2,
+                background: "var(--color-border)",
+              }}
+            />
+          </div>
+        )}
+
         {/* Header */}
         <div
           style={{
-            padding: "16px 20px",
+            padding: isMobile ? "10px 20px 14px" : "16px 20px",
             borderBottom: "1px solid var(--color-border)",
             display: "flex",
             alignItems: "center",
@@ -344,13 +369,14 @@ export default function WatchlistAddModal({
             <div
               style={{
                 padding: "12px 16px",
-                display: "flex",
-                gap: 8,
                 borderBottom: "1px solid var(--color-border)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
               }}
             >
-              {/* Type toggle */}
-              <div style={{ display: "flex", gap: 4 }}>
+              {/* Type chips */}
+              <div style={{ display: "flex", gap: 6 }}>
                 {(["movie", "tv"] as const).map((mt) => (
                   <button
                     key={mt}
@@ -370,24 +396,39 @@ export default function WatchlistAddModal({
                 ))}
               </div>
 
-              <input
-                ref={inputRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={handleKey}
-                placeholder={t(language, "watchlist.searchPlaceholder")}
-                style={searchInput}
-              />
-
-              <button
-                onClick={() => void search()}
-                disabled={loading}
-                style={primaryBtn}
-              >
-                {loading
-                  ? t(language, "watchlist.searching")
-                  : t(language, "watchlist.search")}
-              </button>
+              {/* Search row: full-width input + button */}
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ position: "relative", flex: 1 }}>
+                  <Search
+                    size={15}
+                    style={{
+                      position: "absolute",
+                      left: 10,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "var(--color-text-muted)",
+                      pointerEvents: "none",
+                    }}
+                  />
+                  <input
+                    ref={inputRef}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={handleKey}
+                    placeholder={t(language, "watchlist.searchPlaceholder")}
+                    style={{ ...searchInput, paddingLeft: 32 }}
+                  />
+                </div>
+                <button
+                  onClick={() => void search()}
+                  disabled={loading}
+                  style={primaryBtn}
+                >
+                  {loading
+                    ? t(language, "watchlist.searching")
+                    : t(language, "watchlist.search")}
+                </button>
+              </div>
             </div>
 
             {error && (

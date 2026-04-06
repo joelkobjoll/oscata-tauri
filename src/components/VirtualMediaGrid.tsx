@@ -53,7 +53,7 @@ export default function VirtualMediaGrid({
       style={{
         flex: 1,
         overflowY: "auto",
-        padding: "1.5rem 1.5rem 6.5rem 1rem",
+        padding: "1.5rem 1.5rem 6.5rem 1.5rem",
       }}
     >
       <div
