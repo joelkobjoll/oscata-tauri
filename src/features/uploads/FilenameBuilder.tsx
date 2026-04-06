@@ -36,11 +36,12 @@ const RESOLUTIONS = ["", "2160p", "1080p", "720p", "480p"];
 const CODECS = ["", "HEVC", "AVC", "AV1", "VP9", "MPEG2"];
 const AUDIO_CODECS = [
   "",
-  "DTS-HD MA",
-  "DTS-HD",
-  "DTS",
+  "TrueHD Atmos",
   "TrueHD",
-  "Atmos",
+  "DTS-HD MA",
+  "DTS:X",
+  "DTS-HD HRA",
+  "DTS",
   "EAC3",
   "AC3",
   "AAC",

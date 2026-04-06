@@ -43,6 +43,7 @@ struct FfprobeOutput {
 struct FfprobeStream {
     codec_type: Option<String>,
     codec_name: Option<String>,
+    profile: Option<String>,
     width: Option<u32>,
     height: Option<u32>,
     color_transfer: Option<String>,
@@ -290,8 +291,35 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
             let lang = s.tags.as_ref().and_then(|t| t.language.clone())
                 .map(|l| l.to_lowercase())
                 .filter(|l| l != "und" && !l.is_empty());
+            // Distinguish DTS variants and TrueHD+Atmos using the profile field
+            // (ffprobe always reports codec_name="dts" for all DTS variants, and
+            //  codec_name="truehd" for both TrueHD and TrueHD+Atmos).
+            let codec = match s.codec_name.as_deref() {
+                Some(cn) => {
+                    let base = normalize_audio_codec(cn);
+                    let profile_up = s.profile.as_deref()
+                        .map(|p| p.to_uppercase())
+                        .unwrap_or_default();
+                    if base == "DTS" {
+                        if profile_up.contains("DTS-HD MA") || profile_up.contains("DTS HD MA") {
+                            "DTS-HD MA".to_string()
+                        } else if profile_up.contains("DTS:X") || profile_up.contains("DTS-X") {
+                            "DTS:X".to_string()
+                        } else if profile_up.contains("DTS-HD HRA") {
+                            "DTS-HD HRA".to_string()
+                        } else {
+                            base
+                        }
+                    } else if base == "TrueHD" && profile_up.contains("ATMOS") {
+                        "TrueHD Atmos".to_string()
+                    } else {
+                        base
+                    }
+                }
+                None => String::new(),
+            };
             AudioTrack {
-                codec: s.codec_name.clone().map(|c| normalize_audio_codec(&c)).unwrap_or_default(),
+                codec,
                 language: lang,
                 channels: s.channels,
                 is_default: s.disposition.default == 1,
@@ -414,28 +442,29 @@ fn resolution_from_path(path: &str) -> Option<String> {
 
 fn normalize_codec(codec: &str) -> String {
     match codec.to_lowercase().as_str() {
-        "hevc" | "h265" | "h.265"          => "HEVC".to_string(),
-        "h264" | "avc" | "h.264"           => "AVC".to_string(),
-        "av1"                               => "AV1".to_string(),
-        "vp9"                               => "VP9".to_string(),
-        "mpeg2video" | "mpeg2"              => "MPEG2".to_string(),
-        other                               => other.to_uppercase(),
+        "hevc"                    => "HEVC".to_string(),
+        "h264"                    => "AVC".to_string(),
+        "av1"                     => "AV1".to_string(),
+        "vp9"                     => "VP9".to_string(),
+        "mpeg2video" | "mpeg2"    => "MPEG2".to_string(),
+        "mpeg4"                   => "MPEG4".to_string(),
+        other                     => other.to_uppercase(),
     }
 }
 
 fn normalize_audio_codec(codec: &str) -> String {
     match codec.to_lowercase().as_str() {
-        "aac"                               => "AAC".to_string(),
-        "mp3"                               => "MP3".to_string(),
-        "ac3"                               => "AC3".to_string(),
-        "eac3"                              => "EAC3".to_string(),
-        "dts"                               => "DTS".to_string(),
-        "dts-hd" | "dts_hd" | "dts-hd ma"  => "DTS-HD MA".to_string(),
-        "truehd" | "mlp"                    => "TrueHD".to_string(),
-        "flac"                              => "FLAC".to_string(),
-        "opus"                              => "Opus".to_string(),
-        "vorbis"                            => "Vorbis".to_string(),
-        other                               => other.to_uppercase(),
+        "aac"            => "AAC".to_string(),
+        "mp3"            => "MP3".to_string(),
+        "ac3"            => "AC3".to_string(),
+        "eac3"           => "EAC3".to_string(),
+        "dts"            => "DTS".to_string(),  // profile check done at call site
+        "truehd" | "mlp" => "TrueHD".to_string(), // Atmos check done at call site
+        "flac"           => "FLAC".to_string(),
+        "opus"           => "Opus".to_string(),
+        "vorbis"         => "Vorbis".to_string(),
+        "wmav2" | "wmapro" | "wmalossless" => "WMA".to_string(),
+        other            => other.to_uppercase(),
     }
 }
 

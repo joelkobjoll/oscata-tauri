@@ -606,13 +606,16 @@ export default function AnalysisRow({
           .toLowerCase();
 
       let base = p.replace(/\/$/, "");
+      const segments = base.split("/");
 
-      // Check if the picked path already ends at a category folder level.
-      const alreadyHasCategory = norm(base).includes("temporad");
+      // Find which segment (if any) is the category folder ("Temporadas …").
+      const catIdx = segments.findIndex((seg) =>
+        norm(seg).includes("temporad"),
+      );
 
-      if (!alreadyHasCategory) {
-        // Derive the category name from the suggestion (last path segment of
-        // tv_category_dest), or fall back to the standard Spanish names.
+      if (catIdx === -1) {
+        // No category folder in path yet — inject it, then let auto-calc
+        // append the show/season folder.
         const catFromSuggestion = suggestion?.tv_category_dest
           ? (suggestion.tv_category_dest
               .trim()
@@ -627,10 +630,18 @@ export default function AnalysisRow({
           (isFullSeason ? "Temporadas Completadas" : "Temporadas en emision");
 
         base = `${base}/${catName}`;
+        setTvBaseOverride(base);
+        destTouchedRef.current = false; // let auto-calc append show folder
+      } else if (catIdx === segments.length - 1) {
+        // User picked the category folder itself — use as tvBase and let
+        // auto-calc append the show/season folder.
+        setTvBaseOverride(base);
+        destTouchedRef.current = false;
+      } else {
+        // User picked a folder INSIDE the category (show-level or deeper).
+        // Use it directly as the final destination — don't append anything.
+        handleDestChange(base);
       }
-
-      setTvBaseOverride(base);
-      destTouchedRef.current = false; // let the auto-calc effect run
     } else {
       handleDestChange(p);
     }
@@ -1623,8 +1634,8 @@ export default function AnalysisRow({
               </div>
             )}
 
-          {/* FilenameBuilder — only for non-TV files (TV files are auto-renamed via quality fields) */}
-          {rename && !isDirectory && mediaType !== "tv" && (
+          {/* FilenameBuilder — always shown for non-TV files; rename toggle controls filename output only */}
+          {!isDirectory && mediaType !== "tv" && (
             <FilenameBuilder
               info={info ?? null}
               mediaType={mediaType}
