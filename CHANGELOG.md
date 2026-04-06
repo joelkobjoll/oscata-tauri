@@ -1,5 +1,21 @@
 # Novedades de Oscata
 
+## Versión 0.8.0 — 6 de abril de 2026
+
+### 📱 Panel de series rediseñado para móvil
+
+El panel lateral de series tiene ahora un diseño completamente distinto en pantallas pequeñas. En móvil se muestra un encabezado compacto con el póster a la izquierda, el título recortado a tres líneas, el año, la puntuación y los géneros en una sola fila, y las estadísticas como texto en línea (`2 temporadas · 24 episodios`) en lugar de tarjetas grandes. El fondo del encabezado usa el propio póster desenfocado para dar profundidad sin ocupar espacio. La lista de episodios también se adapta: etiqueta compacta (`T01E01`), sin columna de badges ni nombre de archivo. En escritorio el diseño original no cambia.
+
+### 🗺️ Navegación móvil refinada
+
+La barra inferior de pestañas (Todo, Películas, Series, Descargas) funciona con más fiabilidad y muestra los contadores correctamente. Las secciones secundarias (Documentales, Lista de seguimiento, Subidas) se abren desde el menú de tres líneas en la esquina superior derecha. El cajón de filtros se desliza desde el lateral y se cierra solo al tocar fuera. El selector de idioma desaparece en móvil para liberar espacio en el encabezado.
+
+### 🎬 Panel de películas adaptado a móvil
+
+El panel lateral de películas ocupa ahora el ancho completo de la pantalla en móvil, con el póster y los metadatos apilados verticalmente y centrados, en lugar del diseño horizontal de escritorio.
+
+---
+
 ## Versión 0.7.7 — 6 de abril de 2026
 
 ### ⚡ Subidas más rápidas
