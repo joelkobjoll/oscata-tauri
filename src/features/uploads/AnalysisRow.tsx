@@ -110,6 +110,21 @@ function buildEpisodeFilename(
   return parts.join(".") + (ext ? `.${ext}` : "");
 }
 
+/** Normalise a raw resolution string (e.g. "4K", "4k", "UHD", "2160P") to
+ * one of the canonical lowercase dropdown values ("2160p", "1080p", etc.). */
+function normalizeResolution(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const u = raw.trim().toUpperCase();
+  if (u === "2160P" || u === "4K" || u === "UHD") return "2160p";
+  if (u === "1080P" || u === "1080I") return "1080p";
+  if (u === "720P" || u === "720I") return "720p";
+  if (u === "480P") return "480p";
+  // Already a canonical value?
+  const lower = raw.toLowerCase();
+  if (SEASON_RESOLUTIONS.includes(lower)) return lower;
+  return "";
+}
+
 /** Parse resolution, codec and source from a media filename or folder path. */
 function parseQualityFromFilename(name: string): {
   source: string;
@@ -117,8 +132,12 @@ function parseQualityFromFilename(name: string): {
   codec: string;
 } {
   const u = name.toUpperCase();
-  const resolution =
-    SEASON_RESOLUTIONS.find((r) => r && u.includes(r.toUpperCase())) ?? "";
+  // Check explicit tags first (4K / UHD map to 2160p)
+  let resolution = "";
+  if (/\b(2160P|4K|UHD)\b/.test(u)) resolution = "2160p";
+  else if (/\b(1080P|1080I)\b/.test(u)) resolution = "1080p";
+  else if (/\b720P\b/.test(u)) resolution = "720p";
+  else if (/\b480P\b/.test(u)) resolution = "480p";
   // Detect codec — handle x265/x264 aliases in addition to HEVC/AVC
   let codec = "";
   if (/\bHEVC\b|\bX265\b|\bH\.?265\b/.test(u)) codec = "HEVC";
@@ -271,7 +290,7 @@ export default function AnalysisRow({
     mapDetectedReleaseType(suggestion?.detected_release_type),
   );
   const [seasonResolution, setSeasonResolution] = useState(
-    info?.resolution ?? suggestion?.detected_resolution ?? "",
+    normalizeResolution(info?.resolution ?? suggestion?.detected_resolution),
   );
   const [seasonCodec, setSeasonCodec] = useState(
     info?.codec ?? suggestion?.detected_codec ?? "",
@@ -284,8 +303,11 @@ export default function AnalysisRow({
       .map((l) => l.toUpperCase())
       .join(", "),
   );
-  // Tracks whether the user has manually edited the FTP destination field
+  // Tracks whether the user has manually edited the FTP destination field (typing)
   const destTouchedRef = useRef(false);
+  // When the user picks a folder via FTP browser for a TV show, store it here so
+  // the auto-calc can still append the season folder on top.
+  const [tvBaseOverride, setTvBaseOverride] = useState<string | null>(null);
   // tmdbSelected is declared here (before the effects that reference it)
   const [tmdbSelected, setTmdbSelected] = useState<TmdbMatch | null>(tmdbMatch);
 
@@ -303,7 +325,7 @@ export default function AnalysisRow({
   useEffect(() => {
     if (mediaType !== "tv" || !info) return;
     if (info.resolution && !seasonResolution)
-      setSeasonResolution(info.resolution);
+      setSeasonResolution(normalizeResolution(info.resolution));
     if (info.codec && !seasonCodec) setSeasonCodec(info.codec);
     const l = info.languages
       .filter(Boolean)
@@ -366,8 +388,9 @@ export default function AnalysisRow({
       (suggestion?.detected_year
         ? String(suggestion.detected_year)
         : undefined);
-    // Prefer tv_category_dest (includes the category subfolder like "Temporadas en emision")
+    // Prefer: user-picked base (tvBaseOverride) > tv_category_dest > tv_dest
     const tvBase = (
+      tvBaseOverride ||
       suggestion?.tv_category_dest ||
       suggestion?.tv_dest ||
       ""
@@ -392,6 +415,7 @@ export default function AnalysisRow({
     seasonResolution,
     tmdbSelected,
     suggestion,
+    tvBaseOverride,
   ]);
 
   // For single TV episode files: auto-build and propagate the renamed filename.
@@ -534,6 +558,7 @@ export default function AnalysisRow({
 
   const handleMediaTypeChange = (t: MediaType) => {
     setMediaType(t);
+    setTvBaseOverride(null); // clear any manual FTP pick so auto-dest recalculates
     destTouchedRef.current = false; // allow auto-dest to recalculate for new type
     const baseDest =
       t === "tv" ? (suggestion?.tv_dest ?? "") : (suggestion?.movie_dest ?? "");
@@ -562,6 +587,54 @@ export default function AnalysisRow({
     }
     setDest(newDest);
     onDestChange(path, newDest);
+  };
+
+  // Called when the FTP dir browser selects a folder.
+  // For TV: treat the picked folder as the new tvBase and let auto-calc append
+  // the season folder on top. If the user picked a parent folder that doesn't
+  // already include the category subfolder (Temporadas en emision / Temporadas
+  // Completadas), we inject it automatically so it's always part of the path.
+  // ensure_remote_dir in ftp.rs will create any missing segments on upload.
+  // For movies/docs: set the destination directly.
+  const handleFtpPickerSelect = (p: string) => {
+    if (mediaType === "tv") {
+      // Normalise: strip diacritics + lowercase for keyword detection.
+      const norm = (s: string) =>
+        s
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
+
+      let base = p.replace(/\/$/, "");
+
+      // Check if the picked path already ends at a category folder level.
+      const alreadyHasCategory = norm(base).includes("temporad");
+
+      if (!alreadyHasCategory) {
+        // Derive the category name from the suggestion (last path segment of
+        // tv_category_dest), or fall back to the standard Spanish names.
+        const catFromSuggestion = suggestion?.tv_category_dest
+          ? (suggestion.tv_category_dest
+              .trim()
+              .replace(/\/$/, "")
+              .split("/")
+              .pop() ?? "")
+          : "";
+
+        const isFullSeason = isDirectory || tvUploadMode === "season";
+        const catName =
+          catFromSuggestion ||
+          (isFullSeason ? "Temporadas Completadas" : "Temporadas en emision");
+
+        base = `${base}/${catName}`;
+      }
+
+      setTvBaseOverride(base);
+      destTouchedRef.current = false; // let the auto-calc effect run
+    } else {
+      handleDestChange(p);
+    }
+    setShowBrowser(false);
   };
 
   return (
@@ -1326,8 +1399,17 @@ export default function AnalysisRow({
               {showBrowser && (
                 <FtpDirPicker
                   initialPath={(() => {
-                    // Open at the FTP root (parent of the first configured folder),
-                    // so the user sees all category folders immediately.
+                    // For TV: open at the category subfolder level (e.g. Temporadas en emision)
+                    // so the user can pick the correct base folder.
+                    if (mediaType === "tv") {
+                      const base =
+                        tvBaseOverride ||
+                        suggestion?.tv_category_dest ||
+                        suggestion?.tv_dest ||
+                        "";
+                      return base || dest || "/";
+                    }
+                    // For movies/docs: open at the parent of the configured dest.
                     const base =
                       suggestion?.movie_dest || suggestion?.tv_dest || "";
                     if (base) {
@@ -1336,10 +1418,7 @@ export default function AnalysisRow({
                     }
                     return dest || "/";
                   })()}
-                  onSelect={(p) => {
-                    handleDestChange(p);
-                    setShowBrowser(false);
-                  }}
+                  onSelect={handleFtpPickerSelect}
                   onClose={() => setShowBrowser(false)}
                 />
               )}
