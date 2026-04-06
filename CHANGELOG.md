@@ -1,5 +1,25 @@
 # Novedades de Oscata
 
+## Versión 0.7.2 — 6 de abril de 2026
+
+### 📣 Notificación Telegram: audio e subtítulos con detalle técnico completo
+
+La línea de audio ahora muestra cada pista por separado con su idioma, códec y configuración de canales (p. ej. «Español TrueHD 7.1 · Inglés AC3 5.1»). Los subtítulos se identifican individualmente e indican las pistas forzadas con «(forzado)». Los datos los extrae ffprobe durante el análisis y viajan hasta la notificación a través de toda la cadena de subida.
+
+### 🗂️ Episodios sueltos ya no aterrizan en «Temporadas completas»
+
+Al subir un episodio individual, la ruta de destino apuntaba a «Temporadas completas» si esa era la única carpeta de categoría presente en el servidor. Ahora la selección es estricta: cada tipo de contenido solo acepta su categoría correcta («Temporadas en emision» para episodios, «Temporadas completas» para temporadas enteras) y crea la carpeta si aún no existe.
+
+### 🎬 Extracción de pistas de subtítulos desde ffprobe
+
+El analizador local detecta y registra todas las pistas de subtítulos del archivo: códec, idioma, si es la pista por defecto y si es forzada. La información viaja hasta el modal de subida, donde el toggle de subtítulos se activa automáticamente cuando se detectan pistas disponibles.
+
+### 🔤 Diccionario de idiomas ampliado
+
+Se añaden los códigos ISO 639-2/B que usa ffprobe (FRE, GER, CHI, DUT, etc.) al diccionario de nombres en español, eliminando códigos sin traducir en notificaciones y etiquetas de la interfaz.
+
+---
+
 ## Versión 0.7.1 — 6 de abril de 2026
 
 ### 📂 Subidas de series: carpeta de categoría siempre presente
