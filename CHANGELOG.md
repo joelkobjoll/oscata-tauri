@@ -1,5 +1,13 @@
 # Novedades de Oscata
 
+## Versión 0.7.7 — 6 de abril de 2026
+
+### ⚡ Subidas más rápidas
+
+Se mejora el rendimiento de las subidas FTP con tres cambios apilados: el tamaño de cada fragmento pasa de 256 KB a 2 MB (menos llamadas asíncronas, mejor uso del buffer TCP), se activa `TCP_NODELAY` en el socket de datos (los fragmentos salen inmediatamente sin esperar a que el sistema acumule más bytes), y la lectura del disco y la escritura en la red se ejecutan en paralelo (mientras el fragmento actual viaja al servidor, el siguiente ya se está leyendo del disco). El progreso visible y el manejo de cancelaciones funcionan igual que antes.
+
+---
+
 ## Versión 0.7.6 — 6 de abril de 2026
 
 ### 🐛 Subida de archivos ya no se queda bloqueada al 100%

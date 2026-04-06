@@ -516,27 +516,49 @@ pub async fn upload_file(
         .await
         .map_err(|e| format!("Cannot start upload for {remote_full}: {}", clean_ftp_error(e)))?;
 
+    // Disable Nagle's algorithm so each chunk goes out immediately without
+    // waiting to coalesce with the next write.
+    data_stream.get_ref().set_nodelay(true).ok();
+
     use futures::io::AsyncWriteExt;
     use tokio::io::AsyncReadExt;
+
+    // Double-buffer: while writing chunk N to the socket, read chunk N+1 from
+    // disk in parallel.  This keeps both I/O paths busy and avoids idle time.
+    const CHUNK: usize = 2 * 1024 * 1024; // 2 MB
+    let mut buf_a = vec![0u8; CHUNK];
+    let mut buf_b = vec![0u8; CHUNK];
     let mut reader = local_file;
-    let mut buf = vec![0u8; 256 * 1024]; // 256 KB chunks
     let mut uploaded: u64 = 0;
     let mut cancelled = false;
 
+    // Prime the pump — read the first chunk before entering the loop.
+    let mut n = reader
+        .read(&mut buf_a)
+        .await
+        .map_err(|e| format!("Read error: {e}"))?;
+
     loop {
-        let n = reader.read(&mut buf).await.map_err(|e| format!("Read error: {e}"))?;
         if n == 0 {
             break;
         }
-        data_stream
-            .write_all(&buf[..n])
-            .await
-            .map_err(|e| format!("Write error for {remote_full}: {e}"))?;
+
+        // Send buf_a to FTP and simultaneously read the next chunk into buf_b.
+        let (write_res, read_res) = tokio::join!(
+            data_stream.write_all(&buf_a[..n]),
+            reader.read(&mut buf_b)
+        );
+
+        write_res.map_err(|e| format!("Write error for {remote_full}: {e}"))?;
         uploaded += n as u64;
+
         if !on_progress(uploaded, file_size) {
             cancelled = true;
             break;
         }
+
+        n = read_res.map_err(|e| format!("Read error: {e}"))?;
+        std::mem::swap(&mut buf_a, &mut buf_b);
     }
 
     if cancelled {
