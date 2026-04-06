@@ -1,5 +1,21 @@
 # Novedades de Oscata
 
+## Versión 0.7.3 — 6 de abril de 2026
+
+### 🎵 Códecs de audio detectados con precisión real
+
+Se corrige la detección de EAC3 (Dolby Digital Plus), que antes se mostraba igual que AC3 (Dolby Digital). Además se leen los perfiles que reporta ffprobe para distinguir DTS de DTS-HD MA, DTS:X y DTS-HD HRA, y TrueHD de TrueHD Atmos. El selector de códec de audio se actualiza para incluir todas estas variantes.
+
+### 📁 Selector FTP ya no duplica la carpeta de serie
+
+Al elegir una carpeta de serie existente con el explorador FTP, la ruta se usaba como base y el sistema volvía a añadir la carpeta de temporada encima, generando rutas duplicadas (p. ej. `Tracker (2024) S03/Tracker (2024) S03`). Ahora el explorador detecta si la carpeta seleccionada está al nivel de categoría, de serie o de temporada, y actúa en consecuencia: si ya es una carpeta de serie, se usa directamente como destino final.
+
+### 🔧 Campos de calidad visibles siempre para películas y documentales
+
+El bloque de campos de calidad (resolución, códec, audio, canales, idiomas) ahora se muestra siempre para películas y documentales, independientemente de si el toggle «Renombrar archivo» está activado. Antes desaparecía al desactivar el renombrado.
+
+---
+
 ## Versión 0.7.2 — 6 de abril de 2026
 
 ### 📣 Notificación Telegram: audio e subtítulos con detalle técnico completo
