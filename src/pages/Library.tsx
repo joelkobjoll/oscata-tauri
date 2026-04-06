@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { call, isTauri } from "../lib/transport";
+import { prefetchConfig } from "../lib/configCache";
 import { invoke } from "@tauri-apps/api/core";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { useIndexing, MediaItem } from "../hooks/useIndexing";
@@ -316,6 +317,11 @@ export default function Library({
   const paginationInitRef = useRef(false);
   const hasStartedInitialIndexRef = useRef(false);
   const badgeRequestIdRef = useRef(0);
+
+  // Pre-fetch config so Settings opens instantly when the user clicks the button.
+  useEffect(() => {
+    prefetchConfig();
+  }, []);
 
   useEffect(() => {
     if (!isTauri()) return;

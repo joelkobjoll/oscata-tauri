@@ -11,6 +11,7 @@ import {
   parseFolderTypes,
 } from "../utils/folderTypes";
 import { call, isTauri } from "../lib/transport";
+import { getConfig, invalidateConfig } from "../lib/configCache";
 import { useAuth } from "../lib/AuthContext";
 import { useTheme } from "../hooks/useTheme";
 import { GENRE_LIST } from "../utils/genres";
@@ -847,7 +848,7 @@ export default function Settings({
   const webMode = !isTauri();
 
   useEffect(() => {
-    call<Config>("get_config")
+    getConfig<Config>()
       .then((cfg) => {
         const base = cfg.download_folder ?? "";
         setForm({
@@ -1105,6 +1106,7 @@ export default function Settings({
       await call("set_max_concurrent", {
         max: form.max_concurrent_downloads ?? 2,
       });
+      invalidateConfig();
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } finally {

@@ -4,6 +4,7 @@ import Wizard from "./pages/Wizard";
 import Library from "./pages/Library";
 import type { AppLanguage } from "./utils/mediaLanguage";
 import { isTauri } from "./lib/transport";
+import { prefetchConfig } from "./lib/configCache";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 import { apiBase } from "./lib/transport";
 import Login from "./pages/Login";
@@ -52,6 +53,12 @@ function WebRouter() {
   );
   const [page, setPage] = useState<"library" | "settings" | "users">("library");
   const inviteToken = new URLSearchParams(window.location.search).get("invite");
+
+  useEffect(() => {
+    // Pre-fetch the app config so Settings opens instantly (avoids the
+    // full-screen loading overlay that shows while form === null).
+    prefetchConfig();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
