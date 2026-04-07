@@ -1,5 +1,27 @@
 # Novedades de Oscata
 
+## Versión 0.8.5 — 7 de abril de 2026
+
+### ⚡ Scroll de la biblioteca mucho más fluido
+
+El desplazamiento por la cuadrícula de películas y series era lento y los pósteres aparecían en negro al hacer scroll. Dos causas identificadas y corregidas:
+
+- **Badges con `backdrop-filter: blur`:** cada insignia superpuesta sobre los pósteres creaba una capa independiente en la GPU. Con 5-6 badges por tarjeta y 48 tarjetas por página se generaban cientos de capas simultáneas, saturando la memoria de textura y provocando que las imágenes se descargaran de la VRAM y volvieran a verse negras al volver a ellas. Se ha eliminado el filtro de desenfoque y sustituido por un fondo semitransparente con `color-mix`, visualmente idéntico y sin coste en GPU.
+- **`loading="lazy"` roto dentro de contenedores con scroll:** el atributo nativo de carga diferida usa la intersección con el *viewport* del documento, no con el contenedor con `overflow-y: auto`. Las imágenes visibles dentro del panel podían no llegar a pedirse nunca al servidor, dejando el `onLoad` sin disparar y el póster permanentemente en negro. Eliminado el atributo para que el navegador cargue las imágenes directamente.
+
+### 🖼️ Imágenes de póster más ligeras
+
+Las tarjetas tienen un ancho mínimo de 160 px. Se pedían imágenes de 300 px a la CDN de TMDB (el doble del tamaño necesario), duplicando el tiempo de descarga y el consumo de memoria de texturas. Cambiado el tamaño solicitado a `w185`, que es el escalón inmediatamente superior en TMDB y cubre perfectamente la resolución de las tarjetas incluso en pantallas de alta densidad.
+
+### 🧠 Optimizaciones de renderizado en la biblioteca
+
+- Las funciones auxiliares `getAddedTimestamp` y `deduplicateByTitle` se definían dentro del componente, generando nuevas referencias en cada renderizado e invalidando la memoización del listado filtrado. Movidas al ámbito de módulo.
+- El mapa de géneros parseado (`parsedGenreMap`) se memoiza ahora sobre la lista de items, eliminando múltiples llamadas a `JSON.parse` por cada interacción con los filtros.
+- El ordenamiento usa ahora una transformación de Schwartzian: las claves de ordenación se calculan una sola vez en O(N) antes de comparar, en lugar de recalcularse O(N log N) veces dentro del comparador.
+- `VirtualMediaGrid` está ahora envuelto en `memo()` para evitar rerenderizados cuando cambia estado no relacionado del componente padre.
+
+---
+
 ## Versión 0.8.4 — 7 de abril de 2026
 
 ### 🔗 Rutas de la web SPA devuelven 200 correctamente
