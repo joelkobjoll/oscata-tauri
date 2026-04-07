@@ -1,5 +1,13 @@
 # Novedades de Oscata
 
+## Versión 0.8.6 — 7 de abril de 2026
+
+### 🔧 Corregir match TMDB funcional de nuevo en la app de escritorio
+
+Al aplicar un match de TMDB desde la app de escritorio, Tauri devolvía el error «missing required key itemId». La causa era que el modal enviaba el parámetro con la clave `id` en lugar de `itemId`, que es el nombre que Tauri espera al convertir el parámetro Rust `item_id` a camelCase. Corregido tanto en el modal como en la capa de transporte web para que ambas superficies usen la misma clave.
+
+---
+
 ## Versión 0.8.5 — 7 de abril de 2026
 
 ### ⚡ Scroll de la biblioteca mucho más fluido
