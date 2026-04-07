@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useAuth } from "../lib/AuthContext";
-import { apiBase } from "../lib/transport";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, verifyOtp } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
@@ -17,16 +16,8 @@ export default function Login() {
     setError("");
     try {
       if (challengeId) {
-        // Verify OTP
-        const response = await fetch(`${apiBase}/auth/otp/verify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ challenge_id: challengeId, code: otp }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error ?? "Invalid code");
-        // Use regular login flow to store token
-        await login(email, password);
+        // Verify OTP and set session from the response token
+        await verifyOtp(challengeId, otp);
       } else {
         const result = await login(email, password);
         if (result.otpRequired && result.challengeId) {
@@ -99,10 +90,23 @@ export default function Login() {
     <div style={containerStyle}>
       <div style={cardStyle}>
         <div style={{ textAlign: "center", marginBottom: "1.75rem" }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: "var(--color-text)", letterSpacing: "-0.03em" }}>
+          <div
+            style={{
+              fontSize: 28,
+              fontWeight: 800,
+              color: "var(--color-text)",
+              letterSpacing: "-0.03em",
+            }}
+          >
             Oscata
           </div>
-          <div style={{ fontSize: 14, color: "var(--color-text-muted)", marginTop: 4 }}>
+          <div
+            style={{
+              fontSize: 14,
+              color: "var(--color-text-muted)",
+              marginTop: 4,
+            }}
+          >
             {challengeId ? "Enter your one-time code" : "Sign in to continue"}
           </div>
         </div>
@@ -140,23 +144,47 @@ export default function Login() {
             <div>
               <label style={labelStyle}>One-time code</label>
               <input
-                style={{ ...inputStyle, letterSpacing: "0.2em", textAlign: "center", fontSize: 20 }}
+                style={{
+                  ...inputStyle,
+                  letterSpacing: "0.2em",
+                  textAlign: "center",
+                  fontSize: 20,
+                }}
                 type="text"
                 inputMode="numeric"
                 maxLength={6}
                 value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                onChange={(e) =>
+                  setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+                }
                 required
                 autoFocus
               />
-              <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 6 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--color-text-muted)",
+                  marginTop: 6,
+                }}
+              >
                 Check your email for a 6-digit code. It expires in 5 minutes.
               </div>
             </div>
           )}
 
           {error && (
-            <div style={{ fontSize: 13, color: "var(--color-danger)", padding: "0.5rem 0.75rem", borderRadius: "var(--radius)", background: "color-mix(in srgb, var(--color-danger) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--color-danger) 30%, transparent)" }}>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--color-danger)",
+                padding: "0.5rem 0.75rem",
+                borderRadius: "var(--radius)",
+                background:
+                  "color-mix(in srgb, var(--color-danger) 12%, transparent)",
+                border:
+                  "1px solid color-mix(in srgb, var(--color-danger) 30%, transparent)",
+              }}
+            >
               {error}
             </div>
           )}
@@ -168,8 +196,16 @@ export default function Login() {
           {challengeId && (
             <button
               type="button"
-              style={{ ...btnStyle, background: "var(--color-surface-2)", color: "var(--color-text-muted)" }}
-              onClick={() => { setChallengeId(null); setOtp(""); setError(""); }}
+              style={{
+                ...btnStyle,
+                background: "var(--color-surface-2)",
+                color: "var(--color-text-muted)",
+              }}
+              onClick={() => {
+                setChallengeId(null);
+                setOtp("");
+                setError("");
+              }}
             >
               ← Back
             </button>

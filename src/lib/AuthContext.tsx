@@ -12,8 +12,17 @@ interface AuthState {
   /** null = not checked, false = unauthenticated, WebUser = authenticated */
   user: WebUser | null | false;
   token: string | null;
-  login: (email: string, password: string, otp?: string) => Promise<{ otpRequired?: boolean; challengeId?: string }>;
-  acceptInvite: (token: string, email: string, password: string) => Promise<void>;
+  login: (
+    email: string,
+    password: string,
+    otp?: string,
+  ) => Promise<{ otpRequired?: boolean; challengeId?: string }>;
+  verifyOtp: (challengeId: string, code: string) => Promise<void>;
+  acceptInvite: (
+    token: string,
+    email: string,
+    password: string,
+  ) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
 }
@@ -22,6 +31,7 @@ const AuthContext = createContext<AuthState>({
   user: null,
   token: null,
   login: async () => ({}),
+  verifyOtp: async () => {},
   acceptInvite: async () => {},
   logout: () => {},
   refresh: async () => {},
@@ -33,7 +43,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = async () => {
     const tok = getToken();
-    if (!tok) { setUser(false); return; }
+    if (!tok) {
+      setUser(false);
+      return;
+    }
     try {
       const response = await fetch(`${apiBase}/auth/me`, {
         headers: { Authorization: `Bearer ${tok}` },
@@ -51,9 +64,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  useEffect(() => { if (!isTauri()) { refresh(); } }, []);
+  useEffect(() => {
+    if (!isTauri()) {
+      refresh();
+    }
+  }, []);
 
-  const login = async (email: string, password: string, otpCode?: string): Promise<{ otpRequired?: boolean; challengeId?: string }> => {
+  const login = async (
+    email: string,
+    password: string,
+    otpCode?: string,
+  ): Promise<{ otpRequired?: boolean; challengeId?: string }> => {
     const response = await fetch(`${apiBase}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -68,10 +89,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const otpResp = await fetch(`${apiBase}/auth/otp/verify`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ challenge_id: data.challenge_id, code: otpCode }),
+          body: JSON.stringify({
+            challenge_id: data.challenge_id,
+            code: otpCode,
+          }),
         });
         const otpData = await otpResp.json();
-        if (!otpResp.ok) throw new Error(otpData.error ?? "OTP verification failed");
+        if (!otpResp.ok)
+          throw new Error(otpData.error ?? "OTP verification failed");
         setToken(otpData.token);
         setTokenState(otpData.token);
         setUser(otpData.user);
@@ -99,7 +124,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(false);
   };
 
-  const acceptInvite = async (token: string, email: string, password: string): Promise<void> => {
+  const verifyOtp = async (
+    challengeId: string,
+    code: string,
+  ): Promise<void> => {
+    const response = await fetch(`${apiBase}/auth/otp/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challenge_id: challengeId, code }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? "OTP verification failed");
+    setToken(data.token);
+    setTokenState(data.token);
+    setUser(data.user);
+  };
+
+  const acceptInvite = async (
+    token: string,
+    email: string,
+    password: string,
+  ): Promise<void> => {
     const response = await fetch(`${apiBase}/auth/invite/accept`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -117,7 +162,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, acceptInvite, logout, refresh }}>
+    <AuthContext.Provider
+      value={{ user, token, login, verifyOtp, acceptInvite, logout, refresh }}
+    >
       {children}
     </AuthContext.Provider>
   );
