@@ -1,5 +1,13 @@
 # Novedades de Oscata
 
+## Versión 0.8.3 — 7 de abril de 2026
+
+### ⚡ Refresco en tiempo real de la biblioteca web (WebSocket)
+
+La versión web ya no necesita esperar al siguiente ciclo de sondeo para enterarse de que hay contenido nuevo. Ahora el servidor mantiene una conexión WebSocket con cada pestaña abierta y envía el evento de indexación completada en el instante en que termina. La biblioteca se recarga automáticamente sin que tengas que hacer nada. El sondeo periódico sigue activo como respaldo para recuperar el estado en caso de reconexión.
+
+---
+
 ## Versión 0.8.2 — 7 de abril de 2026
 
 ### 🔄 Indexación automática funcional en modo sin interfaz (Docker)
