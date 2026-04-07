@@ -25,13 +25,13 @@ docker compose up -d
 
 ## Variables de entorno
 
-| Variable | Defecto | Descripción |
-|---|---|---|
-| `OSCATA_WEBGUI_PORT` | `47860` | Puerto de escucha interno |
-| `OSCATA_WEBGUI_EXPOSED_PORT` | `47860` | Puerto externo (útil detrás de un proxy inverso) |
-| `OSCATA_WEBGUI_HOST` | `0.0.0.0` | IP de escucha interna |
-| `OSCATA_WEBGUI_APP_URL` | — | URL externa para enlaces en emails |
-| `OSCATA_WEBGUI_OTP_ENABLED` | `0` | Activa OTP por email en el login |
+| Variable                     | Defecto   | Descripción                                      |
+| ---------------------------- | --------- | ------------------------------------------------ |
+| `OSCATA_WEBGUI_PORT`         | `47860`   | Puerto de escucha interno                        |
+| `OSCATA_WEBGUI_EXPOSED_PORT` | `47860`   | Puerto externo (útil detrás de un proxy inverso) |
+| `OSCATA_WEBGUI_HOST`         | `0.0.0.0` | IP de escucha interna                            |
+| `OSCATA_WEBGUI_APP_URL`      | —         | URL externa para enlaces en emails               |
+| `OSCATA_WEBGUI_OTP_ENABLED`  | `0`       | Activa OTP por email en el login                 |
 
 `OSCATA_WEBGUI=1` y `OSCATA_HEADLESS=1` ya están definidos en la imagen; no hace falta pasarlos.
 
@@ -42,15 +42,25 @@ Expón el puerto 47860 internamente y mapea el externo mediante `OSCATA_WEBGUI_E
 ```yaml
 environment:
   OSCATA_WEBGUI_PORT: "47860"
-  OSCATA_WEBGUI_EXPOSED_PORT: "80"  # o 443
+  OSCATA_WEBGUI_EXPOSED_PORT: "80" # o 443
 ```
+
+> **Importante:** Oscata usa WebSocket (`/api/ws`) para actualizar la biblioteca en tiempo real. Si usas nginx asegúrate de incluir las cabeceras de upgrade:
+>
+> ```nginx
+> proxy_http_version 1.1;
+> proxy_set_header Upgrade $http_upgrade;
+> proxy_set_header Connection "upgrade";
+> ```
+>
+> Caddy y Traefik gestionan esto automáticamente sin configuración adicional.
 
 ## Datos persistentes
 
-| Ruta en contenedor | Contenido |
-|---|---|
-| `/config` | Base de datos SQLite, configuración, caché |
-| `/downloads` | Archivos descargados |
+| Ruta en contenedor | Contenido                                  |
+| ------------------ | ------------------------------------------ |
+| `/config`          | Base de datos SQLite, configuración, caché |
+| `/downloads`       | Archivos descargados                       |
 
 ## Helper script
 
