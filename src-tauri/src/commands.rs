@@ -3587,18 +3587,18 @@ fn spawn_upload_job(
                                 q.group_status(group_id.as_deref().unwrap_or("")).1
                             };
                             let season_num = parsed.season.unwrap_or(1);
-                            let h = "📁 Nueva temporada";
+                            let h = "📁";
                             let e = format!("\n🗂 Temporada {season_num} · {ep_count} episodios");
                             (h, e)
                         } else {
                             let h = if inferred_media_type == "tv" {
                                 match (parsed.season, parsed.episode) {
-                                    (Some(_), Some(_)) => "📺 Nuevo episodio",
-                                    (Some(_), None)    => "📁 Nueva temporada",
-                                    _                  => "📺 Nueva serie",
+                                    (Some(_), Some(_)) => "📺",
+                                    (Some(_), None)    => "📁",
+                                    _                  => "📺",
                                 }
                             } else {
-                                "🎬 Nueva película"
+                                "🎬"
                             };
                             let e = match (parsed.season, parsed.episode) {
                                 (Some(s), Some(e)) => format!("\n🗂 T{s} · E{e:02}"),
@@ -3766,7 +3766,7 @@ fn spawn_upload_job(
                         };
 
                         let msg = format!(
-                            "{header} <b>{display_title}</b>{year_str}{episode_str}{specs_str}{audio_str}{subs_str}{size_str}{meta_inline_str}{date_country_str}{genres_str}{overview_str}{tmdb_link_str}\n\n📂 <code>{dest_display}</code>",
+                            "{header} <b><u>{display_title}</u></b>{year_str}{episode_str}{specs_str}{audio_str}{subs_str}{size_str}{meta_inline_str}{date_country_str}{genres_str}{overview_str}{tmdb_link_str}\n\n📂 <code>{dest_display}</code>",
                         );
 
                         let poster_url = tmdb_data.as_ref()
