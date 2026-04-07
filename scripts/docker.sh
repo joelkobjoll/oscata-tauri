@@ -70,15 +70,19 @@ ensure_dirs() {
 build_image() {
   require_docker
   echo "[oscata-docker] construyendo imagen ${IMAGE_NAME}"
-  # Use buildx + registry cache (ghcr.io) to skip re-compiling Rust deps when
-  # Cargo.toml/Cargo.lock haven't changed. Falls back silently on cache miss
-  # (e.g. first run or when not logged in to ghcr.io).
-  local CACHE_IMAGE="${REGISTRY_CACHE:-ghcr.io/joelkobjoll/oscata-buildcache}"
+  local extra_args=()
+  # Pull registry cache only when REGISTRY_CACHE is explicitly set
+  # (e.g. on CI or when logged in to ghcr.io). Omitting it avoids a noisy
+  # "ERROR importing cache manifest" warning on self-hosted servers.
+  if [[ -n "${REGISTRY_CACHE:-}" ]]; then
+    extra_args+=(--cache-from "type=registry,ref=${REGISTRY_CACHE}")
+    echo "[oscata-docker] usando caché de registro: ${REGISTRY_CACHE}"
+  fi
   docker buildx build \
     --load \
     -f "${REPO_ROOT}/docker/Dockerfile" \
     -t "$IMAGE_NAME" \
-    --cache-from "type=registry,ref=${CACHE_IMAGE}" \
+    "${extra_args[@]}" \
     "$REPO_ROOT"
 }
 
