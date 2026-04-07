@@ -1,5 +1,21 @@
 # Novedades de Oscata
 
+## Versión 0.8.4 — 7 de abril de 2026
+
+### 🔗 Rutas de la web SPA devuelven 200 correctamente
+
+Las rutas del cliente React (`/peliculas`, `/series`, etc.) devolvían HTTP 404 aunque la página cargara correctamente gracias a la caché del navegador. El servidor axum usaba `not_found_service`, que fuerza el código 404 en el fallback. Sustituido por `fallback`, que preserva el estado 200 de `index.html`. Las recargas directas y los accesos desde marcadores funcionan ahora sin error de red.
+
+### 📺 Temporadas del seguimiento visibles en la web
+
+Al abrir el panel de detalle de una serie en la lista de seguimiento, la sección de temporadas y episodios mostraba «Sin datos de episodios» porque la ruta de la API `/api/watchlist/{id}/seasons` no estaba registrada en el servidor. Añadida la ruta y el handler correspondiente que consulta TMDB y devuelve la lista completa de temporadas con sus episodios.
+
+### 📱 Panel de seguimiento ya no queda oculto bajo la barra de navegación en móvil
+
+En dispositivos móviles el panel inferior de detalle del seguimiento aparecía cortado por la barra de tabs de la parte inferior de la pantalla. El panel ahora sube `64 px` (más el área segura del sistema) para quedar completamente visible sobre la barra de navegación.
+
+---
+
 ## Versión 0.8.3 — 7 de abril de 2026
 
 ### ⚡ Refresco en tiempo real de la biblioteca web (WebSocket)
