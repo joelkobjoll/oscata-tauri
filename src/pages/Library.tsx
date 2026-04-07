@@ -277,6 +277,45 @@ function EpisodeListView({
   );
 }
 
+// ─── Module-level pure helpers (stable references — safe in useMemo dep arrays) ─
+function getAddedTimestamp(item: MediaItem): number {
+  const indexed = item.indexed_at ? Date.parse(item.indexed_at) : NaN;
+  if (!Number.isNaN(indexed)) {
+    // Guard against bad future timestamps in imported or external metadata.
+    return Math.min(indexed, Date.now());
+  }
+  return item.id;
+}
+
+function deduplicateByTitle(entries: MediaItem[]): MediaItem[] {
+  const seen = new Map<string, MediaItem>();
+  for (const entry of entries) {
+    const key =
+      entry.tmdb_id != null
+        ? `tmdb:${entry.tmdb_id}`
+        : `title:${entry.title ?? entry.filename}`;
+    const current = seen.get(key);
+    if (!current) {
+      seen.set(key, entry);
+      continue;
+    }
+    const entryAddedAt = getAddedTimestamp(entry);
+    const currentAddedAt = getAddedTimestamp(current);
+    if (entryAddedAt > currentAddedAt) {
+      seen.set(key, entry);
+      continue;
+    }
+    if (
+      entryAddedAt === currentAddedAt &&
+      entry.tmdb_poster &&
+      !current.tmdb_poster
+    ) {
+      seen.set(key, entry);
+    }
+  }
+  return [...seen.values()];
+}
+
 export default function Library({
   startIndexingOnMount = false,
   headerSlot,
@@ -650,45 +689,22 @@ export default function Library({
   const useGroupedMovies = activeTab === "movie" && movieView === "grouped";
   const useEpisodeList = activeTab === "tv" && tvView === "episodes";
 
-  const getAddedTimestamp = (item: MediaItem): number => {
-    const indexed = item.indexed_at ? Date.parse(item.indexed_at) : NaN;
-    if (!Number.isNaN(indexed)) {
-      // Guard against bad future timestamps in imported or external metadata.
-      return Math.min(indexed, Date.now());
+  // Pre-parse tmdb_genres once per items change so filter() never calls JSON.parse.
+  const parsedGenreMap = useMemo(() => {
+    const map = new Map<number, number[]>();
+    for (const item of items) {
+      const gs = item.tmdb_genres;
+      map.set(
+        item.id,
+        gs
+          ? typeof gs === "string"
+            ? (JSON.parse(gs) as number[])
+            : gs
+          : [],
+      );
     }
-    return item.id;
-  };
-
-  const deduplicateByTitle = (entries: MediaItem[]): MediaItem[] => {
-    const seen = new Map<string, MediaItem>();
-    for (const entry of entries) {
-      const key =
-        entry.tmdb_id != null
-          ? `tmdb:${entry.tmdb_id}`
-          : `title:${entry.title ?? entry.filename}`;
-      const current = seen.get(key);
-      if (!current) {
-        seen.set(key, entry);
-        continue;
-      }
-
-      const entryAddedAt = getAddedTimestamp(entry);
-      const currentAddedAt = getAddedTimestamp(current);
-      if (entryAddedAt > currentAddedAt) {
-        seen.set(key, entry);
-        continue;
-      }
-
-      if (
-        entryAddedAt === currentAddedAt &&
-        entry.tmdb_poster &&
-        !current.tmdb_poster
-      ) {
-        seen.set(key, entry);
-      }
-    }
-    return [...seen.values()];
-  };
+    return map;
+  }, [items]);
 
   const getMovieVersions = (movie: MediaItem): MediaItem[] =>
     items.filter(
@@ -767,15 +783,7 @@ export default function Library({
           item.filename.toLowerCase().includes(q);
         const matchesGenre =
           !filters.genre ||
-          (() => {
-            const gs = item.tmdb_genres;
-            const genres: number[] = gs
-              ? typeof gs === "string"
-                ? (JSON.parse(gs) as number[])
-                : gs
-              : [];
-            return genres.includes(Number(filters.genre));
-          })();
+          (parsedGenreMap.get(item.id) ?? []).includes(Number(filters.genre));
         return (
           matchesSearch &&
           (!filters.releaseType ||
@@ -786,47 +794,54 @@ export default function Library({
           (!filters.codec || normalizeCodec(item.codec) === filters.codec) &&
           matchesGenre
         );
-      })
-      .sort((a, b) => {
-        const titleA = getLocalizedTitle(a, language).toLowerCase();
-        const titleB = getLocalizedTitle(b, language).toLowerCase();
-        switch (filters.sort) {
-          case "title-desc":
-            return titleB.localeCompare(titleA);
-          case "release-desc": {
-            const ra = a.tmdb_release_date ?? `${a.year ?? "0000"}-01-01`;
-            const rb = b.tmdb_release_date ?? `${b.year ?? "0000"}-01-01`;
-            return rb.localeCompare(ra);
-          }
-          case "release-asc": {
-            const ra = a.tmdb_release_date ?? `${a.year ?? "0000"}-01-01`;
-            const rb = b.tmdb_release_date ?? `${b.year ?? "0000"}-01-01`;
-            return ra.localeCompare(rb);
-          }
-          case "year-desc":
-            return (b.year ?? 0) - (a.year ?? 0);
-          case "year-asc":
-            return (a.year ?? 0) - (b.year ?? 0);
-          case "rating-desc":
-            return (b.tmdb_rating ?? 0) - (a.tmdb_rating ?? 0);
-          case "added-desc": {
-            const ta = getAddedTimestamp(a);
-            const tb = getAddedTimestamp(b);
-            return tb - ta || titleA.localeCompare(titleB);
-          }
-          default:
-            return titleA.localeCompare(titleB);
-        }
       });
 
-    return useGroupedMovies ? deduplicateByTitle(matchingItems) : matchingItems;
-  }, [
-    deduplicateByTitle,
-    filterableItems,
-    filters,
-    language,
-    useGroupedMovies,
-  ]);
+    // Schwartzian transform: compute sort keys once per item instead of O(N log N) times.
+    const sort = filters.sort;
+    const needsTitleKey =
+      sort === "title-desc" ||
+      sort === "added-desc" ||
+      sort === "title-asc" ||
+      !sort;
+    const keyed = matchingItems.map((item) => ({
+      item,
+      titleKey: needsTitleKey
+        ? getLocalizedTitle(item, language).toLowerCase()
+        : "",
+    }));
+    keyed.sort((a, b) => {
+      switch (sort) {
+        case "title-desc":
+          return b.titleKey.localeCompare(a.titleKey);
+        case "release-desc": {
+          const ra = a.item.tmdb_release_date ?? `${a.item.year ?? "0000"}-01-01`;
+          const rb = b.item.tmdb_release_date ?? `${b.item.year ?? "0000"}-01-01`;
+          return rb.localeCompare(ra);
+        }
+        case "release-asc": {
+          const ra = a.item.tmdb_release_date ?? `${a.item.year ?? "0000"}-01-01`;
+          const rb = b.item.tmdb_release_date ?? `${b.item.year ?? "0000"}-01-01`;
+          return ra.localeCompare(rb);
+        }
+        case "year-desc":
+          return (b.item.year ?? 0) - (a.item.year ?? 0);
+        case "year-asc":
+          return (a.item.year ?? 0) - (b.item.year ?? 0);
+        case "rating-desc":
+          return (b.item.tmdb_rating ?? 0) - (a.item.tmdb_rating ?? 0);
+        case "added-desc": {
+          const ta = getAddedTimestamp(a.item);
+          const tb = getAddedTimestamp(b.item);
+          return tb - ta || a.titleKey.localeCompare(b.titleKey);
+        }
+        default:
+          return a.titleKey.localeCompare(b.titleKey);
+      }
+    });
+    const sortedItems = keyed.map(({ item }) => item);
+
+    return useGroupedMovies ? deduplicateByTitle(sortedItems) : sortedItems;
+  }, [filterableItems, filters, language, parsedGenreMap, useGroupedMovies]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const currentPage = Math.min(page, pageCount);

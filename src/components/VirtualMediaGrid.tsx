@@ -1,10 +1,10 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import type { MediaItem } from "../hooks/useIndexing";
 import type { DownloadItem } from "../hooks/useDownloads";
 import MediaCard from "./MediaCard";
 import type { AppLanguage } from "../utils/mediaLanguage";
 
-export default function VirtualMediaGrid({
+export default memo(function VirtualMediaGrid({
   items,
   selecting,
   checkedIds,
@@ -99,4 +99,4 @@ export default function VirtualMediaGrid({
       </div>
     </div>
   );
-}
+});
