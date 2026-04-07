@@ -39,6 +39,7 @@ const WEB_ROUTES: Record<
   clear_completed: ["POST", "/downloads/clear-completed"],
   get_webgui_config: ["GET", "/webgui/config"],
   save_webgui_config: ["PUT", "/webgui/config"],
+  test_smtp: ["POST", "/settings/smtp-test"],
   // Dynamic paths:
   queue_download: (a) => [
     "POST",

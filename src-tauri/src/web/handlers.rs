@@ -787,19 +787,21 @@ pub async fn delete_profile_handler(
 // ── SMTP test ─────────────────────────────────────────────────────────────────
 
 pub async fn smtp_test_handler(
-    AuthUser(_u): AuthUser,
+    AuthUser(u): AuthUser,
     State(state): State<AppState>,
 ) -> ApiResult<Json<Value>> {
     let cfg = state.db.load_webgui_config().map_err(ApiError::from)?;
     if cfg.smtp_host.is_empty() {
         return Err(ApiError::bad_request("SMTP host not configured"));
     }
-    // Lightweight connectivity check: attempt SMTP EHLO handshake
-    let addr = format!("{}:{}", cfg.smtp_host, cfg.smtp_port);
-    match tokio::net::TcpStream::connect(&addr).await {
-        Ok(_) => Ok(Json(serde_json::json!({"ok": true, "host": cfg.smtp_host, "port": cfg.smtp_port}))),
-        Err(e) => Err(ApiError::bad_request(format!("Cannot reach SMTP server: {e}"))),
+    if cfg.smtp_from.is_empty() {
+        return Err(ApiError::bad_request("SMTP from address not configured"));
     }
+    // Send a real test email to the logged-in user
+    send_otp_email(&cfg, &u.email, "TEST-123456")
+        .await
+        .map_err(|e| ApiError::bad_request(format!("SMTP test failed: {e}")))?;
+    Ok(Json(serde_json::json!({"ok": true, "sent_to": u.email})))
 }
 
 // ── SMTP email sending (OTP) ──────────────────────────────────────────────────
@@ -814,23 +816,43 @@ pub async fn send_otp_email(cfg: &crate::db::WebGuiConfig, to: &str, code: &str)
     let from: Mailbox = cfg.smtp_from.parse().map_err(|e: lettre::address::AddressError| e.to_string())?;
     let to_addr: Mailbox = to.parse().map_err(|e: lettre::address::AddressError| e.to_string())?;
 
+    let subject = if code == "TEST-123456" {
+        "Oscata – SMTP test email".to_string()
+    } else {
+        "Oscata – Your login code".to_string()
+    };
+    let body = if code == "TEST-123456" {
+        "This is a test email from Oscata. Your SMTP configuration is working correctly.".to_string()
+    } else {
+        format!("Your one-time login code is: {code}\n\nThis code expires in 5 minutes.\nIf you did not request this, ignore this email.")
+    };
+
     let email = Message::builder()
         .from(from)
         .to(to_addr)
-        .subject("Oscata – Your login code")
-        .body(format!(
-            "Your one-time login code is: {code}\n\nThis code expires in 5 minutes.\nIf you did not request this, ignore this email.",
-        ))
+        .subject(subject)
+        .body(body)
         .map_err(|e| e.to_string())?;
 
     let creds = Credentials::new(cfg.smtp_user.clone(), cfg.smtp_pass.clone());
-    let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&cfg.smtp_host)
-        .map_err(|e| e.to_string())?
-        .port(cfg.smtp_port)
-        .credentials(creds)
-        .build();
 
-    mailer.send(email).await.map_err(|e| e.to_string())?;
+    // "tls" = implicit TLS (port 465), "starttls" = STARTTLS upgrade (port 587)
+    let use_tls = cfg.smtp_tls_mode == "tls";
+    if use_tls {
+        let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&cfg.smtp_host)
+            .map_err(|e| e.to_string())?
+            .port(cfg.smtp_port)
+            .credentials(creds)
+            .build();
+        mailer.send(email).await.map_err(|e| e.to_string())?;
+    } else {
+        let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&cfg.smtp_host)
+            .map_err(|e| e.to_string())?
+            .port(cfg.smtp_port)
+            .credentials(creds)
+            .build();
+        mailer.send(email).await.map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 

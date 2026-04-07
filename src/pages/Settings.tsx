@@ -62,6 +62,7 @@ interface WebGuiConfig {
   otp_enabled: boolean;
   smtp_host: string;
   smtp_port: number;
+  smtp_tls_mode: string;
   smtp_user: string;
   smtp_pass: string;
   smtp_from: string;
@@ -872,6 +873,8 @@ export default function Settings({
   const [webGuiConfig, setWebGuiConfig] = useState<WebGuiConfig | null>(null);
   const [webGuiSaving, setWebGuiSaving] = useState(false);
   const [webGuiSaved, setWebGuiSaved] = useState(false);
+  const [smtpTesting, setSmtpTesting] = useState(false);
+  const [smtpTestResult, setSmtpTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [webGuiInitBusy, setWebGuiInitBusy] = useState(false);
   const [webGuiMessage, setWebGuiMessage] = useState("");
   const [webGuiError, setWebGuiError] = useState("");
@@ -2960,7 +2963,7 @@ export default function Settings({
                               display: "grid",
                               gridTemplateColumns: isMobile
                                 ? "1fr"
-                                : "1fr 100px",
+                                : "1fr 100px 120px",
                               gap: 10,
                             }}
                           >
@@ -3000,6 +3003,21 @@ export default function Settings({
                                   )
                                 }
                               />
+                            </div>
+                            <div style={fieldStyle}>
+                              <label style={labelStyle}>TLS</label>
+                              <select
+                                style={selectStyle}
+                                value={webGuiConfig.smtp_tls_mode}
+                                onChange={(e) =>
+                                  setWebGuiConfig((c) =>
+                                    c ? { ...c, smtp_tls_mode: e.target.value } : c,
+                                  )
+                                }
+                              >
+                                <option value="starttls">STARTTLS (587)</option>
+                                <option value="tls">TLS (465)</option>
+                              </select>
                             </div>
                           </div>
                           <div
@@ -3054,6 +3072,43 @@ export default function Settings({
                                 )
                               }
                             />
+                          </div>
+                          {/* SMTP test button */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            <button
+                              style={{
+                                padding: "8px 16px",
+                                borderRadius: "var(--radius-full)",
+                                border: "1px solid var(--color-border)",
+                                background: "var(--color-surface-2)",
+                                color: "var(--color-text)",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                cursor: smtpTesting ? "default" : "pointer",
+                                opacity: smtpTesting ? 0.6 : 1,
+                              }}
+                              disabled={smtpTesting || !webGuiConfig.smtp_host}
+                              onClick={async () => {
+                                setSmtpTesting(true);
+                                setSmtpTestResult(null);
+                                try {
+                                  await call("save_webgui_config", { config: webGuiConfig });
+                                  const r = await call<{ ok: boolean; sent_to: string }>("test_smtp");
+                                  setSmtpTestResult({ ok: true, msg: `Email enviado a ${r.sent_to}` });
+                                } catch (e: unknown) {
+                                  setSmtpTestResult({ ok: false, msg: e instanceof Error ? e.message : String(e) });
+                                } finally {
+                                  setSmtpTesting(false);
+                                }
+                              }}
+                            >
+                              {smtpTesting ? "Enviando..." : "Probar SMTP"}
+                            </button>
+                            {smtpTestResult && (
+                              <span style={{ fontSize: 12, color: smtpTestResult.ok ? "var(--color-success)" : "var(--color-danger)", fontWeight: 600 }}>
+                                {smtpTestResult.msg}
+                              </span>
+                            )}
                           </div>
                         </div>
                       )}

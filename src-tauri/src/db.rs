@@ -87,6 +87,7 @@ pub struct WebGuiConfig {
     pub otp_enabled: bool,
     pub smtp_host: String,
     pub smtp_port: u16,
+    pub smtp_tls_mode: String, // "starttls" (587) or "tls" (465)
     pub smtp_user: String,
     pub smtp_pass: String,
     pub smtp_from: String,
@@ -1455,6 +1456,7 @@ impl Db {
         self.save_app_value("webgui_otp_enabled", if c.otp_enabled { "1" } else { "0" })?;
         self.save_app_value("webgui_smtp_host", &c.smtp_host)?;
         self.save_app_value("webgui_smtp_port", &c.smtp_port.to_string())?;
+        self.save_app_value("webgui_smtp_tls_mode", &c.smtp_tls_mode)?;
         self.save_app_value("webgui_smtp_user", &c.smtp_user)?;
         self.save_app_value("webgui_smtp_pass", &c.smtp_pass)?;
         self.save_app_value("webgui_smtp_from", &c.smtp_from)?;
@@ -1489,6 +1491,7 @@ impl Db {
             otp_enabled:  bool_val("webgui_otp_enabled"),
             smtp_host:    str_val("webgui_smtp_host"),
             smtp_port:    port_val("webgui_smtp_port", DEFAULT_SMTP_PORT),
+            smtp_tls_mode: { let v = str_val("webgui_smtp_tls_mode"); if v.is_empty() { "starttls".into() } else { v } },
             smtp_user:    str_val("webgui_smtp_user"),
             smtp_pass:    str_val("webgui_smtp_pass"),
             smtp_from:    str_val("webgui_smtp_from"),
