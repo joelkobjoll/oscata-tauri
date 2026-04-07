@@ -289,7 +289,7 @@ pub fn restore_download_queue(
 pub async fn resume_pending_downloads(
     db: crate::db::Db,
     queue_state: crate::downloads::SharedQueue,
-    window: WebviewWindow,
+    window: Option<WebviewWindow>,
 ) -> Result<(), String> {
     let config = db.load_config()?;
     let pending = {
@@ -308,17 +308,19 @@ pub async fn resume_pending_downloads(
             (semaphore, cancel_flag)
         };
         let resumed_bytes = std::fs::metadata(&item.local_path).map(|meta| meta.len()).unwrap_or(0);
-        window.emit("download:update", serde_json::json!({
-            "id": item.id,
-            "status": "queued",
-            "bytes_done": resumed_bytes,
-            "error": serde_json::Value::Null,
-        })).ok();
+        if let Some(ref w) = window {
+            w.emit("download:update", serde_json::json!({
+                "id": item.id,
+                "status": "queued",
+                "bytes_done": resumed_bytes,
+                "error": serde_json::Value::Null,
+            })).ok();
+        }
         persist_download_state(&db, &queue_state);
         spawn_download_job_pub(
             db.clone(),
             queue_state.clone(),
-            Some(window.clone()),
+            window.clone(),
             config.clone(),
             item.id,
             item.ftp_path,

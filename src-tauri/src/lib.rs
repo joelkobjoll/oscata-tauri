@@ -367,13 +367,11 @@ pub fn run() {
                 commands::restore_download_queue(db.clone(), queue.clone());
                 commands::restore_upload_queue(db.clone(), handle.state::<uploads::SharedUploadQueue>().inner().clone());
 
-                if let Some(window) = visible_main_window(&handle) {
-                    commands::resume_pending_downloads(db.clone(), queue.clone(), window).await.ok();
-                }
+                // Resume downloads and refresh metadata regardless of window visibility
+                // so the app works correctly in background (tray) and headless mode.
+                commands::resume_pending_downloads(db.clone(), queue.clone(), visible_main_window(&handle)).await.ok();
                 commands::resume_pending_uploads(db.clone(), handle.state::<uploads::SharedUploadQueue>().inner().clone(), handle.clone()).await.ok();
-                if let Some(window) = visible_main_window(&handle) {
-                    commands::refresh_all_metadata_internal(db.clone(), Some(window)).await.ok();
-                }
+                commands::refresh_all_metadata_internal(db.clone(), visible_main_window(&handle)).await.ok();
                 let last_indexed_at = db.load_last_indexed_at().ok().flatten();
                 let should_run_now = last_indexed_at
                     .as_deref()
@@ -384,7 +382,9 @@ pub fn run() {
 
                 if should_run_now {
                     let window = visible_main_window(&handle);
+                    crate::INDEXING_RUNNING.store(true, std::sync::atomic::Ordering::SeqCst);
                     commands::start_indexing_internal(db.clone(), window.clone(), Some(queue.clone())).await.ok();
+                    crate::INDEXING_RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
                     commands::refresh_all_metadata_internal(db.clone(), window).await.ok();
                 } else if let Some(value) = last_indexed_at
                     .as_deref()
@@ -428,7 +428,9 @@ pub fn run() {
                     }
 
                     let window = visible_main_window(&handle);
+                    crate::INDEXING_RUNNING.store(true, std::sync::atomic::Ordering::SeqCst);
                     commands::start_indexing_internal(db.clone(), window.clone(), Some(queue.clone())).await.ok();
+                    crate::INDEXING_RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
                     commands::refresh_all_metadata_internal(db.clone(), window).await.ok();
                 }
             });
