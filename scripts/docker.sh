@@ -70,10 +70,12 @@ ensure_dirs() {
 build_image() {
   require_docker
   echo "[oscata-docker] construyendo imagen ${IMAGE_NAME}"
-  # Use BuildKit registry cache (ghcr.io) to skip re-compiling Rust deps when
-  # Cargo.toml/Cargo.lock haven't changed. Falls back silently if not logged in.
+  # Use buildx + registry cache (ghcr.io) to skip re-compiling Rust deps when
+  # Cargo.toml/Cargo.lock haven't changed. Falls back silently on cache miss
+  # (e.g. first run or when not logged in to ghcr.io).
   local CACHE_IMAGE="${REGISTRY_CACHE:-ghcr.io/joelkobjoll/oscata-buildcache}"
-  DOCKER_BUILDKIT=1 docker build \
+  docker buildx build \
+    --load \
     -f "${REPO_ROOT}/docker/Dockerfile" \
     -t "$IMAGE_NAME" \
     --cache-from "type=registry,ref=${CACHE_IMAGE}" \
