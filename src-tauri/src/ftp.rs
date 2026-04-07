@@ -1,8 +1,8 @@
 use std::sync::Arc;
-use suppaftp::AsyncFtpStream;
+use std::net::SocketAddr;
+use suppaftp::tokio::AsyncFtpStream;
 use suppaftp::types::FileType;
-use futures::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 
 /// suppaftp formats addresses with backtick+quote: `"host:port"` — strip that.
@@ -371,6 +371,31 @@ async fn list_one_dir(
     Ok(parse_entries(&raw, path))
 }
 
+/// Open a SOCKS5-tunnelled TCP connection to `target` via the given proxy.
+async fn socks5_tcp(
+    proxy_host: &str,
+    proxy_port: u16,
+    target: SocketAddr,
+    user: Option<&str>,
+    pass: Option<&str>,
+) -> Result<tokio::net::TcpStream, suppaftp::FtpError> {
+    let proxy = format!("{proxy_host}:{proxy_port}");
+    let stream = match (user, pass) {
+        (Some(u), Some(p)) => {
+            tokio_socks::tcp::Socks5Stream::connect_with_password(
+                proxy.as_str(), target, u, p,
+            )
+            .await
+        }
+        _ => tokio_socks::tcp::Socks5Stream::connect(proxy.as_str(), target).await,
+    };
+    stream
+        .map(|s| s.into_inner())
+        .map_err(|e| suppaftp::FtpError::ConnectionError(
+            std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+        ))
+}
+
 pub async fn download_file(
     host: &str,
     port: u16,
@@ -378,11 +403,40 @@ pub async fn download_file(
     pass: &str,
     remote_path: &str,
     local_path: &str,
+    socks5_host: Option<&str>,
+    socks5_port: Option<u16>,
+    socks5_user: Option<&str>,
+    socks5_pass: Option<&str>,
     on_progress: impl Fn(u64, u64) -> bool,
 ) -> Result<(), String> {
-    let mut ftp = AsyncFtpStream::connect(format!("{host}:{port}"))
-        .await
-        .map_err(|e| e.to_string())?;
+    let mut ftp = if let Some(proxy_host) = socks5_host {
+        let proxy_port = socks5_port.unwrap_or(1080);
+        let target: SocketAddr = format!("{host}:{port}")
+            .parse()
+            .map_err(|e| format!("Invalid FTP address: {e}"))?;
+        let tcp = socks5_tcp(proxy_host, proxy_port, target, socks5_user, socks5_pass)
+            .await
+            .map_err(|e| e.to_string())?;
+        let ph = proxy_host.to_owned();
+        let pp = proxy_port;
+        let su = socks5_user.map(|s| s.to_owned());
+        let sp = socks5_pass.map(|s| s.to_owned());
+        AsyncFtpStream::connect_with_stream(tcp)
+            .await
+            .map_err(|e| e.to_string())?
+            .passive_stream_builder(move |addr: SocketAddr| {
+                let ph = ph.clone();
+                let su = su.clone();
+                let sp = sp.clone();
+                Box::pin(async move {
+                    socks5_tcp(&ph, pp, addr, su.as_deref(), sp.as_deref()).await
+                })
+            })
+    } else {
+        AsyncFtpStream::connect(format!("{host}:{port}"))
+            .await
+            .map_err(|e| e.to_string())?
+    };
     ftp.login(user, pass).await.map_err(|e| e.to_string())?;
     ftp.transfer_type(FileType::Binary)
         .await
@@ -519,9 +573,6 @@ pub async fn upload_file(
     // Disable Nagle's algorithm so each chunk goes out immediately without
     // waiting to coalesce with the next write.
     data_stream.get_ref().set_nodelay(true).ok();
-
-    use futures::io::AsyncWriteExt;
-    use tokio::io::AsyncReadExt;
 
     // Double-buffer: while writing chunk N to the socket, read chunk N+1 from
     // disk in parallel.  This keeps both I/O paths busy and avoids idle time.

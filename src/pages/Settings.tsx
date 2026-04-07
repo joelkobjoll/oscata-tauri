@@ -43,6 +43,10 @@ interface Config {
   close_to_tray: boolean;
   telegram_bot_token: string;
   telegram_chat_id: string;
+  socks5_host?: string;
+  socks5_port?: number;
+  socks5_user?: string;
+  socks5_pass?: string;
 }
 
 interface GenreDestRule {
@@ -1897,6 +1901,110 @@ export default function Settings({
                       {t(language, "settings.maxConcurrentHelp")}
                     </span>
                   </div>
+                </div>
+              </SectionCard>
+              <SectionCard
+                icon="settings"
+                title={t(language, "settings.proxyTitle")}
+                description={t(language, "settings.proxyDescription")}
+                defaultOpen={false}
+              >
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <span style={{ fontSize: 13, color: "var(--color-text)" }}>
+                      {t(language, "settings.proxyEnabled")}
+                    </span>
+                    <Toggle
+                      checked={!!form.socks5_host}
+                      onChange={(v) => {
+                        if (!v) {
+                          setForm((f) =>
+                            f
+                              ? { ...f, socks5_host: undefined, socks5_port: undefined, socks5_user: undefined, socks5_pass: undefined }
+                              : f,
+                          );
+                        } else {
+                          setForm((f) => (f ? { ...f, socks5_host: "" } : f));
+                        }
+                      }}
+                    />
+                  </div>
+                  {(form.socks5_host !== undefined) && (
+                    <>
+                      <div style={fieldStyle}>
+                        <label style={labelStyle}>
+                          {t(language, "settings.proxyHost")}
+                        </label>
+                        <input
+                          style={inputStyle}
+                          value={form.socks5_host ?? ""}
+                          onChange={(e) =>
+                            setForm((f) =>
+                              f ? { ...f, socks5_host: e.target.value } : f,
+                            )
+                          }
+                          placeholder="wireguard-pia"
+                        />
+                        <span style={subtextStyle}>
+                          {t(language, "settings.proxyHostHelp")}
+                        </span>
+                      </div>
+                      <div style={fieldStyle}>
+                        <label style={labelStyle}>
+                          {t(language, "settings.proxyPort")}
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={65535}
+                          style={{ ...inputStyle, width: 96 }}
+                          value={form.socks5_port ?? 1080}
+                          onChange={(e) =>
+                            setForm((f) =>
+                              f
+                                ? { ...f, socks5_port: Number(e.target.value) || undefined }
+                                : f,
+                            )
+                          }
+                        />
+                      </div>
+                      <div style={fieldStyle}>
+                        <label style={labelStyle}>
+                          {t(language, "settings.proxyUser")}
+                        </label>
+                        <input
+                          style={inputStyle}
+                          value={form.socks5_user ?? ""}
+                          onChange={(e) =>
+                            setForm((f) =>
+                              f
+                                ? { ...f, socks5_user: e.target.value || undefined }
+                                : f,
+                            )
+                          }
+                          placeholder={t(language, "settings.proxyOptional")}
+                        />
+                      </div>
+                      <div style={fieldStyle}>
+                        <label style={labelStyle}>
+                          {t(language, "settings.proxyPass")}
+                        </label>
+                        <input
+                          type="password"
+                          style={inputStyle}
+                          value={form.socks5_pass ?? ""}
+                          onChange={(e) =>
+                            setForm((f) =>
+                              f
+                                ? { ...f, socks5_pass: e.target.value || undefined }
+                                : f,
+                            )
+                          }
+                          placeholder={t(language, "settings.proxyOptional")}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               </SectionCard>
               <SectionCard

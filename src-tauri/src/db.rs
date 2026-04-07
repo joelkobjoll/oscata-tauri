@@ -67,6 +67,14 @@ pub struct AppConfig {
     pub telegram_bot_token: String,      // "" = disabled
     #[serde(default)]
     pub telegram_chat_id: String,        // "" = disabled
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub socks5_host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub socks5_port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub socks5_user: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub socks5_pass: Option<String>,
 }
 
 fn default_alphabetical_subfolders() -> bool {
@@ -1392,7 +1400,11 @@ impl Db {
             ),
             ("telegram_bot_token", config.telegram_bot_token.as_str()),
             ("telegram_chat_id", config.telegram_chat_id.as_str()),
+            ("socks5_host", config.socks5_host.as_deref().unwrap_or("")),
+            ("socks5_user", config.socks5_user.as_deref().unwrap_or("")),
+            ("socks5_pass", config.socks5_pass.as_deref().unwrap_or("")),
         ];
+        let socks5_port_str = config.socks5_port.map(|p| p.to_string()).unwrap_or_default();
         let port_str = config.ftp_port.to_string();
         for (k, v) in &pairs {
             conn.execute(
@@ -1409,6 +1421,11 @@ impl Db {
         conn.execute(
             "INSERT OR REPLACE INTO app_config (key, value) VALUES ('max_concurrent_downloads', ?1)",
             params![config.max_concurrent_downloads.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR REPLACE INTO app_config (key, value) VALUES ('socks5_port', ?1)",
+            params![socks5_port_str],
         )
         .map_err(|e| e.to_string())?;
 
@@ -1821,6 +1838,10 @@ impl Db {
                 .unwrap_or(true),
             telegram_bot_token: get("telegram_bot_token").unwrap_or_default(),
             telegram_chat_id: get("telegram_chat_id").unwrap_or_default(),
+            socks5_host: get("socks5_host").ok().filter(|v| !v.is_empty()),
+            socks5_port: get("socks5_port").ok().and_then(|v| v.parse::<u16>().ok()),
+            socks5_user: get("socks5_user").ok().filter(|v| !v.is_empty()),
+            socks5_pass: get("socks5_pass").ok().filter(|v| !v.is_empty()),
         })
     }
 

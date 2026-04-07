@@ -207,6 +207,10 @@ pub(crate) fn spawn_download_job_pub(
             &config.ftp_pass,
             &ftp_path,
             &local_path,
+            config.socks5_host.as_deref(),
+            config.socks5_port,
+            config.socks5_user.as_deref(),
+            config.socks5_pass.as_deref(),
             move |done, total| {
                 {
                     let mut queue = queue_for_progress.lock().unwrap();
@@ -933,7 +937,7 @@ pub async fn get_config(
 pub async fn ftp_list_raw(
     state: tauri::State<'_, crate::db::Db>,
 ) -> Result<Vec<String>, String> {
-    use suppaftp::AsyncFtpStream;
+    use suppaftp::tokio::AsyncFtpStream;
     let config = state.load_config()?;
     let mut ftp = AsyncFtpStream::connect(format!("{}:{}", config.ftp_host, config.ftp_port))
         .await

@@ -730,6 +730,42 @@ const messages = {
     es: "Elige cuántos archivos pueden descargarse al mismo tiempo (1–5).",
     en: "Choose how many files can download at the same time (1–5).",
   },
+  "settings.proxyTitle": {
+    es: "Proxy SOCKS5",
+    en: "SOCKS5 Proxy",
+  },
+  "settings.proxyDescription": {
+    es: "Enruta las descargas FTP a través de un proxy SOCKS5 (p.ej. un contenedor WireGuard).",
+    en: "Route FTP downloads through a SOCKS5 proxy (e.g. a WireGuard container).",
+  },
+  "settings.proxyEnabled": {
+    es: "Activar proxy para descargas",
+    en: "Enable proxy for downloads",
+  },
+  "settings.proxyHost": {
+    es: "Host del proxy",
+    en: "Proxy host",
+  },
+  "settings.proxyHostHelp": {
+    es: "Nombre o IP del contenedor SOCKS5 en la red Docker (p.ej. wireguard-pia).",
+    en: "Hostname or IP of the SOCKS5 container on the Docker network (e.g. wireguard-pia).",
+  },
+  "settings.proxyPort": {
+    es: "Puerto",
+    en: "Port",
+  },
+  "settings.proxyUser": {
+    es: "Usuario (opcional)",
+    en: "Username (optional)",
+  },
+  "settings.proxyPass": {
+    es: "Contraseña (opcional)",
+    en: "Password (optional)",
+  },
+  "settings.proxyOptional": {
+    es: "Opcional",
+    en: "Optional",
+  },
   "settings.mediaServersTitle": {
     es: "Servidores multimedia",
     en: "Media Servers",
