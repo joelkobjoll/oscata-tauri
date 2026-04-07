@@ -1,18 +1,32 @@
 # Docker — Oscata sin interfaz gráfica
 
-Instala Oscata como contenedor Docker con la interfaz web (`OSCATA_WEBGUI=1`) activa y sin escritorio VNC. El binario arranca en modo headless: la ventana de escritorio está oculta y el acceso es exclusivamente por el navegador.
+Instala Oscata como contenedor Docker con la interfaz web activa y sin escritorio. El binario arranca en modo headless: la ventana de escritorio está oculta y el acceso es exclusivamente por el navegador.
 
-## Uso rápido
+## Inicio rápido — imagen publicada
+
+La forma más sencilla es usar la imagen publicada automáticamente en GitHub Container Registry:
 
 ```bash
-# Construir la imagen
-npm run docker:build
-
-# Arrancar
-npm run docker:up
+docker run -d \
+  --name oscata \
+  --restart unless-stopped \
+  -p 47860:47860 \
+  -v oscata-config:/config \
+  -v oscata-downloads:/downloads \
+  ghcr.io/joelkobjoll/oscata:latest
 ```
 
 La interfaz web queda disponible en `http://localhost:47860`.
+
+## Construir la imagen localmente
+
+```bash
+# Construir
+npm run docker:build
+
+# Construir + arrancar
+npm run docker:up
+```
 
 ## docker-compose
 
@@ -25,13 +39,13 @@ docker compose up -d
 
 ## Variables de entorno
 
+Solo estas variables se leen del entorno en tiempo de arranque. El resto de la configuración (TMDB, FTP, SMTP, OTP, URL de la app…) se gestiona desde la propia interfaz web en Ajustes.
+
 | Variable                     | Defecto   | Descripción                                      |
 | ---------------------------- | --------- | ------------------------------------------------ |
 | `OSCATA_WEBGUI_PORT`         | `47860`   | Puerto de escucha interno                        |
-| `OSCATA_WEBGUI_EXPOSED_PORT` | `47860`   | Puerto externo (útil detrás de un proxy inverso) |
 | `OSCATA_WEBGUI_HOST`         | `0.0.0.0` | IP de escucha interna                            |
-| `OSCATA_WEBGUI_APP_URL`      | —         | URL externa para enlaces en emails               |
-| `OSCATA_WEBGUI_OTP_ENABLED`  | `0`       | Activa OTP por email en el login                 |
+| `OSCATA_WEBGUI_EXPOSED_PORT` | `47860`   | Puerto externo (útil detrás de un proxy inverso) |
 
 `OSCATA_WEBGUI=1` y `OSCATA_HEADLESS=1` ya están definidos en la imagen; no hace falta pasarlos.
 
@@ -62,17 +76,17 @@ environment:
 | `/config`          | Base de datos SQLite, configuración, caché |
 | `/downloads`       | Archivos descargados                       |
 
-## Helper script
+## Helper script (desarrollo / autoalojamiento local)
 
 ```bash
-npm run docker:build    # construye la imagen
+npm run docker:build    # construye la imagen local
 npm run docker:run      # arranca el contenedor (restart: unless-stopped)
 npm run docker:up       # build + run en un paso
 npm run docker:stop     # para y elimina el contenedor
 npm run docker:logs     # muestra los logs en tiempo real
 ```
 
-Personaliza con variables de entorno o un fichero `.env.docker`:
+Personaliza con un fichero `.env.docker`:
 
 ```bash
 cp .env.docker.example .env.docker
