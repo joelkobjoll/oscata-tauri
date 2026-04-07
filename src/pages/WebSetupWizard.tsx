@@ -368,21 +368,11 @@ export default function WebSetupWizard({ onComplete }: WebSetupWizardProps) {
         {/* Header */}
         <section style={{ ...shellCard, padding: "1.25rem 1.5rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 14,
-                background: "color-mix(in srgb, var(--color-primary) 16%, transparent)",
-                color: "var(--color-primary)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <AppIcon name="settings" size={20} strokeWidth={2.1} />
-            </div>
+            <img
+              src="/assets/icon.png"
+              alt="Oscata"
+              style={{ width: 42, height: 42, borderRadius: 12, flexShrink: 0 }}
+            />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--color-text)" }}>
                 Configuración inicial
