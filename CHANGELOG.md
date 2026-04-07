@@ -1,5 +1,43 @@
 # Novedades de Oscata
 
+## Versión 0.8.1 — 7 de abril de 2026
+
+### 📌 Filtros y paginación persistentes en la URL (web)
+
+En la versión web, los filtros activos (búsqueda, tipo, resolución, HDR, códec, género y orden) y el número de página actual se guardan automáticamente en la barra de direcciones del navegador como parámetros de consulta (`?q=breaking&res=4K&page=2`). Al recargar la página o compartir el enlace, se restaura exactamente la misma vista. Los botones de avanzar y retroceder del navegador también navegan entre los estados de filtrado anteriores.
+
+### 📱 Paginación visible en la PWA (iOS / Android)
+
+La barra de paginación («Anterior · Página X de Y · Siguiente») ya no queda oculta detrás de la barra de navegación inferior en móvil. El panel paginador sube por encima de la barra de pestañas y respeta el área segura del sistema (`safe-area-inset-bottom`) para que no quede tapado por el indicador de inicio de iPhone.
+
+### 🔗 Enlaces externos funcionales en la versión web
+
+Los botones de IMDb y TMDB en el panel de series ya abrían correctamente en la app de escritorio, pero fallaban en Docker/web con el error `Cannot read properties of undefined (reading 'invoke')`. Ahora se usa `window.open` como alternativa cuando la app corre en el navegador.
+
+### 🔐 Flujo de inicio de sesión con OTP corregido
+
+Al verificar el código de un solo uso recibido por correo, la app ya no volvía a llamar a la función de inicio de sesión, lo que enviaba un segundo correo innecesariamente. Ahora el paso de verificación termina correctamente sin reenvíos.
+
+### ✉️ Configuración de TLS para el servidor SMTP
+
+Se añade un selector de modo TLS en la sección de correo electrónico de los ajustes: `STARTTLS` (puerto 587, la mayoría de proveedores) y `TLS implícito` (puerto 465). Antes la app usaba siempre TLS implícito, lo que impedía el envío con Gmail, Outlook y similares. También se incluye un botón «Probar SMTP» que manda un correo de prueba real al usuario activo.
+
+### 🐳 Construcción Docker más rápida (cargo-chef)
+
+El `Dockerfile` adopta la estrategia `cargo-chef` con tres etapas separadas: cálculo del plan de dependencias, compilación de todas las _crates_ de terceros y compilación del código propio. Los cambios en el código fuente de Rust ya no recompilan las dependencias desde cero: la etapa de dependencias se reutiliza desde la caché local de Docker, reduciendo el tiempo de compilación de ~20 minutos a ~2 minutos en cambios habituales.
+
+### 🚀 Publicación automática de imagen Docker en GitHub Actions
+
+Se añade el flujo de trabajo `.github/workflows/build-docker.yml` que construye y publica la imagen en `ghcr.io/joelkobjoll/oscata` en cada push a `main` y en cada etiqueta de versión. La caché de compilación de Rust se almacena también en el registro para acelerar los runners de CI.
+
+### 📝 Correcciones menores
+
+- Las entradas de formulario en iOS ya no activan el zoom automático (tamaño de fuente mínimo 16 px).
+- El modal «Corregir match TMDB» funciona correctamente en la versión web (usaba `invoke` directamente en lugar de la capa de transporte).
+- El modo sin cabeza (Docker) muestra un aviso informativo cuando el servidor web ya está activo y oculta el interruptor de activación redundante.
+
+---
+
 ## Versión 0.8.0 — 6 de abril de 2026
 
 ### 📱 Panel de series rediseñado para móvil
