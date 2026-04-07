@@ -28,8 +28,9 @@ export default function IndexStatus({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [scanBarOffset, setScanBarOffset] = useState(-45);
-  const mobileInset = isMobile ? MOBILE_BOTTOM_NAV_HEIGHT : 0;
-  const bottomOffset = (activityLogOpen ? 236 : 22) + mobileInset;
+  const bottomOffset = isMobile
+    ? `calc(${(activityLogOpen ? 236 : 22) + MOBILE_BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom, 0px))`
+    : (activityLogOpen ? 236 : 22);
 
   // Auto-dismiss completion summary after 8 seconds
   useEffect(() => {

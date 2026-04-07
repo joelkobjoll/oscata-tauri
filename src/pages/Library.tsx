@@ -1699,6 +1699,7 @@ export default function Library({
               "1px solid color-mix(in srgb, var(--color-border) 70%, transparent)",
             backdropFilter: "blur(16px)",
             WebkitBackdropFilter: "blur(16px)",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
           }}
         >
           {mobileBottomTabs.map((tab) => {
@@ -2562,7 +2563,9 @@ export default function Library({
           style={{
             position: "fixed",
             left: 18,
-            bottom: isMobile ? 22 + 64 : 22,
+            bottom: isMobile
+              ? "calc(64px + env(safe-area-inset-bottom, 0px) + 22px)"
+              : 22,
             zIndex: 52,
             display: "flex",
             alignItems: "center",
@@ -2622,13 +2625,15 @@ export default function Library({
           style={{
             position: "fixed",
             left: "50%",
-            bottom: isMobile ? 80 : 18,
+            bottom: isMobile
+              ? "calc(64px + env(safe-area-inset-bottom, 0px) + 12px)"
+              : 18,
             transform: "translateX(-50%)",
             display: "flex",
             justifyContent: "center",
             padding: "0 16px",
             pointerEvents: "none",
-            zIndex: 45,
+            zIndex: 110,
           }}
         >
           <div
