@@ -7,7 +7,7 @@
 El desplazamiento por la cuadrícula de películas y series era lento y los pósteres aparecían en negro al hacer scroll. Dos causas identificadas y corregidas:
 
 - **Badges con `backdrop-filter: blur`:** cada insignia superpuesta sobre los pósteres creaba una capa independiente en la GPU. Con 5-6 badges por tarjeta y 48 tarjetas por página se generaban cientos de capas simultáneas, saturando la memoria de textura y provocando que las imágenes se descargaran de la VRAM y volvieran a verse negras al volver a ellas. Se ha eliminado el filtro de desenfoque y sustituido por un fondo semitransparente con `color-mix`, visualmente idéntico y sin coste en GPU.
-- **`loading="lazy"` roto dentro de contenedores con scroll:** el atributo nativo de carga diferida usa la intersección con el *viewport* del documento, no con el contenedor con `overflow-y: auto`. Las imágenes visibles dentro del panel podían no llegar a pedirse nunca al servidor, dejando el `onLoad` sin disparar y el póster permanentemente en negro. Eliminado el atributo para que el navegador cargue las imágenes directamente.
+- **`loading="lazy"` roto dentro de contenedores con scroll:** el atributo nativo de carga diferida usa la intersección con el _viewport_ del documento, no con el contenedor con `overflow-y: auto`. Las imágenes visibles dentro del panel podían no llegar a pedirse nunca al servidor, dejando el `onLoad` sin disparar y el póster permanentemente en negro. Eliminado el atributo para que el navegador cargue las imágenes directamente.
 
 ### 🖼️ Imágenes de póster más ligeras
 
