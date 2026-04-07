@@ -1399,11 +1399,6 @@ export default function Library({
             marginRight: 8,
           }}
         >
-          <img
-            src="/assets/icon.png"
-            alt="Oscata"
-            style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0 }}
-          />
           <span
             style={{
               color: "var(--color-text)",
@@ -1414,6 +1409,16 @@ export default function Library({
           >
             OSCATA
           </span>
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: "var(--color-primary)",
+              display: "inline-block",
+              flexShrink: 0,
+            }}
+          />
         </div>
 
         {/* Nav pills — hidden on mobile (tabs move to bottom bar) */}

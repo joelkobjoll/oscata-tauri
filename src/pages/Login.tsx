@@ -90,18 +90,16 @@ export default function Login() {
     <div style={containerStyle}>
       <div style={cardStyle}>
         <div style={{ textAlign: "center", marginBottom: "1.75rem" }}>
-          <img
-            src="/assets/logo.png"
-            alt="Oscata"
+          <div
             style={{
-              maxWidth: 260,
-              width: "100%",
-              height: "auto",
-              marginBottom: "0.75rem",
-              display: "block",
-              margin: "0 auto 0.75rem",
+              fontSize: 28,
+              fontWeight: 800,
+              color: "var(--color-text)",
+              letterSpacing: "-0.03em",
             }}
-          />
+          >
+            Oscata
+          </div>
           <div
             style={{
               fontSize: 14,
