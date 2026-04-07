@@ -54,7 +54,6 @@ export default memo(function VirtualMediaGrid({
         flex: 1,
         overflowY: "auto",
         padding: "1.5rem 1.5rem 6.5rem 1.5rem",
-        willChange: "scroll-position",
       }}
     >
       <div
@@ -65,17 +64,7 @@ export default memo(function VirtualMediaGrid({
         }}
       >
         {items.map((item) => (
-          <div
-            key={item.id}
-            style={{
-              position: "relative",
-              // Skip paint/layout for off-screen cards without losing their
-              // space in the grid (intrinsic size matches the 2:3 poster ratio
-              // at ~160px min-width → ~240px height plus ~36px metadata below).
-              contentVisibility: "auto",
-              containIntrinsicSize: "auto 160px auto 280px",
-            }}
-          >
+          <div key={item.id} style={{ position: "relative" }}>
             {selecting && (
               <input
                 type="checkbox"
