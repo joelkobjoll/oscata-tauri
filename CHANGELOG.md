@@ -1,5 +1,13 @@
 # Novedades de Oscata
 
+## Versión 0.8.7 — 7 de abril de 2026
+
+### 📣 Notificaciones de Telegram más limpias
+
+Se ha eliminado la etiqueta descriptiva que precedía al título en los mensajes de Telegram («🎬 Nueva película», «📺 Nueva serie», etc.). Ahora el título aparece directamente tras el emoji, en negrita y subrayado, lo que le da mayor protagonismo visual sin texto redundante.
+
+---
+
 ## Versión 0.8.6 — 7 de abril de 2026
 
 ### 🔧 Corregir match TMDB funcional de nuevo en la app de escritorio
