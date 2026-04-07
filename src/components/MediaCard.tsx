@@ -194,7 +194,6 @@ function MediaCard({
             className={`media-card-img ${imgLoaded ? "loaded" : ""}`}
             src={poster}
             alt={title}
-            loading="lazy"
             decoding="async"
             onLoad={() => setImgLoaded(true)}
             style={{
