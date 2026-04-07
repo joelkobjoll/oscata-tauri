@@ -63,7 +63,7 @@ const WEB_ROUTES: Record<
   check_media_badges: (a) => ["POST", "/media/badges", { items: a.items }],
   apply_tmdb_match: (a) => [
     "PUT",
-    `/media/${a.id}/match`,
+    `/media/${a.itemId}/match`,
     { tmdb_id: a.tmdbId, media_type: a.mediaType },
   ],
   search_tmdb: (a) => [

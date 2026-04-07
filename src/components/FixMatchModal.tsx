@@ -78,7 +78,7 @@ export default function FixMatchModal({
     try {
       for (const id of itemIds) {
         await call("apply_tmdb_match", {
-          id,
+          itemId: id,
           tmdbId: movie.id,
           mediaType,
         });
