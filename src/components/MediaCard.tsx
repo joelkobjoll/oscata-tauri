@@ -76,9 +76,7 @@ function badgeSurface(
     boxShadow:
       options?.shadow === false
         ? "none"
-        : "0 6px 16px color-mix(in srgb, black 28%, transparent)",
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
+        : "0 2px 8px color-mix(in srgb, black 40%, transparent)",
     fontSize: options?.compact ? "0.56rem" : "0.62rem",
     fontWeight: 800,
     lineHeight: 1,
@@ -139,7 +137,7 @@ function MediaCard({
     item.media_type === "documentary";
   const posterPath = getLocalizedPosterPath(item, language);
   const poster = posterPath
-    ? `https://image.tmdb.org/t/p/w300${posterPath}`
+    ? `https://image.tmdb.org/t/p/w185${posterPath}`
     : null;
   const title = getLocalizedTitle(item, language);
   const year = item.year;
