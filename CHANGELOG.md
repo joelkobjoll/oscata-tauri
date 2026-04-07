@@ -1,5 +1,17 @@
 # Novedades de Oscata
 
+## Versión 0.8.2 — 7 de abril de 2026
+
+### 🔄 Indexación automática funcional en modo sin interfaz (Docker)
+
+El planificador de indexación automática no marcaba correctamente el indicador interno `INDEXING_RUNNING`, lo que hacía que la API `/indexing/status` devolviera siempre `false` aunque hubiera un análisis en curso. Corregido: ahora el flag se activa al inicio del análisis y se desactiva al terminar, tanto en el arranque como en los ciclos periódicos.
+
+### 💤 Descargas y subidas pendientes se reanudan también en modo bandeja
+
+Cuando la ventana principal estaba oculta (app minimizada en la barra de menú o en modo sin interfaz), las descargas pendientes del arranque anterior no se reanudaban porque el código requería una ventana visible. Ahora `resume_pending_downloads` acepta una ventana opcional y funciona correctamente aunque la app esté en segundo plano.
+
+---
+
 ## Versión 0.8.1 — 7 de abril de 2026
 
 ### 📌 Filtros y paginación persistentes en la URL (web)
