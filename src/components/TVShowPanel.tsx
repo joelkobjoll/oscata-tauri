@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { isTauri } from "../lib/transport";
 import {
   ChevronDown,
   ChevronRight,
@@ -895,9 +895,15 @@ export default function TVShowPanel({
 
   const handleOpenUrl = (url: string) => {
     setOpeningUrl(url);
-    openUrl(url)
-      .catch((e) => console.error("[openUrl] failed to open", url, e))
-      .finally(() => setTimeout(() => setOpeningUrl(null), 2000));
+    if (isTauri()) {
+      import("@tauri-apps/plugin-opener")
+        .then(({ openUrl }) => openUrl(url))
+        .catch((e) => console.error("[openUrl] failed to open", url, e))
+        .finally(() => setTimeout(() => setOpeningUrl(null), 2000));
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => setOpeningUrl(null), 500);
+    }
   };
   const showTitle = getLocalizedTitle(show, language);
   const showOverview = getLocalizedOverview(show, language);
