@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
-FROM ubuntu:22.04 AS build
+# ─── Base: system deps + Rust toolchain (shared by planner & cacher) ─────────
+FROM ubuntu:22.04 AS base
 
 ARG NODE_MAJOR=22
 ENV DEBIAN_FRONTEND=noninteractive
@@ -24,6 +25,32 @@ RUN apt-get update \
         pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
+RUN curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+    | sh -s -- -y --profile minimal --default-toolchain stable
+
+# ─── Planner: compute cargo-chef recipe from manifest files only ──────────────
+FROM base AS planner
+RUN cargo install cargo-chef --locked
+WORKDIR /app
+COPY src-tauri/ src-tauri/
+WORKDIR /app/src-tauri
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ─── Rust cache: pre-compile all dependencies ─────────────────────────────────
+# This layer is only invalidated when Cargo.toml or Cargo.lock changes.
+# A pure .rs-file change skips this stage entirely and reuses the cache.
+FROM base AS rust-cache
+RUN cargo install cargo-chef --locked
+WORKDIR /app/src-tauri
+COPY --from=planner /app/src-tauri/recipe.json recipe.json
+RUN cargo chef cook --release --locked --recipe-path recipe.json
+
+# ─── Full build ───────────────────────────────────────────────────────────────
+FROM base AS build
+
+ARG NODE_MAJOR=22
+
+# Node.js (only needed in the full-build stage)
 RUN mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
         | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
@@ -33,13 +60,15 @@ RUN mkdir -p /etc/apt/keyrings \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
-    | sh -s -- -y --profile minimal --default-toolchain stable
-
 WORKDIR /app
 
+# npm deps layer — cached unless package.json / package-lock.json change
 COPY package.json package-lock.json ./
 RUN npm ci
+
+# Bring in pre-compiled Rust deps so cargo only compiles the app crate
+COPY --from=rust-cache /app/src-tauri/target src-tauri/target
+COPY --from=rust-cache /usr/local/cargo /usr/local/cargo
 
 COPY . .
 
