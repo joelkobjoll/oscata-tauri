@@ -153,7 +153,7 @@ export default function WatchlistDetailPanel({
                 position: "fixed",
                 left: 0,
                 right: 0,
-                bottom: 0,
+                bottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
                 maxHeight: "82vh",
                 background: "var(--color-surface)",
                 borderTop: "1px solid var(--color-border)",

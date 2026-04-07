@@ -153,6 +153,7 @@ fn build_router(state: AppState) -> Router {
         .route("/watchlist/{id}",          delete(handlers::remove_watchlist_handler).put(handlers::update_watchlist_handler))
         .route("/watchlist/check/{tmdb_id}", get(handlers::check_watchlist_handler))
         .route("/watchlist/{tmdb_id}/coverage", get(handlers::watchlist_coverage_handler))
+        .route("/watchlist/{tmdb_id}/seasons",  get(handlers::watchlist_seasons_handler))
         .route("/quality-profiles",             get(handlers::get_profiles_handler).post(handlers::create_profile_handler))
         .route("/quality-profiles/{id}",        put(handlers::update_profile_handler).delete(handlers::delete_profile_handler))
         .route("/notifications/subscription",         get(handlers::get_telegram_sub_handler).put(handlers::update_telegram_sub_handler).delete(handlers::revoke_telegram_sub_handler))
@@ -176,7 +177,7 @@ fn build_router(state: AppState) -> Router {
         if let Some(d) = dist {
             let index = d.join("index.html");
             root = root.fallback_service(
-                ServeDir::new(&d).not_found_service(ServeFile::new(index))
+                ServeDir::new(&d).fallback(ServeFile::new(index))
             );
         } else {
             root = root

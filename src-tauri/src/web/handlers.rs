@@ -926,6 +926,18 @@ pub async fn revoke_telegram_sub_handler(
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
+pub async fn watchlist_seasons_handler(
+    AuthUser(_u): AuthUser,
+    Path(tmdb_id): Path<i64>,
+    State(state): State<AppState>,
+) -> ApiResult<Json<Vec<crate::tmdb::TmdbSeason>>> {
+    let api_key = state.db.load_config().map_err(ApiError::from)?.tmdb_api_key;
+    let seasons = crate::tmdb::fetch_tv_seasons(&api_key, tmdb_id)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(seasons))
+}
+
 // ── WebSocket event stream ────────────────────────────────────────────────────
 
 /// Upgrades a connection to a WebSocket that subscribes to all server-push
