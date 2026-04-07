@@ -68,6 +68,7 @@ pub fn spawn_if_enabled(db: crate::db::Db, queue: crate::downloads::SharedQueue,
     };
 
     // Env vars override DB config when OSCATA_WEBGUI=1 is set.
+    #[cfg_attr(debug_assertions, allow(unused_variables))]
     let host = if force_enabled {
         std::env::var("OSCATA_WEBGUI_HOST").unwrap_or_else(|_| cfg.host.clone())
     } else {
@@ -317,6 +318,7 @@ fn find_dist_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     None
 }
 
+#[cfg(not(debug_assertions))]
 fn parse_bind_ip(host: &str) -> IpAddr {
     let t = host.trim();
     if t.eq_ignore_ascii_case("localhost") { return IpAddr::V4(Ipv4Addr::LOCALHOST); }

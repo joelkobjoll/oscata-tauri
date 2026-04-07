@@ -1942,15 +1942,13 @@ impl Db {
             episode_end: Option<i64>,
             media_type: Option<String>,
             metadata_at: Option<String>,
-            tmdb_id: Option<i64>,
-            imdb_id: Option<String>,
             manual_match: i64,
         }
 
         // Primary lookup: exact ftp_path match (fast path).
         let mut existing = conn
             .query_row(
-                "SELECT title, year, season, episode, episode_end, media_type, metadata_at, tmdb_id, imdb_id, COALESCE(manual_match, 0)
+                "SELECT title, year, season, episode, episode_end, media_type, metadata_at, COALESCE(manual_match, 0)
                  FROM media_items WHERE ftp_path = ?1 LIMIT 1",
                 params![path],
                 |r| {
@@ -1962,9 +1960,7 @@ impl Db {
                         episode_end: r.get(4)?,
                         media_type: r.get(5)?,
                         metadata_at: r.get(6)?,
-                        tmdb_id: r.get(7)?,
-                        imdb_id: r.get(8)?,
-                        manual_match: r.get(9)?,
+                        manual_match: r.get(7)?,
                     })
                 },
             )
@@ -1998,7 +1994,7 @@ impl Db {
                 // Now read it back as an existing row.
                 existing = conn
                     .query_row(
-                        "SELECT title, year, season, episode, episode_end, media_type, metadata_at, tmdb_id, imdb_id, COALESCE(manual_match, 0)
+                        "SELECT title, year, season, episode, episode_end, media_type, metadata_at, COALESCE(manual_match, 0)
                          FROM media_items WHERE id = ?1",
                         params![id],
                         |r| {
@@ -2010,9 +2006,7 @@ impl Db {
                                 episode_end: r.get(4)?,
                                 media_type: r.get(5)?,
                                 metadata_at: r.get(6)?,
-                                tmdb_id: r.get(7)?,
-                                imdb_id: r.get(8)?,
-                                manual_match: r.get(9)?,
+                                manual_match: r.get(7)?,
                             })
                         },
                     )
@@ -2789,56 +2783,6 @@ impl Db {
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
     }
 
-    // ── Telegram verify tokens ────────────────────────────────────────────────
-
-    pub fn create_telegram_verify_token(
-        &self,
-        token: &str,
-        user_id: i64,
-        chat_id: &str,
-        expires_at: &str,
-    ) -> Result<(), String> {
-        let conn = self.conn.lock().unwrap();
-        // Clean up old tokens for this user first
-        conn.execute(
-            "DELETE FROM telegram_verify_tokens WHERE user_id=?1",
-            params![user_id],
-        )
-        .ok();
-        conn.execute(
-            "INSERT INTO telegram_verify_tokens (token, user_id, chat_id, expires_at)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![token, user_id, chat_id, expires_at],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    /// Validates the token. Returns the chat_id and user_id if valid and not expired.
-    pub fn consume_telegram_verify_token(
-        &self,
-        token: &str,
-    ) -> Result<Option<(i64, String)>, String> {
-        let conn = self.conn.lock().unwrap();
-        let now = chrono::Utc::now().to_rfc3339();
-        let result: rusqlite::Result<Option<(i64, String)>> = conn
-            .query_row(
-                "SELECT user_id, chat_id FROM telegram_verify_tokens
-                 WHERE token=?1 AND expires_at > ?2",
-                params![token, now],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional();
-        let opt = result.map_err(|e| e.to_string())?;
-        if opt.is_some() {
-            conn.execute(
-                "DELETE FROM telegram_verify_tokens WHERE token=?1",
-                params![token],
-            )
-            .ok();
-        }
-        Ok(opt)
-    }
 }
 
 // ── Fix 2: SQLite transaction tests ─────────────────────────────────────────

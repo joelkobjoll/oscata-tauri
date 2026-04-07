@@ -47,7 +47,6 @@ pub struct UploadItem {
 pub struct UploadQueue {
     pub items: Vec<UploadItem>,
     pub next_id: u64,
-    pub max_concurrent: usize,
     pub semaphore: Arc<tokio::sync::Semaphore>,
     pub cancel_flags: std::collections::HashMap<u64, Arc<std::sync::atomic::AtomicBool>>,
 }
@@ -64,7 +63,6 @@ impl UploadQueue {
         Self {
             items: Vec::new(),
             next_id: 1,
-            max_concurrent,
             semaphore: Arc::new(tokio::sync::Semaphore::new(max_concurrent)),
             cancel_flags: std::collections::HashMap::new(),
         }

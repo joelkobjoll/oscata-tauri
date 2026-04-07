@@ -1424,7 +1424,7 @@ pub async fn start_indexing_internal(
             let api_key = config.tmdb_api_key.clone();
             let title = parsed.title.clone();
             let year = parsed.year;
-            let mtype = media_type.clone().unwrap_or_else(|| "movie".to_string());
+            let _mtype = media_type.clone().unwrap_or_else(|| "movie".to_string());
             let tmdb_stype = tmdb_search_type.clone();
 
             // Whether the file is new or existing, spawn the TMDB enrichment as a
@@ -3013,22 +3013,6 @@ fn extract_dir_names(raw: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Find the season subfolder name in `dirs` that best matches `season_num`.
-/// Accepts "Season 01", "Temporada 1", "S01", etc.
-fn find_season_dir(dirs: &[String], season_num: u8) -> Option<String> {
-    for dir in dirs {
-        let lower = dir.to_lowercase();
-        // Extract all digit runs from the dir name
-        let digits: String = lower.chars().filter(|c| c.is_ascii_digit()).collect();
-        if let Ok(n) = digits.trim_start_matches('0').parse::<u8>() {
-            if n == season_num {
-                return Some(dir.clone());
-            }
-        }
-    }
-    None
-}
-
 /// Find the closest matching show directory name in `dirs` for `show_title`.
 /// Returns the dir name with the highest token overlap (minimum 1 token match).
 fn fuzzy_best_show(show_title: &str, dirs: &[String]) -> Option<String> {
@@ -3219,7 +3203,7 @@ pub async fn suggest_upload_destination(
     let movie_dest = pick_best_folder("movie");
     let tv_dest = pick_best_folder("tv");
 
-    let base_dest = match media_type {
+    let _base_dest = match media_type {
         "tv" => tv_dest.clone(),
         _ => movie_dest.clone(),
     };
