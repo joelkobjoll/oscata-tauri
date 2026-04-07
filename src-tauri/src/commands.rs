@@ -1273,6 +1273,7 @@ pub async fn start_indexing_internal(
     let config = db.load_config()?;
 
     if let Some(ref w) = window { w.emit("index:start", serde_json::json!({})).ok(); }
+    crate::ws_broadcast("index:start", serde_json::json!({}));
 
     let window_log = window.clone();
     let on_log = Arc::new(move |msg: String| {
@@ -1304,6 +1305,7 @@ pub async fn start_indexing_internal(
                     attempt += 1;
                     if attempt >= MAX_RETRIES {
                         if let Some(ref w) = window { w.emit("index:error", serde_json::json!({ "message": e })).ok(); }
+                        crate::ws_broadcast("index:error", serde_json::json!({ "message": e }));
                         return Err(e);
                     }
                     on_log(format!("⚠ {e} — retrying in {RETRY_DELAY_SECS}s ({attempt}/{MAX_RETRIES})…"));
@@ -1325,6 +1327,7 @@ pub async fn start_indexing_internal(
 
     if total == 0 {
         if let Some(ref w) = window { w.emit("index:error", serde_json::json!({ "message": "FTP crawl returned 0 media files. Check your Root Path setting." })).ok(); }
+        crate::ws_broadcast("index:error", serde_json::json!({ "message": "FTP crawl returned 0 media files. Check your Root Path setting." }));
         return Ok(());
     }
 
@@ -1528,18 +1531,16 @@ pub async fn start_indexing_internal(
         if removed_stale == 1 { "" } else { "s" }
     ));
 
+    let complete_payload = serde_json::json!({
+        "total": total,
+        "new_items": new_items,
+        "metadata_queued": metadata_queued,
+        "removed": removed_stale,
+    });
     if let Some(ref w) = window {
-        w.emit(
-            "index:complete",
-            serde_json::json!({
-                "total": total,
-                "new_items": new_items,
-                "metadata_queued": metadata_queued,
-                "removed": removed_stale,
-            }),
-        )
-        .ok();
+        w.emit("index:complete", complete_payload.clone()).ok();
     }
+    crate::ws_broadcast("index:complete", complete_payload);
 
     db.save_last_indexed_at(&chrono::Utc::now().to_rfc3339()).ok();
 

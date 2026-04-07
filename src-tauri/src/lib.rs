@@ -31,6 +31,21 @@ pub(crate) struct WatchdogState(pub(crate) Mutex<HashMap<String, WatchdogWindowS
 /// Set/cleared by `start_indexing_internal`; read by the WEBGUI status endpoint.
 pub static INDEXING_RUNNING: std::sync::LazyLock<Arc<std::sync::atomic::AtomicBool>> =
     std::sync::LazyLock::new(|| Arc::new(std::sync::atomic::AtomicBool::new(false)));
+
+/// Broadcast channel for WebSocket push events (web-GUI mode).
+/// Sender is cloned into each spawned task / handler. Receivers are created
+/// per connected WebSocket client. Messages are JSON strings shaped as
+/// `{"event": "index:complete", "payload": {...}}`.
+pub static WS_TX: std::sync::LazyLock<tokio::sync::broadcast::Sender<String>> =
+    std::sync::LazyLock::new(|| tokio::sync::broadcast::channel::<String>(256).0);
+
+/// Push a named event to all connected WebSocket clients.
+/// No-op when no clients are connected (send error is silently ignored).
+pub fn ws_broadcast(event: &str, payload: serde_json::Value) {
+    let msg = serde_json::json!({"event": event, "payload": payload}).to_string();
+    crate::WS_TX.send(msg).ok();
+}
+
 static WATCHDOG_NONCE: AtomicU64 = AtomicU64::new(1);
 
 fn schedule_window_watchdog(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {

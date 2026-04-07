@@ -197,3 +197,59 @@ export async function call<T>(
   const text = await response.text();
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
+
+/**
+ * Opens a WebSocket connection to the server's event stream (`/api/ws`).
+ * The token is passed as a query parameter since browsers cannot set custom
+ * headers on WebSocket connections.
+ *
+ * Returns a cleanup function that closes the socket.
+ * Automatically reconnects on unexpected close (with a 3-second delay).
+ */
+export function connectWs(
+  onEvent: (event: string, payload: unknown) => void,
+): () => void {
+  let ws: WebSocket | null = null;
+  let stopped = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function connect() {
+    if (stopped) return;
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const token = getToken() ?? "";
+    const url = `${protocol}//${window.location.host}/api/ws?token=${encodeURIComponent(token)}`;
+
+    ws = new WebSocket(url);
+
+    ws.onmessage = (e) => {
+      try {
+        const { event, payload } = JSON.parse(e.data as string) as {
+          event: string;
+          payload: unknown;
+        };
+        onEvent(event, payload);
+      } catch {
+        // malformed message — ignore
+      }
+    };
+
+    ws.onclose = () => {
+      if (!stopped) {
+        reconnectTimer = setTimeout(connect, 3000);
+      }
+    };
+
+    ws.onerror = () => {
+      ws?.close();
+    };
+  }
+
+  connect();
+
+  return () => {
+    stopped = true;
+    if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+    ws?.close();
+  };
+}
+

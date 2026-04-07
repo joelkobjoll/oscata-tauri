@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { LogEntry } from "../components/ActivityLog";
-import { call, isTauri } from "../lib/transport";
+import { call, connectWs, isTauri } from "../lib/transport";
 
 export interface MediaItem {
   id: number;
@@ -253,12 +253,59 @@ export function useIndexing() {
     };
   }, []);
 
-  // In web mode there are no Tauri push events, so poll /indexing/status and
-  // the library to keep the UI in sync with background indexing on the server.
+  // In web mode: connect via WebSocket for real-time events, with polling as a fallback.
   useEffect(() => {
     if (isTauri()) return;
 
-    const POLL_INTERVAL_MS = 3000;
+    // ── WebSocket (real-time push) ────────────────────────────────────────
+    const handleWsEvent = (event: string, payload: unknown) => {
+      const p = payload as Record<string, unknown>;
+      if (event === "index:start") {
+        setIndexError(null);
+        setIsIndexing(true);
+        setProgress({ current: 0, total: 0 });
+        setTmdbProgress(null);
+        setCompletionSummary(null);
+        addLog("▶ Indexing started");
+      } else if (event === "index:complete") {
+        setProgress(null);
+        setTmdbProgress(null);
+        setIsIndexing(false);
+        setCompletionSummary({
+          newItems: (p.new_items as number) ?? 0,
+          removed: (p.removed as number) ?? 0,
+        });
+        addLog(
+          `✓ Done — ${p.total} files indexed, ${p.new_items} new, ${p.removed ?? 0} stale items removed`,
+        );
+        call<MediaItem[]>("get_all_media")
+          .then((loaded) => {
+            rebuildIndex(loaded);
+            setItems(loaded);
+          })
+          .catch(console.error);
+      } else if (event === "index:error") {
+        setIndexError((p.message as string) ?? "Unknown error");
+        setProgress(null);
+        setIsIndexing(false);
+        addLog(`⚠ Error: ${p.message}`);
+      } else if (event === "index:update") {
+        setItems((prev) => {
+          const index = itemIndexRef.current.get(p.id as number);
+          if (index == null) return prev;
+          const next = prev.slice();
+          next[index] = { ...next[index], ...(p as Partial<MediaItem>) };
+          return next;
+        });
+      }
+    };
+
+    const stopWs = connectWs(handleWsEvent);
+
+    // ── Polling fallback (status check only) ─────────────────────────────
+    // Polls every 5 s (less frequent than before since WS handles real-time).
+    // Primarily keeps `isIndexing` in sync when the WS reconnects mid-index.
+    const POLL_INTERVAL_MS = 5000;
     let wasRunning = false;
 
     const poll = async () => {
@@ -267,8 +314,8 @@ export function useIndexing() {
         const running = status.running;
         setIsIndexing(running);
 
-        // When indexing transitions from running → done, reload the library.
         if (wasRunning && !running) {
+          // Transition detected via poll (WS event may have been missed during reconnect).
           setProgress(null);
           setTmdbProgress(null);
           const loaded = await call<MediaItem[]>("get_all_media");
@@ -276,10 +323,9 @@ export function useIndexing() {
           setItems(loaded);
           setCompletionSummary({ newItems: 0, removed: 0 });
         } else if (!wasRunning && running) {
-          // Just started — signal via setProgress so the indicator appears.
           setIndexError(null);
           setCompletionSummary(null);
-          setProgress({ current: 0, total: 0 });
+          setProgress((prev) => prev ?? { current: 0, total: 0 });
         }
 
         wasRunning = running;
@@ -289,8 +335,12 @@ export function useIndexing() {
     };
 
     const timerId = window.setInterval(poll, POLL_INTERVAL_MS);
-    poll(); // Immediate first fetch
-    return () => window.clearInterval(timerId);
+    poll();
+
+    return () => {
+      stopWs();
+      window.clearInterval(timerId);
+    };
   }, []);
 
   return {

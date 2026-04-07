@@ -21,6 +21,7 @@ export default defineConfig(async () => ({
       "/api": {
         target: "http://localhost:47870",
         changeOrigin: true,
+        ws: true,
       },
     },
     hmr: host

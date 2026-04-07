@@ -156,6 +156,7 @@ fn build_router(state: AppState) -> Router {
         .route("/quality-profiles/{id}",        put(handlers::update_profile_handler).delete(handlers::delete_profile_handler))
         .route("/notifications/subscription",         get(handlers::get_telegram_sub_handler).put(handlers::update_telegram_sub_handler).delete(handlers::revoke_telegram_sub_handler))
         .route("/notifications/subscription/link",      post(handlers::link_telegram_bot_handler))
+        .route("/ws",                                   get(handlers::ws_handler))
         .layer(auth_mw)
         .with_state(api_state);
 

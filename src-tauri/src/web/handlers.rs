@@ -925,3 +925,78 @@ pub async fn revoke_telegram_sub_handler(
         .map_err(ApiError::from)?;
     Ok(Json(serde_json::json!({"ok": true})))
 }
+
+// ── WebSocket event stream ────────────────────────────────────────────────────
+
+/// Upgrades a connection to a WebSocket that subscribes to all server-push
+/// events (indexed via `crate::ws_broadcast`). Requires a valid auth token in
+/// the `Authorization: Bearer <token>` header or `?token=<token>` query param.
+pub async fn ws_handler(
+    ws: axum::extract::ws::WebSocketUpgrade,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+    axum::extract::State(state): axum::extract::State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    // Accept token from query-string (?token=…) or Authorization header.
+    let token = params.get("token").cloned().or_else(|| {
+        headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer ").map(str::to_string))
+    });
+
+    let authenticated = match token {
+        Some(t) => state.db.validate_web_session(&t).ok().flatten().is_some(),
+        None => false,
+    };
+
+    ws.on_upgrade(move |socket| handle_ws(socket, authenticated))
+}
+
+async fn handle_ws(
+    mut socket: axum::extract::ws::WebSocket,
+    authenticated: bool,
+) {
+    use axum::extract::ws::Message;
+
+    if !authenticated {
+        let _ = socket
+            .send(Message::Text(
+                r#"{"event":"error","payload":{"message":"Unauthorized"}}"#.into(),
+            ))
+            .await;
+        return;
+    }
+
+    let mut rx = crate::WS_TX.subscribe();
+
+    loop {
+        tokio::select! {
+            // Receive broadcast event and forward to client
+            result = rx.recv() => {
+                match result {
+                    Ok(msg) => {
+                        if socket.send(Message::Text(msg.into())).await.is_err() {
+                            break; // Client disconnected
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        eprintln!("[ws] client lagged, skipped {n} messages");
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            // Echo client pings back (keep-alive)
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Ping(data))) => {
+                        if socket.send(Message::Pong(data)).await.is_err() { break; }
+                    }
+                    Some(Ok(Message::Close(_))) | None => break,
+                    _ => {} // ignore other messages from client
+                }
+            }
+        }
+    }
+}
+
