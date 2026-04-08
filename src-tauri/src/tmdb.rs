@@ -20,6 +20,9 @@ pub struct TmdbMovie {
     pub poster_path: Option<String>,
     pub poster_path_en: Option<String>,
     pub vote_average: Option<f64>,
+    /// IMDb rating (0–10), populated by the metadata proxy when available.
+    #[serde(default)]
+    pub imdb_rating: Option<f64>,
     #[serde(default)]
     pub genre_ids: Vec<i64>,
     /// Localized genre names (from the fetch language, prefer Spanish).
@@ -414,6 +417,7 @@ async fn search_endpoint_results(
                 poster_path: result.poster_path,
                 poster_path_en: None,
                 vote_average: result.vote_average,
+                imdb_rating: None,
                 genre_ids: result.genre_ids,
                 genres: result.genres,
                 runtime_mins: result.runtime_mins,
@@ -456,6 +460,7 @@ async fn search_endpoint_results(
                 poster_path: result.poster_path.clone(),
                 poster_path_en: result.poster_path,
                 vote_average: result.vote_average,
+                imdb_rating: None,
                 genre_ids: result.genre_ids,
                 genres: result.genres,
                 runtime_mins: result.runtime_mins,
@@ -739,6 +744,7 @@ pub async fn fetch_movie_by_id(api_key: &str, tmdb_id: i64, media_type: &str) ->
         poster_path: spanish.poster_path.clone().or(english.poster_path.clone()),
         poster_path_en: english.poster_path.or(spanish.poster_path),
         vote_average: spanish.vote_average.or(english.vote_average),
+        imdb_rating: None,
         genre_ids: if spanish.genre_ids.is_empty() {
             english.genre_ids
         } else {

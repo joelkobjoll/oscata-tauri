@@ -396,6 +396,7 @@ export default function Library({
   const [showMobileNavMenu, setShowMobileNavMenu] = useState(false);
   const mobileNavMenuRef = useRef<HTMLDivElement>(null);
   const [language, setLanguage] = useState<AppLanguage>("es");
+  const [preferredRating, setPreferredRating] = useState<string>("tmdb");
   const [badgeMap, setBadgeMap] = useState<
     Record<
       number,
@@ -696,11 +697,7 @@ export default function Library({
       const gs = item.tmdb_genres;
       map.set(
         item.id,
-        gs
-          ? typeof gs === "string"
-            ? (JSON.parse(gs) as number[])
-            : gs
-          : [],
+        gs ? (typeof gs === "string" ? (JSON.parse(gs) as number[]) : gs) : [],
       );
     }
     return map;
@@ -771,30 +768,29 @@ export default function Library({
   );
 
   const filtered = useMemo(() => {
-    const matchingItems = filterableItems
-      .filter((item) => {
-        const q = filters.search.toLowerCase();
-        const matchesSearch =
-          !q ||
-          (item.tmdb_title ?? "").toLowerCase().includes(q) ||
-          (item.tmdb_title_en ?? "").toLowerCase().includes(q) ||
-          (item.title ?? "").toLowerCase().includes(q) ||
-          (item.release_group ?? "").toLowerCase().includes(q) ||
-          item.filename.toLowerCase().includes(q);
-        const matchesGenre =
-          !filters.genre ||
-          (parsedGenreMap.get(item.id) ?? []).includes(Number(filters.genre));
-        return (
-          matchesSearch &&
-          (!filters.releaseType ||
-            normalizeReleaseType(item.release_type) === filters.releaseType) &&
-          (!filters.resolution ||
-            normalizeResolution(item.resolution) === filters.resolution) &&
-          (!filters.hdr || normalizeHdr(item.hdr) === filters.hdr) &&
-          (!filters.codec || normalizeCodec(item.codec) === filters.codec) &&
-          matchesGenre
-        );
-      });
+    const matchingItems = filterableItems.filter((item) => {
+      const q = filters.search.toLowerCase();
+      const matchesSearch =
+        !q ||
+        (item.tmdb_title ?? "").toLowerCase().includes(q) ||
+        (item.tmdb_title_en ?? "").toLowerCase().includes(q) ||
+        (item.title ?? "").toLowerCase().includes(q) ||
+        (item.release_group ?? "").toLowerCase().includes(q) ||
+        item.filename.toLowerCase().includes(q);
+      const matchesGenre =
+        !filters.genre ||
+        (parsedGenreMap.get(item.id) ?? []).includes(Number(filters.genre));
+      return (
+        matchesSearch &&
+        (!filters.releaseType ||
+          normalizeReleaseType(item.release_type) === filters.releaseType) &&
+        (!filters.resolution ||
+          normalizeResolution(item.resolution) === filters.resolution) &&
+        (!filters.hdr || normalizeHdr(item.hdr) === filters.hdr) &&
+        (!filters.codec || normalizeCodec(item.codec) === filters.codec) &&
+        matchesGenre
+      );
+    });
 
     // Schwartzian transform: compute sort keys once per item instead of O(N log N) times.
     const sort = filters.sort;
@@ -814,13 +810,17 @@ export default function Library({
         case "title-desc":
           return b.titleKey.localeCompare(a.titleKey);
         case "release-desc": {
-          const ra = a.item.tmdb_release_date ?? `${a.item.year ?? "0000"}-01-01`;
-          const rb = b.item.tmdb_release_date ?? `${b.item.year ?? "0000"}-01-01`;
+          const ra =
+            a.item.tmdb_release_date ?? `${a.item.year ?? "0000"}-01-01`;
+          const rb =
+            b.item.tmdb_release_date ?? `${b.item.year ?? "0000"}-01-01`;
           return rb.localeCompare(ra);
         }
         case "release-asc": {
-          const ra = a.item.tmdb_release_date ?? `${a.item.year ?? "0000"}-01-01`;
-          const rb = b.item.tmdb_release_date ?? `${b.item.year ?? "0000"}-01-01`;
+          const ra =
+            a.item.tmdb_release_date ?? `${a.item.year ?? "0000"}-01-01`;
+          const rb =
+            b.item.tmdb_release_date ?? `${b.item.year ?? "0000"}-01-01`;
           return ra.localeCompare(rb);
         }
         case "year-desc":
@@ -969,13 +969,18 @@ export default function Library({
 
   useEffect(() => {
     let cancelled = false;
-    call<{ default_language?: AppLanguage }>("get_config")
+    call<{ default_language?: AppLanguage; preferred_rating?: string }>(
+      "get_config",
+    )
       .then((config) => {
         if (
           !cancelled &&
           (config.default_language === "es" || config.default_language === "en")
         ) {
           setLanguage(config.default_language);
+        }
+        if (!cancelled && config.preferred_rating) {
+          setPreferredRating(config.preferred_rating);
         }
       })
       .catch(() => {});
@@ -1348,6 +1353,7 @@ export default function Library({
       showFileSize={
         activeTab === "all" || (activeTab === "movie" && movieView === "files")
       }
+      preferredRating={preferredRating}
     />
   );
 

@@ -1,13 +1,5 @@
 import React, { useState } from "react";
-import {
-  Check,
-  Clock,
-  Download,
-  Pencil,
-  RefreshCw,
-  Star,
-  X,
-} from "lucide-react";
+import { Check, Clock, Download, Pencil, RefreshCw, X } from "lucide-react";
 import { isTauri } from "../lib/transport";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { PlexIcon, EmbyIcon } from "./ServerIcons";
@@ -23,6 +15,8 @@ import {
 } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 import { GENRE_MAP } from "../utils/genres";
+import imdbLogo from "../assets/imdb.png";
+import tmdbLogo from "../assets/tmdb.svg";
 import { formatBytes } from "../lib/format";
 import WatchlistButton from "../features/watchlist/WatchlistButton";
 import type { AddWatchlistParams } from "../features/watchlist/types";
@@ -110,7 +104,6 @@ export default function DetailPanel({
   const title = getLocalizedTitle(item, language);
   const overview = getLocalizedOverview(item, language);
   const posterPath = getLocalizedPosterPath(item, language);
-  const rating = item.tmdb_rating ? item.tmdb_rating.toFixed(1) : null;
   const relatedVersions = groupedView
     ? relatedItems
     : relatedItems.filter((candidate) => candidate.id !== item.id);
@@ -330,15 +323,36 @@ export default function DetailPanel({
                     : item.year}
                 </span>
               )}
-              {rating && (
+              {/* TMDB rating */}
+              {item.tmdb_rating != null && item.tmdb_rating > 0 && (
                 <span style={metaPill}>
-                  <Star
-                    size={13}
-                    strokeWidth={2}
-                    aria-hidden="true"
-                    style={{ display: "block" }}
+                  <img
+                    src={tmdbLogo}
+                    alt="TMDB"
+                    style={{
+                      height: 9,
+                      width: "auto",
+                      display: "block",
+                      opacity: 0.85,
+                    }}
                   />
-                  {rating}
+                  {item.tmdb_rating.toFixed(1)}
+                </span>
+              )}
+              {/* IMDb rating */}
+              {item.imdb_rating != null && item.imdb_rating > 0 && (
+                <span style={metaPill}>
+                  <img
+                    src={imdbLogo}
+                    alt="IMDb"
+                    style={{
+                      height: 11,
+                      width: "auto",
+                      display: "block",
+                      opacity: 0.9,
+                    }}
+                  />
+                  {item.imdb_rating.toFixed(1)}
                 </span>
               )}
               {genres.map((g) => (

@@ -17,6 +17,7 @@ export default memo(function VirtualMediaGrid({
   downloadMap,
   hideEpisodeBadge = false,
   showFileSize = false,
+  preferredRating = "tmdb",
 }: {
   items: MediaItem[];
   selecting: boolean;
@@ -40,6 +41,7 @@ export default memo(function VirtualMediaGrid({
   downloadMap: Map<string, DownloadItem>;
   hideEpisodeBadge?: boolean;
   showFileSize?: boolean;
+  preferredRating?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -88,6 +90,7 @@ export default memo(function VirtualMediaGrid({
               downloadItem={downloadMap.get(item.ftp_path)}
               hideEpisodeBadge={hideEpisodeBadge}
               showFileSize={showFileSize}
+              preferredRating={preferredRating}
               onDownload={onDownload}
               onSelect={(selected) => {
                 if (selecting) onToggleCheck(selected.id);

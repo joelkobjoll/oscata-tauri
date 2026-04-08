@@ -30,6 +30,7 @@ export interface MediaItem {
   tmdb_poster?: string;
   tmdb_poster_en?: string;
   tmdb_rating?: number;
+  imdb_rating?: number;
   tmdb_overview?: string;
   tmdb_overview_en?: string;
   tmdb_genres?: number[] | string;
@@ -166,6 +167,7 @@ export function useIndexing() {
                   tmdb_poster: memItem.tmdb_poster,
                   tmdb_poster_en: memItem.tmdb_poster_en,
                   tmdb_rating: memItem.tmdb_rating,
+                  imdb_rating: memItem.imdb_rating,
                   tmdb_genres: memItem.tmdb_genres,
                   metadata_at: memItem.metadata_at,
                 };

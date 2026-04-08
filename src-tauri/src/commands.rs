@@ -996,6 +996,7 @@ pub async fn test_metadata_config(
         proxy_url,
         proxy_api_key,
         proxy_search_provider: "tmdb".to_string(),
+        preferred_rating: "tmdb".to_string(),
     };
     // Normalise provider to a known value
     if cfg.metadata_provider != "proxy" {
@@ -1264,8 +1265,14 @@ pub async fn rematch_all_internal(
             format!("🌐 [{}/{}] Matching: {} ({})", i + 1, total, title, mtype),
         );
 
-        // Rate limit: 40 req/10s
-        tokio::time::sleep(std::time::Duration::from_millis(260)).await;
+        // TMDB allows 40 req/10 s; proxy allows 60 req/min — keep below both.
+        let sleep_ms: u64 = if config.metadata_provider == "proxy" { 1100 } else { 260 };
+        tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
+
+        if title.trim().is_empty() {
+            emit_index_log(&window, format!("⚠ Skipping item {} — no title to search", item.id));
+            continue;
+        }
 
         let result = resolve_tmdb_match_with_plex(&config, &title, year, tmdb_search_type).await;
 
@@ -1290,6 +1297,7 @@ pub async fn rematch_all_internal(
                     "tmdb_poster": movie.poster_path,
                     "tmdb_poster_en": movie.poster_path_en,
                     "tmdb_rating": movie.vote_average,
+                    "imdb_rating": movie.imdb_rating,
                     "tmdb_overview": movie.overview,
                     "tmdb_overview_en": movie.overview_en,
                     "tmdb_genres": movie.genre_ids,
@@ -1482,6 +1490,11 @@ pub async fn start_indexing_internal(
                 tmdb_total.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
                 metadata_tasks.push(tokio::spawn(async move {
+                    if title.trim().is_empty() {
+                        on_log_clone(format!("⚠ Skipping item {id} — no title to search"));
+                        tmdb_done_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        return;
+                    }
                     on_log_clone(format!("🌐 Metadata ({label}): {title}"));
                     let result = resolve_tmdb_match_with_plex(
                         &config_clone,
@@ -1506,6 +1519,7 @@ pub async fn start_indexing_internal(
                                         "tmdb_poster": movie.poster_path,
                                         "tmdb_poster_en": movie.poster_path_en,
                                         "tmdb_rating": movie.vote_average,
+                                        "imdb_rating": movie.imdb_rating,
                                         "tmdb_overview": movie.overview,
                                         "tmdb_overview_en": movie.overview_en,
                                         "tmdb_genres": movie.genre_ids,
@@ -2005,10 +2019,15 @@ pub async fn refresh_all_metadata_internal(
             format!("🌐 [{}/{}] Refreshing metadata: {}", i + 1, total, title),
         );
 
-        tokio::time::sleep(std::time::Duration::from_millis(260)).await;
+        let sleep_ms: u64 = if config.metadata_provider == "proxy" { 1100 } else { 260 };
+        tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
 
         // Items with no tmdb_id need a full search, not just a detail fetch.
         if item.tmdb_id.is_none() {
+            if title.trim().is_empty() {
+                emit_index_log(&window, format!("⚠ Skipping item {} — no title to search", item.id));
+                continue;
+            }
             let tmdb_search_type = match media_type.as_str() {
                 "tv" => "tv",
                 "documentary" => {
@@ -2031,6 +2050,7 @@ pub async fn refresh_all_metadata_internal(
                             "tmdb_poster": movie.poster_path,
                             "tmdb_poster_en": movie.poster_path_en,
                             "tmdb_rating": movie.vote_average,
+                            "imdb_rating": movie.imdb_rating,
                             "tmdb_overview": movie.overview,
                             "tmdb_overview_en": movie.overview_en,
                             "tmdb_genres": movie.genre_ids,
@@ -2069,6 +2089,7 @@ pub async fn refresh_all_metadata_internal(
                         "tmdb_poster": movie.poster_path,
                         "tmdb_poster_en": movie.poster_path_en,
                         "tmdb_rating": movie.vote_average,
+                        "imdb_rating": movie.imdb_rating,
                         "tmdb_overview": movie.overview,
                         "tmdb_overview_en": movie.overview_en,
                         "tmdb_genres": movie.genre_ids,
@@ -2205,6 +2226,7 @@ pub async fn apply_tmdb_match(
             "tmdb_poster": movie.poster_path,
             "tmdb_poster_en": movie.poster_path_en,
             "tmdb_rating": movie.vote_average,
+            "imdb_rating": movie.imdb_rating,
             "tmdb_overview": movie.overview,
             "tmdb_overview_en": movie.overview_en,
             "tmdb_genres": movie.genre_ids,

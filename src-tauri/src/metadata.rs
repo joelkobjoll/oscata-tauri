@@ -50,7 +50,30 @@ pub async fn smart_search(
             crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, other, year, &cfg.proxy_search_provider)
                 .await?;
 
-        Ok(other_results.into_iter().next().map(|m| (m, other)))
+        if let Some(best) = other_results.into_iter().next() {
+            return Ok(Some((best, other)));
+        }
+
+        // Neither type returned a result with the configured provider.
+        // Fall back to the IMDb search provider if we weren't already using it —
+        // IMDb has broader coverage for non-English / obscure titles.
+        if cfg.proxy_search_provider != "imdb" {
+            let imdb_primary =
+                crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, primary, year, "imdb")
+                    .await?;
+            if let Some(best) = imdb_primary.into_iter().next() {
+                return Ok(Some((best, primary)));
+            }
+
+            let imdb_other =
+                crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, other, year, "imdb")
+                    .await?;
+            if let Some(best) = imdb_other.into_iter().next() {
+                return Ok(Some((best, other)));
+            }
+        }
+
+        Ok(None)
     } else {
         crate::tmdb::smart_search(&cfg.tmdb_api_key, title, year, preferred_type).await
     }

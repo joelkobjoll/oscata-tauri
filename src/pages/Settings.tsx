@@ -47,6 +47,7 @@ interface Config {
   proxy_url: string;
   proxy_api_key: string;
   proxy_search_provider: string; // "tmdb" | "imdb"
+  preferred_rating: string; // "tmdb" | "imdb"
 }
 
 interface GenreDestRule {
@@ -925,6 +926,7 @@ export default function Settings({
           proxy_url: cfg.proxy_url ?? "",
           proxy_api_key: cfg.proxy_api_key ?? "",
           proxy_search_provider: cfg.proxy_search_provider ?? "tmdb",
+          preferred_rating: cfg.preferred_rating ?? "tmdb",
         });
       })
       .catch(console.error);
@@ -1998,6 +2000,21 @@ export default function Settings({
                     </select>
                     <span style={subtextStyle}>
                       {t(language, "settings.defaultLanguageHelp")}
+                    </span>
+                  </div>
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>Puntuación preferida</label>
+                    <select
+                      style={selectStyle}
+                      value={form.preferred_rating ?? "tmdb"}
+                      onChange={set("preferred_rating")}
+                    >
+                      <option value="tmdb">TMDB</option>
+                      <option value="imdb">IMDb</option>
+                    </select>
+                    <span style={subtextStyle}>
+                      La puntuación que se muestra en las tarjetas y paneles
+                      cuando ambas están disponibles.
                     </span>
                   </div>
                 </div>

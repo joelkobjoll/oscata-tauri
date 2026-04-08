@@ -1195,6 +1195,12 @@ export default function TVShowPanel({
                       `★ ${show.tmdb_rating.toFixed(1)}`,
                       "var(--color-warning)",
                     )}
+                  {show.imdb_rating != null &&
+                    miniBadge(
+                      "color-mix(in srgb, var(--color-warning) 20%, transparent)",
+                      `IMDb ${show.imdb_rating.toFixed(1)}`,
+                      "var(--color-warning)",
+                    )}
                   {showGenres
                     .slice(0, 2)
                     .map((g) =>
@@ -1658,6 +1664,12 @@ export default function TVShowPanel({
                       value={show.tmdb_rating.toFixed(1)}
                     />
                   )}
+                  {show.imdb_rating != null && (
+                    <StatCard
+                      label="IMDb"
+                      value={show.imdb_rating.toFixed(1)}
+                    />
+                  )}
                 </div>
 
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -1675,6 +1687,12 @@ export default function TVShowPanel({
                       "color-mix(in srgb, var(--color-primary) 18%, transparent)",
                       `TMDB ${show.tmdb_rating.toFixed(1)}`,
                       "var(--color-primary)",
+                    )}
+                  {show.imdb_rating != null &&
+                    miniBadge(
+                      "color-mix(in srgb, var(--color-warning) 18%, transparent)",
+                      `IMDb ${show.imdb_rating.toFixed(1)}`,
+                      "var(--color-warning)",
                     )}
                   {show.media_type &&
                     miniBadge("var(--color-surface-2)", show.media_type)}

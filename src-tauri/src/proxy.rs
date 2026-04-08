@@ -8,14 +8,138 @@
 /// `src/utils/mediaLanguage.ts` normalises both proxy full-URLs and plain
 /// TMDB paths transparently.
 use serde::Deserialize;
+use std::sync::OnceLock;
+use tokio::sync::Mutex;
+use tokio::time::Instant;
 
 use crate::tmdb::{TmdbEpisode, TmdbMovie, TmdbSeason};
+
+// ── Global rate-limit gate ────────────────────────────────────────────────────
+//
+// Stores the earliest Instant at which the next proxy request may be sent.
+// All proxy functions call `wait_for_rate_limit()` before making any HTTP
+// request and call `record_rate_limit_headers()` after every response.
+
+static BACKOFF_UNTIL: OnceLock<Mutex<Instant>> = OnceLock::new();
+
+fn backoff_mutex() -> &'static Mutex<Instant> {
+    BACKOFF_UNTIL.get_or_init(|| Mutex::new(Instant::now()))
+}
+
+/// Block until the global backoff clears.
+async fn wait_for_rate_limit() {
+    let until = {
+        let guard = backoff_mutex().lock().await;
+        *guard
+    };
+    let now = Instant::now();
+    if until > now {
+        tokio::time::sleep_until(until).await;
+    }
+}
+
+/// After a successful response, read rate-limit headers and proactively set
+/// the backoff if remaining calls are very low.
+fn record_rate_limit_headers(resp: &reqwest::Response) {
+    let remaining = resp
+        .headers()
+        .get("x-ratelimit-remaining")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok());
+    let reset_ts = resp
+        .headers()
+        .get("x-ratelimit-reset")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok());
+
+    // When fewer than 5 calls remain, calculate the sleep needed until reset
+    // and apply it so the next request fires just after the window rolls over.
+    if let (Some(rem), Some(reset)) = (remaining, reset_ts) {
+        if rem < 5 {
+            let now_unix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let wait_secs = reset.saturating_sub(now_unix) + 1;
+            if wait_secs > 0 && wait_secs < 120 {
+                let until = Instant::now() + std::time::Duration::from_secs(wait_secs);
+                if let Ok(mut guard) = backoff_mutex().try_lock() {
+                    if until > *guard {
+                        *guard = until;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Set a backoff from a `retryAfterSeconds` value in a 429 body.
+fn set_backoff_secs(secs: u64) {
+    let until = Instant::now() + std::time::Duration::from_secs(secs.max(1).min(120));
+    // Use blocking lock via std — we're already in an async context but only
+    // need a non-contested write, so try_lock is fine.
+    if let Ok(mut guard) = backoff_mutex().try_lock() {
+        if until > *guard {
+            *guard = until;
+        }
+    }
+}
+
+/// Parse `{"error":"Rate limit exceeded","retryAfterSeconds":N}` from a body.
+fn parse_retry_after(body: &str) -> Option<u64> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RateError {
+        retry_after_seconds: u64,
+    }
+    serde_json::from_str::<RateError>(body).ok().map(|e| e.retry_after_seconds)
+}
+
 
 fn build_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| e.to_string())
+}
+
+/// Rate-limit-aware GET helper.
+///
+/// Behaviour:
+/// 1. Awaits the global backoff gate before sending the request.
+/// 2. Reads `x-ratelimit-remaining` after a successful response; if it falls
+///    below 5, proactively sleeps until the `x-ratelimit-reset` window.
+/// 3. On HTTP 429, parses `retryAfterSeconds` from the response body, sets
+///    the global backoff, sleeps, then retries **once**.
+async fn proxy_get(client: &reqwest::Client, url: &str, api_key: &str) -> Result<reqwest::Response, String> {
+    // ── First attempt ──────────────────────────────────────────────────────
+    wait_for_rate_limit().await;
+    let resp = client
+        .get(url)
+        .header("x-api-key", api_key)
+        .send()
+        .await
+        .map_err(|e| format!("proxy request failed: {e}"))?;
+
+    if resp.status().as_u16() == 429 {
+        let body = resp.text().await.unwrap_or_default();
+        let wait_secs = parse_retry_after(&body).unwrap_or(5);
+        eprintln!("[proxy] 429 rate limit — waiting {wait_secs}s before retry");
+        set_backoff_secs(wait_secs);
+        // ── Retry once after backoff ───────────────────────────────────────
+        wait_for_rate_limit().await;
+        let retry = client
+            .get(url)
+            .header("x-api-key", api_key)
+            .send()
+            .await
+            .map_err(|e| format!("proxy retry request failed: {e}"))?;
+        record_rate_limit_headers(&retry);
+        return Ok(retry);
+    }
+
+    record_rate_limit_headers(&resp);
+    Ok(resp)
 }
 
 /// `GET /v1/search?query=…&type=…&year=…&provider=…`
@@ -62,12 +186,7 @@ pub async fn search_proxy(
     }
 
     let client = build_client()?;
-    let resp = client
-        .get(&url)
-        .header("x-api-key", api_key)
-        .send()
-        .await
-        .map_err(|e| format!("proxy search request failed: {e}"))?;
+    let resp = proxy_get(&client, &url, api_key).await?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
@@ -98,6 +217,7 @@ pub async fn search_proxy(
                 poster_path: r.poster_url,
                 poster_path_en: None,
                 vote_average: r.vote_average,
+                imdb_rating: None,
                 genre_ids: vec![],
                 genres: vec![],
                 runtime_mins: None,
@@ -204,10 +324,7 @@ pub async fn fetch_proxy_seasons(
 
     for n in 1..=MAX_SEASONS {
         let url = format!("{base}/v1/title/tmdb/tv/{tmdb_id}/seasons/{n}");
-        let resp = client
-            .get(&url)
-            .header("x-api-key", api_key)
-            .send()
+        let resp = proxy_get(&client, &url, api_key)
             .await
             .map_err(|e| format!("proxy seasons request failed: {e}"))?;
 
@@ -294,17 +411,13 @@ struct TitleDocument {
     #[serde(default)]
     genres: Vec<String>,
     vote_average: Option<f64>,
+    imdb_rating: Option<f64>,
 }
 
 async fn fetch_title_document(url: &str, api_key: &str) -> Result<TitleDocument, String> {
     let api_key = api_key.trim();
     let client = build_client()?;
-    let resp = client
-        .get(url)
-        .header("x-api-key", api_key)
-        .send()
-        .await
-        .map_err(|e| format!("proxy request failed: {e}"))?;
+    let resp = proxy_get(&client, url, api_key).await?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
@@ -340,6 +453,7 @@ fn title_document_to_movie(
         poster_path: doc.poster_url,
         poster_path_en: doc.poster_url_en,
         vote_average: doc.vote_average,
+        imdb_rating: doc.imdb_rating,
         genre_ids: vec![],
         genres: doc.genres,
         runtime_mins: doc.runtime_mins,

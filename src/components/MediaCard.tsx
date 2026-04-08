@@ -13,6 +13,8 @@ import {
 import { formatBytes } from "../lib/format";
 import WatchlistButton from "../features/watchlist/WatchlistButton";
 import type { AddWatchlistParams } from "../features/watchlist/types";
+import imdbLogo from "../assets/imdb.png";
+import tmdbLogo from "../assets/tmdb.svg";
 
 interface Props {
   item: MediaItem;
@@ -26,6 +28,7 @@ interface Props {
   downloadItem?: DownloadItem;
   hideEpisodeBadge?: boolean;
   showFileSize?: boolean;
+  preferredRating?: string;
   onDownload: (item: MediaItem) => void;
   onSelect?: (item: MediaItem) => void;
   watchlistedTmdbIds?: Set<number>;
@@ -125,6 +128,7 @@ function MediaCard({
   downloadItem,
   hideEpisodeBadge = false,
   showFileSize = false,
+  preferredRating = "tmdb",
   onDownload: _onDownload,
   onSelect,
   watchlistedTmdbIds,
@@ -145,6 +149,22 @@ function MediaCard({
   const inEmby = badges?.embyInLibrary === true;
   const hasCombinedLibraryFlag = badges?.inEmby === true;
   const showLibraryFallback = hasCombinedLibraryFlag && !inPlex && !inEmby;
+
+  // Resolve the displayed rating: prefer the chosen source, fall back to the other
+  const displayRating: { value: number; source: "imdb" | "tmdb" } | null =
+    (() => {
+      if (
+        preferredRating === "imdb" &&
+        item.imdb_rating != null &&
+        item.imdb_rating > 0
+      )
+        return { value: item.imdb_rating, source: "imdb" };
+      if (item.tmdb_rating != null && item.tmdb_rating > 0)
+        return { value: item.tmdb_rating, source: "tmdb" };
+      if (item.imdb_rating != null && item.imdb_rating > 0)
+        return { value: item.imdb_rating, source: "imdb" };
+      return null;
+    })();
 
   const langs =
     item.languages
@@ -454,10 +474,22 @@ function MediaCard({
           }}
         >
           {year && <span>{year}</span>}
-          {item.tmdb_rating != null && item.tmdb_rating > 0 && (
+          {displayRating && (
             <>
               <span style={{ opacity: 0.4 }}>·</span>
-              <span>{item.tmdb_rating.toFixed(1)}</span>
+              <img
+                src={displayRating.source === "imdb" ? imdbLogo : tmdbLogo}
+                alt={displayRating.source === "imdb" ? "IMDb" : "TMDB"}
+                style={{
+                  height: displayRating.source === "imdb" ? 11 : 9,
+                  width: "auto",
+                  display: "inline-block",
+                  verticalAlign: "middle",
+                  opacity: 0.85,
+                  flexShrink: 0,
+                }}
+              />
+              <span>{displayRating.value.toFixed(1)}</span>
             </>
           )}
 

@@ -80,6 +80,9 @@ pub struct AppConfig {
     /// IMDb mode requires no TMDB quota and returns IMDb IDs directly.
     #[serde(default = "default_proxy_search_provider")]
     pub proxy_search_provider: String,
+    /// Which rating source to show in the UI: "tmdb" (default) or "imdb"
+    #[serde(default = "default_preferred_rating")]
+    pub preferred_rating: String,
 }
 
 fn default_alphabetical_subfolders() -> bool {
@@ -95,6 +98,10 @@ fn default_metadata_provider() -> String {
 }
 
 fn default_proxy_search_provider() -> String {
+    "tmdb".to_string()
+}
+
+fn default_preferred_rating() -> String {
     "tmdb".to_string()
 }
 
@@ -167,6 +174,7 @@ pub struct MediaItem {
     pub tmdb_poster: Option<String>,
     pub tmdb_poster_en: Option<String>,
     pub tmdb_rating: Option<f64>,
+    pub imdb_rating: Option<f64>,
     pub tmdb_genres: Option<String>,
     pub indexed_at: Option<String>,
     pub metadata_at: Option<String>,
@@ -521,6 +529,7 @@ impl Db {
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN tmdb_poster_en TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN imdb_id TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN ftp_relative_path TEXT;").ok();
+        conn.execute_batch("ALTER TABLE media_items ADD COLUMN imdb_rating REAL;").ok();
         // Web GUI auth tables
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS web_users (
@@ -1417,6 +1426,7 @@ impl Db {
             ("proxy_url", config.proxy_url.as_str()),
             ("proxy_api_key", config.proxy_api_key.as_str()),
             ("proxy_search_provider", config.proxy_search_provider.as_str()),
+            ("preferred_rating", config.preferred_rating.as_str()),
         ];
         let port_str = config.ftp_port.to_string();
         for (k, v) in &pairs {
@@ -1850,6 +1860,7 @@ impl Db {
             proxy_url: get("proxy_url").unwrap_or_default(),
             proxy_api_key: get("proxy_api_key").unwrap_or_default(),
             proxy_search_provider: get("proxy_search_provider").unwrap_or_else(|_| "tmdb".to_string()),
+            preferred_rating: get("preferred_rating").unwrap_or_else(|_| "tmdb".to_string()),
         })
     }
 
@@ -2171,8 +2182,8 @@ impl Db {
             "UPDATE media_items SET
                 tmdb_id=?1, imdb_id=?2, tmdb_type=?3, tmdb_title=?4, tmdb_title_en=?5, tmdb_year=?6,
                 tmdb_release_date=?7, tmdb_overview=?8, tmdb_overview_en=?9, tmdb_poster=?10, tmdb_poster_en=?11,
-                tmdb_rating=?12, tmdb_genres=?13, metadata_at=?14, manual_match=?15
-             WHERE id=?16",
+                tmdb_rating=?12, imdb_rating=?13, tmdb_genres=?14, metadata_at=?15, manual_match=?16
+             WHERE id=?17",
             params![
                 movie.id,
                 movie.imdb_id,
@@ -2186,6 +2197,7 @@ impl Db {
                 movie.poster_path,
                 movie.poster_path_en,
                 movie.vote_average,
+                movie.imdb_rating,
                 genres,
                 now,
                 if manual_match { 1 } else { 0 },
@@ -2203,6 +2215,16 @@ impl Db {
         media_type: &str,
     ) -> Result<(), String> {
         self.update_tmdb_with_mode(id, movie, media_type, false)
+    }
+
+    pub fn update_imdb_rating(&self, id: i64, rating: f64) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE media_items SET imdb_rating = ?1 WHERE id = ?2",
+            params![rating, id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub fn update_tmdb_manual(
@@ -2230,7 +2252,7 @@ impl Db {
             .prepare("SELECT id, ftp_path, filename, size_bytes, title, year, season, episode, episode_end, \
                       resolution, codec, audio_codec, languages, hdr, release_type, release_group, \
                       media_type, tmdb_id, imdb_id, tmdb_type, tmdb_title, tmdb_title_en, tmdb_year, tmdb_release_date, \
-                      tmdb_overview, tmdb_overview_en, tmdb_poster, tmdb_poster_en, tmdb_rating, tmdb_genres, indexed_at, metadata_at, manual_match \
+                      tmdb_overview, tmdb_overview_en, tmdb_poster, tmdb_poster_en, tmdb_rating, imdb_rating, tmdb_genres, indexed_at, metadata_at, manual_match \
                       FROM media_items ORDER BY COALESCE(tmdb_title, title, filename)")
             .map_err(|e| e.to_string())?;
 
@@ -2266,10 +2288,11 @@ impl Db {
                     tmdb_poster: row.get(26)?,
                     tmdb_poster_en: row.get(27)?,
                     tmdb_rating: row.get(28)?,
-                    tmdb_genres: row.get(29)?,
-                    indexed_at: row.get(30)?,
-                    metadata_at: row.get(31)?,
-                    manual_match: row.get(32)?,
+                    imdb_rating: row.get(29)?,
+                    tmdb_genres: row.get(30)?,
+                    indexed_at: row.get(31)?,
+                    metadata_at: row.get(32)?,
+                    manual_match: row.get(33)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -2303,7 +2326,7 @@ impl Db {
             "UPDATE media_items SET
                 tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
                 tmdb_title_en=NULL, tmdb_release_date=NULL, tmdb_overview=NULL, tmdb_overview_en=NULL, tmdb_poster=NULL, tmdb_poster_en=NULL,
-                tmdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
+                tmdb_rating=NULL, imdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
              WHERE id=?1",
             params![id],
         )
@@ -2317,7 +2340,7 @@ impl Db {
             "UPDATE media_items SET
                 tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
                 tmdb_title_en=NULL, tmdb_release_date=NULL, tmdb_overview=NULL, tmdb_overview_en=NULL, tmdb_poster=NULL, tmdb_poster_en=NULL,
-                tmdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL
+                tmdb_rating=NULL, imdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL
              WHERE COALESCE(manual_match, 0) = 0",
             [],
         )
@@ -2332,7 +2355,7 @@ impl Db {
             "UPDATE media_items SET
                 tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
                 tmdb_title_en=NULL, tmdb_release_date=NULL, tmdb_overview=NULL, tmdb_overview_en=NULL, tmdb_poster=NULL, tmdb_poster_en=NULL,
-                tmdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
+                tmdb_rating=NULL, imdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
              WHERE tmdb_id=?1",
             params![tmdb_id],
         )
