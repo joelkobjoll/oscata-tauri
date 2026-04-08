@@ -1,5 +1,21 @@
 # Novedades de Oscata
 
+## Versión 0.8.10-beta.1 — 8 de abril de 2026
+
+### 🎬 Tráilers visibles también en el panel de series de escritorio
+
+El botón «Ver tráiler» ya aparece en el panel lateral de series de escritorio cuando el título tiene un tráiler disponible. Hasta ahora solo se renderizaba en la variante móvil del componente, así que el dato podía existir correctamente en memoria y aun así no verse en la interfaz de escritorio.
+
+### 🔄 Nueva acción para forzar el refresco completo de metadatos
+
+La biblioteca incluye ahora una acción para volver a pedir metadatos de **todos** los elementos usando la configuración actual del proveedor (TMDB o proxy), incluso aunque ya tengan datos rellenados. Esto permite rehidratar carteles, sinopsis, valoraciones y tráilers tras cambiar de proxy o corregir una integración sin tener que borrar metadatos antes.
+
+### 🛡️ Las URL de tráiler ya no se pisan con valores vacíos
+
+Se corrigen varios flujos internos en los que las búsquedas de TMDB o algunos refrescos parciales podían sobrescribir una URL de tráiler válida con `null`. Ahora las búsquedas rápidas ya no emiten campos de tráiler vacíos y la actualización de metadatos conserva las URL existentes cuando la respuesta remota no trae ese dato.
+
+---
+
 ## Versión 0.8.9 — 8 de abril de 2026
 
 ### 📣 Notificaciones de Telegram: pistas de audio mejoradas

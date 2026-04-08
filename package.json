@@ -1,7 +1,7 @@
 {
   "name": "oscata-tauri",
   "private": true,
-  "version": "0.8.9",
+  "version": "0.8.10-beta.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,6 +20,7 @@
     "seed-db": "node ./scripts/update-starter-db.mjs",
     "seed-sync": "node ./scripts/sync-local-db-from-seed.mjs",
     "release": "node ./scripts/publish.mjs",
+    "release:beta": "node ./scripts/publish.mjs beta",
     "release:patch": "node ./scripts/publish.mjs patch",
     "release:minor": "node ./scripts/publish.mjs minor",
     "release:major": "node ./scripts/publish.mjs major"

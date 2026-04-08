@@ -2925,7 +2925,7 @@ dependencies = [
 
 [[package]]
 name = "oscata-tauri"
-version = "0.8.9"
+version = "0.8.10-beta.1"
 dependencies = [
  "async-trait",
  "axum",

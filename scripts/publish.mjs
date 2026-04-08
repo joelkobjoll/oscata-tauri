@@ -9,7 +9,18 @@ const cargoTomlPath = path.join(rootDir, "src-tauri", "Cargo.toml");
 const tauriResourcesDir = path.join(rootDir, "src-tauri", "resources");
 const bundledSeedDbPath = path.join(tauriResourcesDir, "library.seed.db");
 
-const VALID_SEMVER = /^\d+\.\d+\.\d+$/;
+const VALID_SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+
+function parseSemver(version) {
+  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease: match[4] ?? null,
+  };
+}
 
 function fail(message) {
   console.error(`\n[release] ${message}\n`);
@@ -38,7 +49,7 @@ function parseArgs(argv) {
     if (arg === "--build") build = true;
     else if (arg === "--skip-checks") skipChecks = true;
     else if (arg === "--dry-run") dryRun = true;
-    else if (arg === "--seed-db") seedDb = argv[i + 1] ?? null, i += 1;
+    else if (arg === "--seed-db") ((seedDb = argv[i + 1] ?? null), (i += 1));
     else if (!arg.startsWith("--")) target = arg;
   }
 
@@ -46,7 +57,12 @@ function parseArgs(argv) {
 }
 
 function bumpVersion(version, bump) {
-  const [major, minor, patch] = version.split(".").map(Number);
+  const parsed = parseSemver(version);
+  if (!parsed) {
+    fail(`Invalid semver version: ${version}`);
+  }
+
+  const { major, minor, patch, prerelease } = parsed;
   switch (bump) {
     case "patch":
       return `${major}.${minor}.${patch + 1}`;
@@ -54,10 +70,19 @@ function bumpVersion(version, bump) {
       return `${major}.${minor + 1}.0`;
     case "major":
       return `${major + 1}.0.0`;
+    case "beta": {
+      if (prerelease) {
+        const betaMatch = prerelease.match(/^beta\.(\d+)$/);
+        if (betaMatch) {
+          return `${major}.${minor}.${patch}-beta.${Number(betaMatch[1]) + 1}`;
+        }
+      }
+      return `${major}.${minor}.${patch + 1}-beta.1`;
+    }
     default:
       if (VALID_SEMVER.test(bump)) return bump;
       fail(
-        "Use `patch`, `minor`, `major`, or an explicit semver like `0.2.0`.",
+        "Use `patch`, `minor`, `major`, `beta`, or an explicit semver like `0.2.0`.",
       );
   }
 }
@@ -67,14 +92,13 @@ function writeJson(filePath, value) {
 }
 
 function updateCargoToml(content, nextVersion) {
-  return content.replace(
-    /^version = "[^"]+"$/m,
-    `version = "${nextVersion}"`,
-  );
+  return content.replace(/^version = "[^"]+"$/m, `version = "${nextVersion}"`);
 }
 
 function main() {
-  const { target, build, skipChecks, dryRun, seedDb } = parseArgs(process.argv.slice(2));
+  const { target, build, skipChecks, dryRun, seedDb } = parseArgs(
+    process.argv.slice(2),
+  );
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   const packageLock = fs.existsSync(packageLockPath)
     ? JSON.parse(fs.readFileSync(packageLockPath, "utf8"))
@@ -83,7 +107,7 @@ function main() {
 
   const currentVersion = packageJson.version;
   if (!VALID_SEMVER.test(currentVersion)) {
-    fail(`Current package.json version is not simple semver: ${currentVersion}`);
+    fail(`Current package.json version is not valid semver: ${currentVersion}`);
   }
 
   const nextVersion = bumpVersion(currentVersion, target);
