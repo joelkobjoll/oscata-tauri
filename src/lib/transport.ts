@@ -40,6 +40,16 @@ const WEB_ROUTES: Record<
   get_webgui_config: ["GET", "/webgui/config"],
   save_webgui_config: ["PUT", "/webgui/config"],
   test_smtp: ["POST", "/settings/smtp-test"],
+  test_metadata_config: (a) => [
+    "POST",
+    "/metadata/test",
+    {
+      provider: a.provider,
+      tmdb_api_key: a.tmdbApiKey,
+      proxy_url: a.proxyUrl,
+      proxy_api_key: a.proxyApiKey,
+    },
+  ],
   // Dynamic paths:
   queue_download: (a) => [
     "POST",
@@ -141,7 +151,10 @@ const WEB_ROUTES: Record<
   update_telegram_sub: (a) => [
     "PUT",
     "/notifications/subscription",
-    { notify_new_content: a.notifyNewContent, notify_downloads: a.notifyDownloads },
+    {
+      notify_new_content: a.notifyNewContent,
+      notify_downloads: a.notifyDownloads,
+    },
   ],
   revoke_telegram_sub: ["DELETE", "/notifications/subscription"],
 };
@@ -252,4 +265,3 @@ export function connectWs(
     ws?.close();
   };
 }
-

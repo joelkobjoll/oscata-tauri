@@ -67,6 +67,15 @@ pub struct AppConfig {
     pub telegram_bot_token: String,      // "" = disabled
     #[serde(default)]
     pub telegram_chat_id: String,        // "" = disabled
+    /// "tmdb" (default) or "proxy"
+    #[serde(default = "default_metadata_provider")]
+    pub metadata_provider: String,
+    /// Base URL of the metadata-proxy server (e.g. "https://metadata.example.com")
+    #[serde(default)]
+    pub proxy_url: String,
+    /// API key for the metadata-proxy (`x-api-key` header)
+    #[serde(default)]
+    pub proxy_api_key: String,
 }
 
 fn default_alphabetical_subfolders() -> bool {
@@ -75,6 +84,10 @@ fn default_alphabetical_subfolders() -> bool {
 
 fn default_close_to_tray() -> bool {
     true
+}
+
+fn default_metadata_provider() -> String {
+    "tmdb".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1392,6 +1405,9 @@ impl Db {
             ),
             ("telegram_bot_token", config.telegram_bot_token.as_str()),
             ("telegram_chat_id", config.telegram_chat_id.as_str()),
+            ("metadata_provider", config.metadata_provider.as_str()),
+            ("proxy_url", config.proxy_url.as_str()),
+            ("proxy_api_key", config.proxy_api_key.as_str()),
         ];
         let port_str = config.ftp_port.to_string();
         for (k, v) in &pairs {
@@ -1821,6 +1837,9 @@ impl Db {
                 .unwrap_or(true),
             telegram_bot_token: get("telegram_bot_token").unwrap_or_default(),
             telegram_chat_id: get("telegram_chat_id").unwrap_or_default(),
+            metadata_provider: get("metadata_provider").unwrap_or_else(|_| "tmdb".to_string()),
+            proxy_url: get("proxy_url").unwrap_or_default(),
+            proxy_api_key: get("proxy_api_key").unwrap_or_default(),
         })
     }
 

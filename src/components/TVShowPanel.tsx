@@ -20,6 +20,7 @@ import {
   getLocalizedOverview,
   getLocalizedPosterPath,
   getLocalizedTitle,
+  resolveImageUrl,
 } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 import { GENRE_MAP } from "../utils/genres";
@@ -140,7 +141,6 @@ const RELEASE_ORDER = [
   "CAM",
 ];
 const RES_ORDER = ["2160P", "1080P", "720P", "480P"];
-const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 
 const RELEASE_TYPE_COLORS: Record<string, string> = {
   BDREMUX: "#065f46",
@@ -321,9 +321,10 @@ function EpisodeRow({
 }) {
   const episodeData = resolvedEpisodeData(episode);
   const season = resolvedSeason(episode);
-  const seasonPrefix = season != null
-    ? `${language === "es" ? "T" : "S"}${String(season).padStart(2, "0")}`
-    : "";
+  const seasonPrefix =
+    season != null
+      ? `${language === "es" ? "T" : "S"}${String(season).padStart(2, "0")}`
+      : "";
   const epLabel =
     episodeData.episode != null
       ? `${seasonPrefix}E${String(episodeData.episode).padStart(2, "0")}${episodeData.episodeEnd != null ? `-E${String(episodeData.episodeEnd).padStart(2, "0")}` : ""}`
@@ -426,7 +427,8 @@ function EpisodeRow({
           >
             {episode.release_type &&
               miniBadge(
-                RELEASE_TYPE_COLORS[episode.release_type] ?? "var(--color-surface)",
+                RELEASE_TYPE_COLORS[episode.release_type] ??
+                  "var(--color-surface)",
                 episode.release_type,
                 "#fff",
               )}
@@ -469,7 +471,8 @@ function EpisodeRow({
         >
           {episode.release_type &&
             miniBadge(
-              RELEASE_TYPE_COLORS[episode.release_type] ?? "var(--color-surface)",
+              RELEASE_TYPE_COLORS[episode.release_type] ??
+                "var(--color-surface)",
               episode.release_type,
               "#fff",
             )}
@@ -1027,7 +1030,7 @@ export default function TVShowPanel({
   };
 
   const heroPosterPath = getLocalizedPosterPath(show, language);
-  const heroPoster = heroPosterPath ? `${TMDB_IMG}${heroPosterPath}` : null;
+  const heroPoster = resolveImageUrl(heroPosterPath, "w500");
 
   return (
     <>
@@ -1192,13 +1195,15 @@ export default function TVShowPanel({
                       `★ ${show.tmdb_rating.toFixed(1)}`,
                       "var(--color-warning)",
                     )}
-                  {showGenres.slice(0, 2).map((g) =>
-                    miniBadge(
-                      "color-mix(in srgb, var(--color-teal) 14%, transparent)",
-                      g,
-                      "var(--color-teal)",
-                    ),
-                  )}
+                  {showGenres
+                    .slice(0, 2)
+                    .map((g) =>
+                      miniBadge(
+                        "color-mix(in srgb, var(--color-teal) 14%, transparent)",
+                        g,
+                        "var(--color-teal)",
+                      ),
+                    )}
                   {showBadge?.plexInLibrary && (
                     <span
                       title="In Plex"
@@ -1347,7 +1352,9 @@ export default function TVShowPanel({
                   ...(openingUrl === tmdbUrl && { opacity: 0.6 }),
                 }}
               >
-                {openingUrl === tmdbUrl ? "↗ …" : t(language, "detail.openTmdb")}
+                {openingUrl === tmdbUrl
+                  ? "↗ …"
+                  : t(language, "detail.openTmdb")}
               </button>
               <button
                 onClick={() => handleOpenUrl(imdbUrl)}
@@ -1356,7 +1363,9 @@ export default function TVShowPanel({
                   ...(openingUrl === imdbUrl && { opacity: 0.6 }),
                 }}
               >
-                {openingUrl === imdbUrl ? "↗ …" : t(language, "detail.openImdb")}
+                {openingUrl === imdbUrl
+                  ? "↗ …"
+                  : t(language, "detail.openImdb")}
               </button>
               {show.tmdb_id != null &&
                 watchlistedTmdbIds &&

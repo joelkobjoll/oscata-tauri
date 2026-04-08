@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, Check, ExternalLink, Server } from "lucide-react";
 import type { TmdbSeason, WatchlistCoverageItem, WatchlistItem } from "./types";
 import type { AppLanguage } from "../../utils/mediaLanguage";
+import { resolveImageUrl } from "../../utils/mediaLanguage";
 import { t } from "../../utils/i18n";
 import { useQualityProfiles } from "./useQualityProfiles";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -25,8 +26,6 @@ interface WatchlistDetailPanelProps {
   getSeasons: (tmdbId: number) => Promise<TmdbSeason[]>;
   onNavigateToItem?: (tmdbId: number, mediaType: string) => void;
 }
-
-const TMDB_IMG_W = "https://image.tmdb.org/t/p/w300";
 
 /** Numeric rank for sorting: lower number = lower resolution. */
 function resolutionRank(res: string | null | undefined): number {
@@ -81,11 +80,7 @@ export default function WatchlistDetailPanel({
     return map;
   }, [coverage]);
 
-  const poster = item.poster
-    ? item.poster.startsWith("http")
-      ? item.poster
-      : `${TMDB_IMG_W}${item.poster}`
-    : null;
+  const poster = resolveImageUrl(item.poster, "w300");
 
   const displayTitle =
     language === "es" ? item.title : (item.title_en ?? item.title);

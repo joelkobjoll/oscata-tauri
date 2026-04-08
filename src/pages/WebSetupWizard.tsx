@@ -114,8 +114,7 @@ function StepFTP({
   const [testError, setTestError] = useState("");
 
   const set =
-    (key: keyof FtpFields) =>
-    (e: React.ChangeEvent<HTMLInputElement>) =>
+    (key: keyof FtpFields) => (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((f) => ({
         ...f,
         [key]: key === "ftp_port" ? Number(e.target.value) : e.target.value,
@@ -157,44 +156,100 @@ function StepFTP({
       style={{ display: "grid", gap: 20 }}
     >
       <div>
-        <h2 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--color-text)" }}>
+        <h2
+          style={{
+            margin: "0 0 6px",
+            fontSize: 22,
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            color: "var(--color-text)",
+          }}
+        >
           Servidor FTP
         </h2>
-        <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-muted)" }}>
+        <p
+          style={{ margin: 0, fontSize: 13, color: "var(--color-text-muted)" }}
+        >
           Oscata se conecta a tu servidor FTP para indexar y descargar archivos.
         </p>
       </div>
 
       <section style={sectionCard}>
         <div style={{ display: "grid", gap: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 140px", gap: 12 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr) 140px",
+              gap: 12,
+            }}
+          >
             <div>
               <label style={labelStyle}>Host</label>
-              <input style={inputStyle} value={form.ftp_host} onChange={set("ftp_host")} placeholder="192.168.1.100" required />
+              <input
+                style={inputStyle}
+                value={form.ftp_host}
+                onChange={set("ftp_host")}
+                placeholder="192.168.1.100"
+                required
+              />
             </div>
             <div>
               <label style={labelStyle}>Puerto</label>
-              <input style={inputStyle} type="number" value={form.ftp_port} onChange={set("ftp_port")} min={1} max={65535} required />
+              <input
+                style={inputStyle}
+                type="number"
+                value={form.ftp_port}
+                onChange={set("ftp_port")}
+                min={1}
+                max={65535}
+                required
+              />
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
+          >
             <div>
               <label style={labelStyle}>Usuario</label>
-              <input style={inputStyle} value={form.ftp_user} onChange={set("ftp_user")} autoComplete="username" />
+              <input
+                style={inputStyle}
+                value={form.ftp_user}
+                onChange={set("ftp_user")}
+                autoComplete="username"
+              />
             </div>
             <div>
               <label style={labelStyle}>Contraseña</label>
-              <input style={inputStyle} type="password" value={form.ftp_pass} onChange={set("ftp_pass")} autoComplete="current-password" />
+              <input
+                style={inputStyle}
+                type="password"
+                value={form.ftp_pass}
+                onChange={set("ftp_pass")}
+                autoComplete="current-password"
+              />
             </div>
           </div>
 
           <div>
             <label style={labelStyle}>Ruta raíz</label>
-            <input style={inputStyle} value={form.ftp_root} onChange={set("ftp_root")} placeholder="/Compartida" required />
+            <input
+              style={inputStyle}
+              value={form.ftp_root}
+              onChange={set("ftp_root")}
+              placeholder="/Compartida"
+              required
+            />
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <button
               type="button"
               onClick={testConnection}
@@ -210,13 +265,23 @@ function StepFTP({
             </button>
 
             {testStatus === "ok" && (
-              <span style={{ fontSize: 13, color: "var(--color-success)", display: "flex", alignItems: "center", gap: 6 }}>
+              <span
+                style={{
+                  fontSize: 13,
+                  color: "var(--color-success)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
                 <AppIcon name="check" size={14} strokeWidth={2} />
                 Conexión correcta
               </span>
             )}
             {testStatus === "error" && (
-              <span style={{ fontSize: 13, color: "var(--color-danger)" }}>{testError || "Error de conexión"}</span>
+              <span style={{ fontSize: 13, color: "var(--color-danger)" }}>
+                {testError || "Error de conexión"}
+              </span>
             )}
           </div>
         </div>
@@ -234,56 +299,125 @@ function StepFTP({
 
 // ── Step 2: TMDB ──────────────────────────────────────────────────────────────
 
+interface MetadataStepResult {
+  provider: string;
+  tmdbKey: string;
+  proxyUrl: string;
+  proxyApiKey: string;
+}
+
 function StepTMDB({
-  defaultKey,
   onBack,
   onFinish,
   saving,
 }: {
-  defaultKey: string;
   onBack: () => void;
-  onFinish: (key: string) => void;
+  onFinish: (result: MetadataStepResult) => void;
   saving: boolean;
 }) {
-  const [key, setKey] = useState(defaultKey);
+  const [provider, setProvider] = useState("tmdb");
+  const [tmdbKey, setTmdbKey] = useState("");
+  const [proxyUrl, setProxyUrl] = useState("");
+  const [proxyApiKey, setProxyApiKey] = useState("");
+  const isProxy = provider === "proxy";
+  const canSubmit = isProxy
+    ? !!(proxyUrl.trim() && proxyApiKey.trim())
+    : !!tmdbKey.trim();
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onFinish(key);
+        onFinish({ provider, tmdbKey, proxyUrl, proxyApiKey });
       }}
       style={{ display: "grid", gap: 20 }}
     >
       <div>
-        <h2 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--color-text)" }}>
-          API de TMDB
+        <h2
+          style={{
+            margin: "0 0 6px",
+            fontSize: 22,
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            color: "var(--color-text)",
+          }}
+        >
+          Metadatos
         </h2>
-        <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-muted)" }}>
-          Se usa para obtener portadas, sinopsis y metadatos de películas y series.{" "}
-          <a
-            href="https://www.themoviedb.org/settings/api"
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: "var(--color-primary)" }}
-          >
-            Consigue tu clave API aquí.
-          </a>
+        <p
+          style={{ margin: 0, fontSize: 13, color: "var(--color-text-muted)" }}
+        >
+          Se usan para obtener portadas, sinopsis e información de películas y
+          series.
         </p>
       </div>
 
       <section style={sectionCard}>
-        <label style={labelStyle}>Clave API (v3 — Read Access Token)</label>
-        <input
-          style={inputStyle}
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-          placeholder="eyJhbGciOiJIUzI1NiJ9..."
-          required
-        />
-        <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>
-          Puedes cambiarla más adelante en Ajustes.
-        </p>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div>
+            <label style={labelStyle}>Proveedor de metadatos</label>
+            <select
+              style={inputStyle}
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+            >
+              <option value="tmdb">TMDB (predeterminado)</option>
+              <option value="proxy">Metadata Proxy</option>
+            </select>
+          </div>
+          {!isProxy && (
+            <div>
+              <label style={labelStyle}>
+                Clave API TMDB (v3 — Read Access Token)
+              </label>
+              <input
+                style={inputStyle}
+                value={tmdbKey}
+                onChange={(e) => setTmdbKey(e.target.value)}
+                placeholder="eyJhbGciOiJIUzI1NiJ9..."
+              />
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  fontSize: 12,
+                  color: "var(--color-text-muted)",
+                }}
+              >
+                <a
+                  href="https://www.themoviedb.org/settings/api"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: "var(--color-primary)" }}
+                >
+                  Consigue tu clave API aquí.
+                </a>
+              </p>
+            </div>
+          )}
+          {isProxy && (
+            <>
+              <div>
+                <label style={labelStyle}>URL del proxy</label>
+                <input
+                  style={inputStyle}
+                  value={proxyUrl}
+                  onChange={(e) => setProxyUrl(e.target.value)}
+                  placeholder="https://metadata.example.com"
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>API key del proxy</label>
+                <input
+                  style={inputStyle}
+                  type="password"
+                  value={proxyApiKey}
+                  onChange={(e) => setProxyApiKey(e.target.value)}
+                  placeholder="Tu clave de API"
+                />
+              </div>
+            </>
+          )}
+        </div>
       </section>
 
       <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -293,7 +427,11 @@ function StepTMDB({
           </span>
           Atrás
         </button>
-        <button type="submit" disabled={saving || !key.trim()} style={primaryBtn(saving || !key.trim())}>
+        <button
+          type="submit"
+          disabled={saving || !canSubmit}
+          style={primaryBtn(saving || !canSubmit)}
+        >
           {saving ? (
             <AppIcon name="refresh-cw" size={14} strokeWidth={2} />
           ) : (
@@ -320,18 +458,26 @@ export default function WebSetupWizard({ onComplete }: WebSetupWizardProps) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
-  const handleFinish = async (tmdbKey: string) => {
+  const handleFinish = async ({
+    provider,
+    tmdbKey,
+    proxyUrl,
+    proxyApiKey,
+  }: MetadataStepResult) => {
     setSaving(true);
     setSaveError("");
     try {
       // Load any pre-existing config to avoid overwriting unrelated fields
       const existing = (await authedFetch("/settings").then((r) =>
-        r.ok ? r.json() : {}
+        r.ok ? r.json() : {},
       )) as Record<string, unknown>;
       const config = {
         ...existing,
         ...ftp,
         tmdb_api_key: tmdbKey,
+        metadata_provider: provider,
+        proxy_url: proxyUrl,
+        proxy_api_key: proxyApiKey,
         default_language: existing.default_language ?? "es",
         download_folder: existing.download_folder ?? "/downloads",
         folder_types: existing.folder_types ?? "{}",
@@ -364,7 +510,9 @@ export default function WebSetupWizard({ onComplete }: WebSetupWizardProps) {
           "radial-gradient(circle at top, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 42%), var(--color-bg)",
       }}
     >
-      <div style={{ maxWidth: 740, margin: "0 auto", display: "grid", gap: 20 }}>
+      <div
+        style={{ maxWidth: 740, margin: "0 auto", display: "grid", gap: 20 }}
+      >
         {/* Header */}
         <section style={{ ...shellCard, padding: "1.25rem 1.5rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -373,7 +521,8 @@ export default function WebSetupWizard({ onComplete }: WebSetupWizardProps) {
                 width: 42,
                 height: 42,
                 borderRadius: 14,
-                background: "color-mix(in srgb, var(--color-primary) 16%, transparent)",
+                background:
+                  "color-mix(in srgb, var(--color-primary) 16%, transparent)",
                 color: "var(--color-primary)",
                 display: "flex",
                 alignItems: "center",
@@ -384,10 +533,23 @@ export default function WebSetupWizard({ onComplete }: WebSetupWizardProps) {
               <AppIcon name="settings" size={20} strokeWidth={2.1} />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--color-text)" }}>
+              <div
+                style={{
+                  fontSize: 22,
+                  fontWeight: 800,
+                  letterSpacing: "-0.03em",
+                  color: "var(--color-text)",
+                }}
+              >
                 Configuración inicial
               </div>
-              <div style={{ fontSize: 13, color: "var(--color-text-muted)", marginTop: 2 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--color-text-muted)",
+                  marginTop: 2,
+                }}
+              >
                 Solo necesitas hacer esto una vez.
               </div>
             </div>
@@ -410,7 +572,11 @@ export default function WebSetupWizard({ onComplete }: WebSetupWizardProps) {
                         : done
                           ? "color-mix(in srgb, var(--color-success) 20%, transparent)"
                           : "color-mix(in srgb, var(--color-border) 60%, transparent)",
-                      color: active ? "#fff" : done ? "var(--color-success)" : "var(--color-text-muted)",
+                      color: active
+                        ? "#fff"
+                        : done
+                          ? "var(--color-success)"
+                          : "var(--color-text-muted)",
                       transition: "background 0.15s ease, color 0.15s ease",
                     }}
                   >
@@ -435,7 +601,6 @@ export default function WebSetupWizard({ onComplete }: WebSetupWizardProps) {
           )}
           {step === 2 && (
             <StepTMDB
-              defaultKey=""
               onBack={() => setStep(1)}
               onFinish={handleFinish}
               saving={saving}
@@ -447,8 +612,10 @@ export default function WebSetupWizard({ onComplete }: WebSetupWizardProps) {
                 marginTop: 14,
                 padding: "0.75rem 1rem",
                 borderRadius: "var(--radius)",
-                background: "color-mix(in srgb, var(--color-danger) 12%, transparent)",
-                border: "1px solid color-mix(in srgb, var(--color-danger) 30%, transparent)",
+                background:
+                  "color-mix(in srgb, var(--color-danger) 12%, transparent)",
+                border:
+                  "1px solid color-mix(in srgb, var(--color-danger) 30%, transparent)",
                 color: "var(--color-danger)",
                 fontSize: 13,
               }}

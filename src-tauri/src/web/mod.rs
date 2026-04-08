@@ -120,6 +120,7 @@ fn build_router(state: AppState) -> Router {
         .route("/server-info",             get(handlers::server_info))
         .route("/settings/has-config",     get(handlers::has_config_handler))
         .route("/ftp/test",                post(handlers::test_ftp_handler))
+        .route("/metadata/test",           post(handlers::test_metadata_handler))
         .route("/auth/bootstrap",          post(handlers::auth_bootstrap))
         .route("/auth/login",              post(handlers::auth_login))
         .route("/auth/invite/accept",      post(handlers::auth_invite_accept))

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import type { WatchlistItem } from "./types";
-import { AppLanguage } from "../../utils/mediaLanguage";
+import { AppLanguage, resolveImageUrl } from "../../utils/mediaLanguage";
 import { useIsMobile } from "../../hooks/useIsMobile";
 
 interface WatchlistCardProps {
@@ -10,8 +10,6 @@ interface WatchlistCardProps {
   onOpen: (item: WatchlistItem) => void;
   onRemove: (id: number) => void;
 }
-
-const TMDB_IMG = "https://image.tmdb.org/t/p/w300";
 
 export default function WatchlistCard({
   item,
@@ -24,11 +22,7 @@ export default function WatchlistCard({
 
   const showRemove = isMobile || hovered;
 
-  const poster = item.poster
-    ? item.poster.startsWith("http")
-      ? item.poster
-      : `${TMDB_IMG}${item.poster}`
-    : null;
+  const poster = resolveImageUrl(item.poster, "w300");
 
   const displayTitle =
     language === "es" ? item.title : (item.title_en ?? item.title);

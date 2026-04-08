@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { call } from "../lib/transport";
 import AppIcon from "./AppIcon";
 import type { AppLanguage } from "../utils/mediaLanguage";
+import { resolveImageUrl } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 
 interface TmdbResult {
@@ -16,8 +17,6 @@ interface TmdbResult {
   poster_path_en?: string;
   vote_average?: number;
 }
-
-const TMDB_IMG = "https://image.tmdb.org/t/p/w154";
 
 export default function FixMatchModal({
   itemIds,
@@ -494,7 +493,7 @@ export default function FixMatchModal({
                   >
                     {posterPath ? (
                       <img
-                        src={`${TMDB_IMG}${posterPath}`}
+                        src={resolveImageUrl(posterPath, "w154") ?? ""}
                         alt={title}
                         style={{
                           width: 92,

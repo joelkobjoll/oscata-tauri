@@ -19,14 +19,13 @@ import {
   getLocalizedOverview,
   getLocalizedPosterPath,
   getLocalizedTitle,
+  resolveImageUrl,
 } from "../utils/mediaLanguage";
 import { t } from "../utils/i18n";
 import { GENRE_MAP } from "../utils/genres";
 import { formatBytes } from "../lib/format";
 import WatchlistButton from "../features/watchlist/WatchlistButton";
 import type { AddWatchlistParams } from "../features/watchlist/types";
-
-const TMDB_IMG = "https://image.tmdb.org/t/p/w342";
 
 const metaPill: React.CSSProperties = {
   display: "inline-flex",
@@ -260,7 +259,7 @@ export default function DetailPanel({
         >
           {posterPath ? (
             <img
-              src={`${TMDB_IMG}${posterPath}`}
+              src={resolveImageUrl(posterPath, "w342") ?? ""}
               alt={title}
               style={{
                 width: isMobile ? 110 : 110,

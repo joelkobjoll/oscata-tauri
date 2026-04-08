@@ -886,26 +886,25 @@ async fn resolve_plex_imdb_id(
 
 async fn resolve_tmdb_match_with_plex(
     config: &crate::db::AppConfig,
-    api_key: &str,
     title: &str,
     year: Option<u16>,
     tmdb_search_type: &str,
 ) -> Result<Option<(crate::tmdb::TmdbMovie, String)>, String> {
     if let Ok(Some(imdb_id)) = resolve_plex_imdb_id(config, title, year, tmdb_search_type).await {
-        if let Some(movie) = crate::tmdb::find_by_imdb_id(api_key, &imdb_id, tmdb_search_type).await? {
+        if let Some(movie) = crate::metadata::find_by_imdb_id(config, &imdb_id, tmdb_search_type).await? {
             let actual_type = if tmdb_search_type == "tv" { "tv" } else { "movie" }.to_string();
             return Ok(Some((movie, actual_type)));
         }
     }
 
     let result = if tmdb_search_type == "tv" {
-        crate::tmdb::search_tmdb_multi(api_key, title, "tv")
+        crate::metadata::search_multi(config, title, "tv")
             .await
             .ok()
             .and_then(|mut r| if r.is_empty() { None } else { Some(r.remove(0)) })
             .map(|m| (m, "tv".to_string()))
     } else {
-        crate::tmdb::smart_search(api_key, title, year, tmdb_search_type)
+        crate::metadata::smart_search(config, title, year, tmdb_search_type)
             .await
             .ok()
             .flatten()
@@ -913,7 +912,7 @@ async fn resolve_tmdb_match_with_plex(
     };
 
     if let Some((movie, actual_type)) = result {
-        let movie = match crate::tmdb::fetch_movie_by_id(api_key, movie.id, &actual_type).await {
+        let movie = match crate::metadata::fetch_by_id(config, movie.id, &actual_type).await {
             Ok(full) => full,
             Err(_) => movie,
         };
@@ -959,8 +958,49 @@ pub async fn test_ftp_connection(
 }
 
 #[tauri::command]
-pub async fn test_tmdb_key(api_key: String) -> Result<bool, String> {
-    Ok(crate::tmdb::validate_api_key(&api_key).await)
+pub async fn test_metadata_config(
+    provider: String,
+    tmdb_api_key: String,
+    proxy_url: String,
+    proxy_api_key: String,
+) -> Result<bool, String> {
+    // Build a minimal AppConfig with just the metadata fields so we can reuse
+    // the unified metadata::validate_config function.
+    let mut cfg = crate::db::AppConfig {
+        ftp_host: String::new(),
+        ftp_port: 21,
+        ftp_user: String::new(),
+        ftp_pass: String::new(),
+        ftp_root: String::new(),
+        tmdb_api_key,
+        default_language: "es".to_string(),
+        download_folder: String::new(),
+        folder_types: "{}".to_string(),
+        max_concurrent_downloads: 2,
+        emby_url: String::new(),
+        emby_api_key: String::new(),
+        plex_url: String::new(),
+        plex_token: String::new(),
+        auto_check_updates: false,
+        updater_endpoint: String::new(),
+        updater_pubkey: String::new(),
+        movie_destination: String::new(),
+        tv_destination: String::new(),
+        documentary_destination: String::new(),
+        alphabetical_subfolders: true,
+        genre_destinations: "[]".to_string(),
+        close_to_tray: true,
+        telegram_bot_token: String::new(),
+        telegram_chat_id: String::new(),
+        metadata_provider: provider,
+        proxy_url,
+        proxy_api_key,
+    };
+    // Normalise provider to a known value
+    if cfg.metadata_provider != "proxy" {
+        cfg.metadata_provider = "tmdb".to_string();
+    }
+    Ok(crate::metadata::validate_config(&cfg).await)
 }
 
 #[tauri::command]
@@ -1226,8 +1266,7 @@ pub async fn rematch_all_internal(
         // Rate limit: 40 req/10s
         tokio::time::sleep(std::time::Duration::from_millis(260)).await;
 
-        let api_key = &config.tmdb_api_key;
-        let result = resolve_tmdb_match_with_plex(&config, api_key, &title, year, tmdb_search_type).await;
+        let result = resolve_tmdb_match_with_plex(&config, &title, year, tmdb_search_type).await;
 
         if let Ok(Some((movie, actual_type))) = result {
             emit_index_log(
@@ -1422,13 +1461,12 @@ pub async fn start_indexing_internal(
 
         if upsert.needs_metadata {
             metadata_queued += 1;
-            let api_key = config.tmdb_api_key.clone();
             let title = parsed.title.clone();
             let year = parsed.year;
             let _mtype = media_type.clone().unwrap_or_else(|| "movie".to_string());
             let tmdb_stype = tmdb_search_type.clone();
 
-            // Whether the file is new or existing, spawn the TMDB enrichment as a
+            // Whether the file is new or existing, spawn the metadata enrichment as a
             // background task so it never blocks the index loop.
             // The TMDB throttle (35 ms minimum interval, enforced inside
             // fetch_json_with_retry) handles rate limiting — no artificial sleep needed.
@@ -1443,10 +1481,9 @@ pub async fn start_indexing_internal(
                 tmdb_total.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
                 metadata_tasks.push(tokio::spawn(async move {
-                    on_log_clone(format!("🌐 TMDB ({label}): {title}"));
+                    on_log_clone(format!("🌐 Metadata ({label}): {title}"));
                     let result = resolve_tmdb_match_with_plex(
                         &config_clone,
-                        &api_key,
                         &title,
                         year,
                         &tmdb_stype,
@@ -1962,7 +1999,7 @@ pub async fn refresh_all_metadata_internal(
                 _ => "movie",
             };
             let year = item.year.map(|y| y as u16);
-            match resolve_tmdb_match_with_plex(&config, &config.tmdb_api_key, &title, year, tmdb_search_type).await {
+            match resolve_tmdb_match_with_plex(&config, &title, year, tmdb_search_type).await {
                 Ok(Some((movie, actual_type))) => {
                     db.update_tmdb_auto(item.id, &movie, &actual_type).ok();
                     if let Some(ref w) = window {
@@ -1995,7 +2032,7 @@ pub async fn refresh_all_metadata_internal(
 
         let tmdb_id = item.tmdb_id.unwrap();
 
-        match crate::tmdb::fetch_movie_by_id(&config.tmdb_api_key, tmdb_id, &media_type).await {
+        match crate::metadata::fetch_by_id(&config, tmdb_id, &media_type).await {
             Ok(movie) => {
                 db.refresh_tmdb_metadata(
                     item.id,
@@ -2124,7 +2161,7 @@ pub async fn search_tmdb(
     year: Option<u16>,
 ) -> Result<Vec<crate::tmdb::TmdbMovie>, String> {
     let config = state.load_config()?;
-    crate::tmdb::search_tmdb_multi_with_year(&config.tmdb_api_key, &query, &media_type, year).await
+    crate::metadata::search_multi_with_year(&config, &query, &media_type, year).await
 }
 
 #[tauri::command]
@@ -2136,7 +2173,7 @@ pub async fn apply_tmdb_match(
     media_type: String,
 ) -> Result<(), String> {
     let config = state.load_config()?;
-    let movie = crate::tmdb::fetch_movie_by_id(&config.tmdb_api_key, tmdb_id, &media_type).await?;
+    let movie = crate::metadata::fetch_by_id(&config, tmdb_id, &media_type).await?;
     state.update_tmdb_manual(item_id, &movie, &media_type)?;
     window.emit(
         "index:update",
@@ -2432,9 +2469,10 @@ pub async fn get_watchlist_coverage(
 pub async fn get_tv_seasons(
     state: tauri::State<'_, crate::db::Db>,
     tmdb_id: i64,
+    imdb_id: Option<String>,
 ) -> Result<Vec<crate::tmdb::TmdbSeason>, String> {
     let config = state.load_config()?;
-    crate::tmdb::fetch_tv_seasons(&config.tmdb_api_key, tmdb_id).await
+    crate::metadata::fetch_tv_seasons(&config, tmdb_id, imdb_id.as_deref()).await
 }
 
 /// After indexing completes, enqueue FTP files that match a watchlist entry
@@ -3611,8 +3649,8 @@ fn spawn_upload_job(
                         };
 
                         // Try to fetch TMDB metadata for poster + year
-                        let tmdb_data = if let (Some(tid), false) = (tmdb_id, config.tmdb_api_key.is_empty()) {
-                            crate::tmdb::fetch_movie_by_id(&config.tmdb_api_key, tid, inferred_media_type)
+                        let tmdb_data = if let Some(tid) = tmdb_id {
+                            crate::metadata::fetch_by_id(&config, tid, inferred_media_type)
                                 .await
                                 .ok()
                         } else {

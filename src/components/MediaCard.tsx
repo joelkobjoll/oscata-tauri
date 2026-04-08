@@ -8,6 +8,7 @@ import {
   AppLanguage,
   getLocalizedPosterPath,
   getLocalizedTitle,
+  resolveImageUrl,
 } from "../utils/mediaLanguage";
 import { formatBytes } from "../lib/format";
 import WatchlistButton from "../features/watchlist/WatchlistButton";
@@ -136,9 +137,7 @@ function MediaCard({
     item.media_type === "tv" ||
     item.media_type === "documentary";
   const posterPath = getLocalizedPosterPath(item, language);
-  const poster = posterPath
-    ? `https://image.tmdb.org/t/p/w185${posterPath}`
-    : null;
+  const poster = posterPath ? resolveImageUrl(posterPath, "w185") : null;
   const title = getLocalizedTitle(item, language);
   const year = item.year;
   const hasMetadata = !!item.tmdb_id;

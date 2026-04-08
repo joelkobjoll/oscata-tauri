@@ -34,6 +34,9 @@ interface Config {
   auto_check_updates: boolean;
   updater_endpoint: string;
   updater_pubkey: string;
+  metadata_provider: string;
+  proxy_url: string;
+  proxy_api_key: string;
 }
 
 const shellCard: React.CSSProperties = {
@@ -184,6 +187,9 @@ export default function Wizard({
     auto_check_updates: false,
     updater_endpoint: "",
     updater_pubkey: "",
+    metadata_provider: "tmdb",
+    proxy_url: "",
+    proxy_api_key: "",
   });
 
   const next = async (partial: Partial<Config>) => {

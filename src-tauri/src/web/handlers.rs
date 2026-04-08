@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -373,8 +373,8 @@ pub async fn apply_tmdb_match(
     State(state): State<AppState>,
     Json(body): Json<ApplyMatchRequest>,
 ) -> ApiResult<Json<Value>> {
-    let api_key = state.db.load_config().map_err(ApiError::from)?.tmdb_api_key;
-    let movie = crate::tmdb::fetch_movie_by_id(&api_key, body.tmdb_id, &body.media_type)
+    let config = state.db.load_config().map_err(ApiError::from)?;
+    let movie = crate::metadata::fetch_by_id(&config, body.tmdb_id, &body.media_type)
         .await.map_err(ApiError::from)?;
     state.db.update_tmdb_manual(id, &movie, &body.media_type).map_err(ApiError::from)?;
     Ok(Json(serde_json::json!({"ok": true})))
@@ -597,6 +597,52 @@ pub async fn test_ftp_handler(
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct TestMetadataRequest {
+    provider: String,
+    tmdb_api_key: Option<String>,
+    proxy_url: Option<String>,
+    proxy_api_key: Option<String>,
+}
+
+pub async fn test_metadata_handler(
+    AuthUser(_u): AuthUser,
+    Json(body): Json<TestMetadataRequest>,
+) -> ApiResult<Json<Value>> {
+    let cfg = crate::db::AppConfig {
+        metadata_provider: body.provider.clone(),
+        tmdb_api_key: body.tmdb_api_key.unwrap_or_default(),
+        proxy_url: body.proxy_url.unwrap_or_default(),
+        proxy_api_key: body.proxy_api_key.unwrap_or_default(),
+        ftp_host: String::new(),
+        ftp_port: 21,
+        ftp_user: String::new(),
+        ftp_pass: String::new(),
+        ftp_root: String::new(),
+        default_language: String::new(),
+        download_folder: String::new(),
+        folder_types: String::new(),
+        max_concurrent_downloads: 1,
+        emby_url: String::new(),
+        emby_api_key: String::new(),
+        plex_url: String::new(),
+        plex_token: String::new(),
+        auto_check_updates: false,
+        updater_endpoint: String::new(),
+        updater_pubkey: String::new(),
+        movie_destination: String::new(),
+        tv_destination: String::new(),
+        documentary_destination: String::new(),
+        alphabetical_subfolders: false,
+        genre_destinations: String::new(),
+        close_to_tray: false,
+        telegram_bot_token: String::new(),
+        telegram_chat_id: String::new(),
+    };
+    let ok = crate::metadata::validate_config(&cfg).await;
+    Ok(Json(serde_json::json!({"ok": ok})))
+}
+
 // ── WEBGUI config ─────────────────────────────────────────────────────────────
 
 pub async fn get_webgui_config_handler(
@@ -625,8 +671,8 @@ pub async fn search_tmdb_handler(
     let config = state.db.load_config().map_err(ApiError::from)?;
     let media_type = body.media_type.as_deref().unwrap_or("movie");
     let year = body.year.map(|y| y as u16);
-    let results = crate::tmdb::search_tmdb_multi(
-        &config.tmdb_api_key, &body.query, media_type,
+    let results = crate::metadata::search_multi(
+        &config, &body.query, media_type,
     ).await.map_err(ApiError::from)?;
     let _ = year; // year filtering can be added client-side
     Ok(Json(results))
@@ -926,13 +972,19 @@ pub async fn revoke_telegram_sub_handler(
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
+#[derive(serde::Deserialize, Default)]
+pub struct SeasonsQuery {
+    imdb_id: Option<String>,
+}
+
 pub async fn watchlist_seasons_handler(
     AuthUser(_u): AuthUser,
     Path(tmdb_id): Path<i64>,
     State(state): State<AppState>,
+    Query(q): Query<SeasonsQuery>,
 ) -> ApiResult<Json<Vec<crate::tmdb::TmdbSeason>>> {
-    let api_key = state.db.load_config().map_err(ApiError::from)?.tmdb_api_key;
-    let seasons = crate::tmdb::fetch_tv_seasons(&api_key, tmdb_id)
+    let config = state.db.load_config().map_err(ApiError::from)?;
+    let seasons = crate::metadata::fetch_tv_seasons(&config, tmdb_id, q.imdb_id.as_deref())
         .await
         .map_err(ApiError::from)?;
     Ok(Json(seasons))

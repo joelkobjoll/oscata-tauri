@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Search } from "lucide-react";
 import { call } from "../../lib/transport";
 import type { AppLanguage } from "../../utils/mediaLanguage";
+import { resolveImageUrl } from "../../utils/mediaLanguage";
 import { t } from "../../utils/i18n";
 import type { AddWatchlistParams } from "./types";
 import { useQualityProfiles } from "./useQualityProfiles";
@@ -29,8 +30,6 @@ interface WatchlistAddModalProps {
   onAdd: (params: AddWatchlistParams) => Promise<void>;
   onClose: () => void;
 }
-
-const TMDB_IMG = "https://image.tmdb.org/t/p/w154";
 
 export default function WatchlistAddModal({
   language,
@@ -219,7 +218,7 @@ export default function WatchlistAddModal({
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
               {selected.poster_path && (
                 <img
-                  src={`${TMDB_IMG}${selected.poster_path}`}
+                  src={resolveImageUrl(selected.poster_path, "w154") ?? ""}
                   alt={selected.title}
                   style={{
                     width: 80,
@@ -480,7 +479,7 @@ export default function WatchlistAddModal({
                   >
                     {r.poster_path ? (
                       <img
-                        src={`${TMDB_IMG}${r.poster_path}`}
+                        src={resolveImageUrl(r.poster_path, "w154") ?? ""}
                         alt={displayTitle}
                         style={{
                           width: 40,

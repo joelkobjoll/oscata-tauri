@@ -43,6 +43,9 @@ interface Config {
   close_to_tray: boolean;
   telegram_bot_token: string;
   telegram_chat_id: string;
+  metadata_provider: string; // "tmdb" | "proxy"
+  proxy_url: string;
+  proxy_api_key: string;
 }
 
 interface GenreDestRule {
@@ -874,7 +877,10 @@ export default function Settings({
   const [webGuiSaving, setWebGuiSaving] = useState(false);
   const [webGuiSaved, setWebGuiSaved] = useState(false);
   const [smtpTesting, setSmtpTesting] = useState(false);
-  const [smtpTestResult, setSmtpTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [smtpTestResult, setSmtpTestResult] = useState<{
+    ok: boolean;
+    msg: string;
+  } | null>(null);
   const [webGuiInitBusy, setWebGuiInitBusy] = useState(false);
   const [webGuiMessage, setWebGuiMessage] = useState("");
   const [webGuiError, setWebGuiError] = useState("");
@@ -914,6 +920,9 @@ export default function Settings({
           alphabetical_subfolders: cfg.alphabetical_subfolders ?? true,
           genre_destinations: cfg.genre_destinations ?? "[]",
           close_to_tray: cfg.close_to_tray ?? true,
+          metadata_provider: cfg.metadata_provider ?? "tmdb",
+          proxy_url: cfg.proxy_url ?? "",
+          proxy_api_key: cfg.proxy_api_key ?? "",
         });
       })
       .catch(console.error);
@@ -1907,16 +1916,52 @@ export default function Settings({
               >
                 <div style={{ display: "grid", gap: 12 }}>
                   <div style={fieldStyle}>
-                    <label style={labelStyle}>
-                      {t(language, "settings.tmdbKey")}
-                    </label>
-                    <input
-                      style={inputStyle}
-                      value={form.tmdb_api_key}
-                      onChange={set("tmdb_api_key")}
-                      placeholder={t(language, "settings.tmdbPlaceholder")}
-                    />
+                    <label style={labelStyle}>Proveedor de metadatos</label>
+                    <select
+                      style={selectStyle}
+                      value={form.metadata_provider ?? "tmdb"}
+                      onChange={set("metadata_provider")}
+                    >
+                      <option value="tmdb">TMDB (predeterminado)</option>
+                      <option value="proxy">Metadata Proxy</option>
+                    </select>
                   </div>
+                  {(form.metadata_provider ?? "tmdb") === "tmdb" && (
+                    <div style={fieldStyle}>
+                      <label style={labelStyle}>
+                        {t(language, "settings.tmdbKey")}
+                      </label>
+                      <input
+                        style={inputStyle}
+                        value={form.tmdb_api_key}
+                        onChange={set("tmdb_api_key")}
+                        placeholder={t(language, "settings.tmdbPlaceholder")}
+                      />
+                    </div>
+                  )}
+                  {(form.metadata_provider ?? "tmdb") === "proxy" && (
+                    <>
+                      <div style={fieldStyle}>
+                        <label style={labelStyle}>URL del proxy</label>
+                        <input
+                          style={inputStyle}
+                          value={form.proxy_url}
+                          onChange={set("proxy_url")}
+                          placeholder="https://metadata.example.com"
+                        />
+                      </div>
+                      <div style={fieldStyle}>
+                        <label style={labelStyle}>API key del proxy</label>
+                        <input
+                          style={inputStyle}
+                          type="password"
+                          value={form.proxy_api_key}
+                          onChange={set("proxy_api_key")}
+                          placeholder="Tu clave de API"
+                        />
+                      </div>
+                    </>
+                  )}
                   <div style={fieldStyle}>
                     <label style={labelStyle}>
                       {t(language, "settings.defaultLanguage")}
@@ -2789,7 +2834,9 @@ export default function Settings({
                             padding: "8px 12px",
                           }}
                         >
-                          El host y puerto se configuran mediante variables de entorno en modo servidor. Edita solo la URL pública y el puerto expuesto si usas un proxy inverso.
+                          El host y puerto se configuran mediante variables de
+                          entorno en modo servidor. Edita solo la URL pública y
+                          el puerto expuesto si usas un proxy inverso.
                         </div>
                       )}
 
@@ -2797,7 +2844,9 @@ export default function Settings({
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: isMobile ? "1fr 100px" : "1fr 120px",
+                          gridTemplateColumns: isMobile
+                            ? "1fr 100px"
+                            : "1fr 120px",
                           gap: 10,
                         }}
                       >
@@ -3011,7 +3060,9 @@ export default function Settings({
                                 value={webGuiConfig.smtp_tls_mode}
                                 onChange={(e) =>
                                   setWebGuiConfig((c) =>
-                                    c ? { ...c, smtp_tls_mode: e.target.value } : c,
+                                    c
+                                      ? { ...c, smtp_tls_mode: e.target.value }
+                                      : c,
                                   )
                                 }
                               >
@@ -3074,7 +3125,14 @@ export default function Settings({
                             />
                           </div>
                           {/* SMTP test button */}
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              flexWrap: "wrap",
+                            }}
+                          >
                             <button
                               style={{
                                 padding: "8px 16px",
@@ -3092,11 +3150,25 @@ export default function Settings({
                                 setSmtpTesting(true);
                                 setSmtpTestResult(null);
                                 try {
-                                  await call("save_webgui_config", { config: webGuiConfig });
-                                  const r = await call<{ ok: boolean; sent_to: string }>("test_smtp");
-                                  setSmtpTestResult({ ok: true, msg: `Email enviado a ${r.sent_to}` });
+                                  await call("save_webgui_config", {
+                                    config: webGuiConfig,
+                                  });
+                                  const r = await call<{
+                                    ok: boolean;
+                                    sent_to: string;
+                                  }>("test_smtp");
+                                  setSmtpTestResult({
+                                    ok: true,
+                                    msg: `Email enviado a ${r.sent_to}`,
+                                  });
                                 } catch (e: unknown) {
-                                  setSmtpTestResult({ ok: false, msg: e instanceof Error ? e.message : String(e) });
+                                  setSmtpTestResult({
+                                    ok: false,
+                                    msg:
+                                      e instanceof Error
+                                        ? e.message
+                                        : String(e),
+                                  });
                                 } finally {
                                   setSmtpTesting(false);
                                 }
@@ -3105,7 +3177,15 @@ export default function Settings({
                               {smtpTesting ? "Enviando..." : "Probar SMTP"}
                             </button>
                             {smtpTestResult && (
-                              <span style={{ fontSize: 12, color: smtpTestResult.ok ? "var(--color-success)" : "var(--color-danger)", fontWeight: 600 }}>
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  color: smtpTestResult.ok
+                                    ? "var(--color-success)"
+                                    : "var(--color-danger)",
+                                  fontWeight: 600,
+                                }}
+                              >
                                 {smtpTestResult.msg}
                               </span>
                             )}

@@ -3,7 +3,9 @@ mod commands;
 mod db;
 mod downloads;
 mod ftp;
+mod metadata;
 mod parser;
+mod proxy;
 mod telegram;
 mod tmdb;
 mod uploads;
@@ -126,7 +128,7 @@ pub fn run() {
             commands::get_config,
             commands::ftp_list_raw,
             commands::test_ftp_connection,
-            commands::test_tmdb_key,
+            commands::test_metadata_config,
             commands::test_emby_connection,
             commands::test_plex_connection,
             commands::save_config,
