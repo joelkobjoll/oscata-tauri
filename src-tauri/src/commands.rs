@@ -3631,7 +3631,13 @@ fn spawn_upload_job(
                             .unwrap_or_default();
 
                         // Tech-specs line: resolution · video codec · video bitrate · HDR
-                        let bitrate_video_str = video_bitrate_kbps.map(|k| format!("{}Kbps", k)).unwrap_or_default();
+                        let bitrate_video_str = video_bitrate_kbps.map(|k| {
+                            if k >= 1000 {
+                                format!("{:.1} Mbps", k as f64 / 1000.0)
+                            } else {
+                                format!("{} Kbps", k)
+                            }
+                        }).unwrap_or_default();
                         let specs_parts: Vec<String> = [
                             resolution.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
                             codec.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
@@ -3654,7 +3660,13 @@ fn spawn_upload_job(
                                         .map(lang_name)
                                         .unwrap_or_else(|| "Desconocido".into());
                                     let ch_label = t.channels.map(channels_label).unwrap_or_default();
-                                    let bitrate_str = t.bitrate_kbps.map(|k| format!(" {}Kbps", k)).unwrap_or_default();
+                                    let bitrate_str = t.bitrate_kbps.map(|k| {
+                                        if k >= 1000 {
+                                            format!(" {:.1} Mbps", k as f64 / 1000.0)
+                                        } else {
+                                            format!(" {} Kbps", k)
+                                        }
+                                    }).unwrap_or_default();
                                     let entry = format!(
                                         "{}{}{}{}",
                                         lang_label,
@@ -3668,9 +3680,7 @@ fn spawn_upload_job(
                             if parts.is_empty() {
                                 String::new()
                             } else {
-                                let first = format!("\n🔊 {}", parts[0]);
-                                let rest: String = parts[1..].iter().map(|p| format!("\n    · {}", p)).collect();
-                                format!("{}{}", first, rest)
+                                parts.iter().map(|p| format!("\n🔊 {}", p)).collect::<String>()
                             }
                         } else if !languages.is_empty() {
                             let names: Vec<String> = languages.iter().map(|l| lang_name(l)).collect();

@@ -77,6 +77,7 @@ struct FfprobeFormat {
     duration: Option<String>,
     format_name: Option<String>,
     size: Option<String>,
+    bit_rate: Option<String>,
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -280,8 +281,11 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
     let width = video.and_then(|v| v.width);
     let height = video.and_then(|v| v.height);
     let codec = video.and_then(|v| v.codec_name.clone()).map(|c| normalize_codec(&c));
+    // Stream-level bit_rate is often absent in MKV containers; fall back to the
+    // container's overall bit_rate which is reliable for all formats.
     let video_bitrate_kbps = video.and_then(|v| v.bit_rate.as_deref())
         .and_then(|b| b.parse::<u64>().ok())
+        .or_else(|| probe.format.as_ref().and_then(|f| f.bit_rate.as_deref()).and_then(|b| b.parse::<u64>().ok()))
         .map(|bps| (bps / 1000) as u32)
         .filter(|&k| k > 0);
 
@@ -321,7 +325,7 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
                     } else if base == "TrueHD" && profile_up.contains("ATMOS") {
                         "TrueHD Atmos".to_string()
                     } else if base == "EAC3" && (profile_up.contains("ATMOS") || profile_up.contains("JOC")) {
-                        "EAC3 Atmos".to_string()
+                        "EAC3 + Atmos".to_string()
                     } else {
                         base
                     }

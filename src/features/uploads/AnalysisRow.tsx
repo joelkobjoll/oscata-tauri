@@ -52,7 +52,7 @@ const SEASON_AUDIO_CODECS = [
   "DTS:X",
   "DTS-HD HRA",
   "DTS",
-  "EAC3 Atmos",
+  "EAC3 + Atmos",
   "EAC3",
   "AC3",
   "AAC",
