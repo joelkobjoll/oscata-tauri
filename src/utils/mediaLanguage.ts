@@ -37,6 +37,17 @@ export function getLocalizedPosterPath(
   return item.tmdb_poster ?? item.tmdb_poster_en ?? null;
 }
 
+export function getMediaYear(
+  item: Pick<MediaItem, "year" | "tmdb_release_date">,
+): number | undefined {
+  if (item.year != null) return item.year;
+
+  const yearText = item.tmdb_release_date?.slice(0, 4);
+  if (!yearText || !/^\d{4}$/.test(yearText)) return undefined;
+
+  return Number(yearText);
+}
+
 /**
  * Resolve a poster path to a full URL.
  *

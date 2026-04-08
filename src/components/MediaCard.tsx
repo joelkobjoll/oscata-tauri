@@ -6,6 +6,7 @@ import DownloadRing from "./DownloadRing";
 import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import {
   AppLanguage,
+  getMediaYear,
   getLocalizedPosterPath,
   getLocalizedTitle,
   resolveImageUrl,
@@ -143,7 +144,7 @@ function MediaCard({
   const posterPath = getLocalizedPosterPath(item, language);
   const poster = posterPath ? resolveImageUrl(posterPath, "w185") : null;
   const title = getLocalizedTitle(item, language);
-  const year = item.year;
+  const year = getMediaYear(item);
   const hasMetadata = !!item.tmdb_id;
   const inPlex = badges?.plexInLibrary === true;
   const inEmby = badges?.embyInLibrary === true;
@@ -359,7 +360,7 @@ function MediaCard({
                 title={item.tmdb_title ?? item.title ?? item.filename}
                 titleEn={item.tmdb_title ?? undefined}
                 poster={item.tmdb_poster ?? undefined}
-                year={item.year ?? undefined}
+                year={year}
                 language={language}
                 watchlistedTmdbIds={watchlistedTmdbIds}
                 onAdd={onAddToWatchlist}
