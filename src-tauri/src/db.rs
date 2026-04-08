@@ -2217,16 +2217,6 @@ impl Db {
         self.update_tmdb_with_mode(id, movie, media_type, false)
     }
 
-    pub fn update_imdb_rating(&self, id: i64, rating: f64) -> Result<(), String> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "UPDATE media_items SET imdb_rating = ?1 WHERE id = ?2",
-            params![rating, id],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
     pub fn update_tmdb_manual(
         &self,
         id: i64,

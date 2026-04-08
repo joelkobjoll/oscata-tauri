@@ -198,8 +198,8 @@ function MediaCard({
           transition: "border-color 0.18s ease, box-shadow 0.18s ease",
         }}
       >
-        {/* Shimmer while loading */}
-        {!imgLoaded && (
+        {/* Shimmer while loading — only when a poster URL exists but hasn't arrived yet */}
+        {poster && !imgLoaded && (
           <div
             className="poster-shimmer"
             style={{ position: "absolute", inset: 0 }}
