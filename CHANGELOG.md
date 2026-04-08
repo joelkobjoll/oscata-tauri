@@ -1,5 +1,31 @@
 # Novedades de Oscata
 
+## Versión 0.8.9 — 8 de abril de 2026
+
+### 📣 Notificaciones de Telegram: pistas de audio en líneas separadas
+
+Cada pista de audio ocupa ahora su propia línea en la notificación, con 🔊 en la primera y un guion con sangría en las siguientes. Antes todas las pistas iban en una sola línea separadas por «·», lo que hacía difícil leerlas cuando había varias.
+
+### 📊 Bitrate de vídeo en las notificaciones de Telegram
+
+ffprobe extrae el bitrate del flujo de vídeo (`bit_rate`) y lo muestra en la línea de especificaciones técnicas (📺), entre el códec y el HDR, cuando el dato está disponible (p. ej. «4K · HEVC · 28000Kbps · HDR10»). El bitrate individual de cada pista de audio ya se mostraba desde la versión anterior.
+
+---
+
+### 🎵 Detección de EAC3 Atmos con ffprobe
+
+ffprobe codifica el Dolby Digital Plus con Atmos como `eac3` en `codec_name` y añade el perfil `EAC3+JOC` (Joint Object Coding). El analizador ya reconoce ese perfil y lo muestra como **EAC3 Atmos** tanto en el selector de pistas del modal de subida como en la notificación de Telegram, igual que ya se hacía con TrueHD Atmos.
+
+### 📊 Bitrate de audio en las notificaciones de Telegram
+
+ffprobe ahora extrae el bitrate de cada pista de audio (`bit_rate`) y lo convierte a Kbps. La línea de audio de la notificación de Telegram muestra el bitrate junto al códec y la configuración de canales cuando el dato está disponible (p. ej. «Español TrueHD Atmos 7.1 4608Kbps · Inglés AC3 5.1 640Kbps»).
+
+### 🔧 Botón «Probar SMTP» funcional en la app de escritorio
+
+El botón de prueba de SMTP solo funcionaba en la versión web porque la llamada apuntaba exclusivamente al endpoint HTTP del servidor embebido. Ahora existe un comando Tauri nativo (`test_smtp`) que carga la configuración SMTP guardada, busca el primer usuario administrador y le envía un correo de prueba real. Si aún no hay usuarios web configurados, el correo se envía a la dirección del remitente SMTP.
+
+---
+
 ## Versión 0.8.7 — 7 de abril de 2026
 
 ### 📣 Notificaciones de Telegram más limpias

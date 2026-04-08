@@ -135,6 +135,7 @@ pub async fn resume_pending_uploads(
             item.hdr,
             item.languages,
             item.codec,
+            item.video_bitrate_kbps,
             item.audio_codec,
             item.subtitle_langs,
             item.audio_tracks,
@@ -3450,6 +3451,7 @@ fn spawn_upload_job(
     hdr: Option<String>,
     languages: Vec<String>,
     codec: Option<String>,
+    video_bitrate_kbps: Option<u32>,
     audio_codec: Option<String>,
     subtitle_langs: Vec<String>,
     audio_tracks: Vec<crate::analysis::AudioTrack>,
@@ -3628,10 +3630,12 @@ fn spawn_upload_job(
                             .map(|y| format!(" ({})", y))
                             .unwrap_or_default();
 
-                        // Tech-specs line: resolution · video codec · HDR (audio moved to 🔊 line)
+                        // Tech-specs line: resolution · video codec · video bitrate · HDR
+                        let bitrate_video_str = video_bitrate_kbps.map(|k| format!("{}Kbps", k)).unwrap_or_default();
                         let specs_parts: Vec<String> = [
                             resolution.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
                             codec.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
+                            if bitrate_video_str.is_empty() { None } else { Some(bitrate_video_str) },
                             hdr.as_deref().filter(|s| !s.is_empty()).map(str::to_string),
                         ].into_iter().flatten().collect();
                         let specs_str = if specs_parts.is_empty() {
@@ -3640,7 +3644,7 @@ fn spawn_upload_job(
                             format!("\n📺 {}", specs_parts.join(" · "))
                         };
 
-                        // Audio tracks: "🔊 Español TrueHD 7.1 · Inglés AC3 5.1"
+                        // Audio tracks: one line per track (🔊 emoji on first, indented bullet on rest)
                         // Falls back to plain language list if no track metadata
                         let audio_str = if !audio_tracks.is_empty() {
                             let mut seen = std::collections::HashSet::new();
@@ -3650,16 +3654,24 @@ fn spawn_upload_job(
                                         .map(lang_name)
                                         .unwrap_or_else(|| "Desconocido".into());
                                     let ch_label = t.channels.map(channels_label).unwrap_or_default();
+                                    let bitrate_str = t.bitrate_kbps.map(|k| format!(" {}Kbps", k)).unwrap_or_default();
                                     let entry = format!(
-                                        "{}{}{}",
+                                        "{}{}{}{}",
                                         lang_label,
                                         if t.codec.is_empty() { String::new() } else { format!(" {}", t.codec) },
                                         if ch_label.is_empty() { String::new() } else { format!(" {}", ch_label) },
+                                        bitrate_str,
                                     );
                                     if seen.insert(entry.clone()) { Some(entry) } else { None }
                                 })
                                 .collect();
-                            if parts.is_empty() { String::new() } else { format!("\n🔊 {}", parts.join(" · ")) }
+                            if parts.is_empty() {
+                                String::new()
+                            } else {
+                                let first = format!("\n🔊 {}", parts[0]);
+                                let rest: String = parts[1..].iter().map(|p| format!("\n    · {}", p)).collect();
+                                format!("{}{}", first, rest)
+                            }
                         } else if !languages.is_empty() {
                             let names: Vec<String> = languages.iter().map(|l| lang_name(l)).collect();
                             format!("\n🗣️ {}", names.join(" · "))
@@ -3833,6 +3845,7 @@ pub async fn queue_upload(
     hdr: Option<String>,
     languages: Vec<String>,
     codec: Option<String>,
+    video_bitrate_kbps: Option<u32>,
     audio_codec: Option<String>,
     subtitle_langs: Vec<String>,
     audio_tracks: Vec<crate::analysis::AudioTrack>,
@@ -3855,6 +3868,7 @@ pub async fn queue_upload(
             hdr.clone(),
             languages.clone(),
             codec.clone(),
+            video_bitrate_kbps,
             audio_codec.clone(),
             subtitle_langs.clone(),
             audio_tracks.clone(),
@@ -3897,6 +3911,7 @@ pub async fn queue_upload(
         hdr,
         languages,
         codec,
+        video_bitrate_kbps,
         audio_codec,
         subtitle_langs,
         audio_tracks,
@@ -3954,6 +3969,7 @@ pub async fn retry_upload(
         item.hdr,
         item.languages,
         item.codec,
+        item.video_bitrate_kbps,
         item.audio_codec,
         item.subtitle_langs,
         item.audio_tracks,
@@ -4009,6 +4025,29 @@ pub fn clear_completed_uploads(
     upload_queue.lock().unwrap().clear_completed();
     persist_upload_state(db.inner(), upload_queue.inner());
     Ok(())
+}
+
+/// Send a test SMTP email using the saved web GUI SMTP configuration.
+/// Sends to the first admin web user's email, or to smtp_from if no web users exist.
+#[tauri::command]
+pub async fn test_smtp(
+    db: tauri::State<'_, crate::db::Db>,
+) -> Result<serde_json::Value, String> {
+    let cfg = db.load_webgui_config()?;
+    if cfg.smtp_host.is_empty() {
+        return Err("SMTP host not configured".to_string());
+    }
+    if cfg.smtp_from.is_empty() {
+        return Err("SMTP from address not configured".to_string());
+    }
+    let sent_to = db.list_web_users()
+        .ok()
+        .and_then(|users| users.into_iter().find(|u| u.role == "admin").map(|u| u.email))
+        .unwrap_or_else(|| cfg.smtp_from.clone());
+    crate::web::handlers::send_otp_email(&cfg, &sent_to, "TEST-123456")
+        .await
+        .map_err(|e| format!("SMTP test failed: {e}"))?;
+    Ok(serde_json::json!({ "ok": true, "sent_to": sent_to }))
 }
 
 /// Send a test Telegram message with the provided credentials.

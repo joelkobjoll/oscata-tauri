@@ -190,6 +190,7 @@ pub fn run() {
             commands::retry_upload,
             commands::delete_upload,
             commands::clear_completed_uploads,
+            commands::test_smtp,
             commands::test_telegram,
             commands::get_telegram_sub,
             commands::link_telegram_bot,

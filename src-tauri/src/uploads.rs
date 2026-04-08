@@ -30,6 +30,7 @@ pub struct UploadItem {
     pub hdr: Option<String>,
     pub languages: Vec<String>,
     pub codec: Option<String>,
+    pub video_bitrate_kbps: Option<u32>,
     pub audio_codec: Option<String>,
     /// Subtitle language codes detected by ffprobe (e.g. ["spa", "eng"]).
     #[serde(default)]
@@ -80,6 +81,7 @@ impl UploadQueue {
         hdr: Option<String>,
         languages: Vec<String>,
         codec: Option<String>,
+        video_bitrate_kbps: Option<u32>,
         audio_codec: Option<String>,
         subtitle_langs: Vec<String>,
         audio_tracks: Vec<crate::analysis::AudioTrack>,
@@ -108,6 +110,7 @@ impl UploadQueue {
             hdr,
             languages,
             codec,
+            video_bitrate_kbps,
             audio_codec,
             subtitle_langs,
             audio_tracks,

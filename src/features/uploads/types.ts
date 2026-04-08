@@ -3,6 +3,7 @@ export interface AudioTrack {
   language: string | null;
   channels: number | null;
   is_default: boolean;
+  bitrate_kbps: number | null;
 }
 
 export interface SubtitleTrack {
@@ -17,6 +18,7 @@ export interface LocalMediaInfo {
   width: number | null;
   height: number | null;
   codec: string | null;
+  video_bitrate_kbps: number | null;
   audio_tracks: AudioTrack[];
   languages: string[];
   hdr: string | null;

@@ -256,6 +256,7 @@ export default function UploadPrepareModal({
             ? info.languages
             : sug?.detected_languages) ?? [];
         const codec = info?.codec ?? sug?.detected_codec ?? null;
+        const videoKbps = info?.video_bitrate_kbps ?? null;
         const audioCodec =
           info?.audio_tracks?.[0]?.codec ?? sug?.detected_audio_codec ?? null;
         const audioTracks = info?.audio_tracks ?? [];
@@ -285,6 +286,7 @@ export default function UploadPrepareModal({
               hdr,
               languages,
               codec,
+              videoBitrateKbps: videoKbps,
               audioCodec,
               subtitleLangs,
               audioTracks,
@@ -304,6 +306,7 @@ export default function UploadPrepareModal({
             hdr,
             languages,
             codec,
+            videoBitrateKbps: videoKbps,
             audioCodec,
             subtitleLangs,
             audioTracks,

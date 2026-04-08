@@ -6,6 +6,7 @@ pub struct AudioTrack {
     pub language: Option<String>,
     pub channels: Option<u32>,
     pub is_default: bool,
+    pub bitrate_kbps: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +23,7 @@ pub struct LocalMediaInfo {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub codec: Option<String>,
+    pub video_bitrate_kbps: Option<u32>,
     pub audio_tracks: Vec<AudioTrack>,
     pub languages: Vec<String>,
     pub hdr: Option<String>,
@@ -52,6 +54,7 @@ struct FfprobeStream {
     disposition: FfprobeDisposition,
     tags: Option<FfprobeTags>,
     channels: Option<u32>,
+    bit_rate: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -228,6 +231,7 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
             height: None,
             resolution: None,
             codec: None,
+            video_bitrate_kbps: None,
             hdr: None,
             audio_tracks: vec![],
             languages: vec![],
@@ -276,6 +280,10 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
     let width = video.and_then(|v| v.width);
     let height = video.and_then(|v| v.height);
     let codec = video.and_then(|v| v.codec_name.clone()).map(|c| normalize_codec(&c));
+    let video_bitrate_kbps = video.and_then(|v| v.bit_rate.as_deref())
+        .and_then(|b| b.parse::<u64>().ok())
+        .map(|bps| (bps / 1000) as u32)
+        .filter(|&k| k > 0);
 
     // Prefer actual dimensions from ffprobe (ground truth), fall back to
     // resolution keyword in the filename/path if dims are unavailable.
@@ -312,17 +320,24 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
                         }
                     } else if base == "TrueHD" && profile_up.contains("ATMOS") {
                         "TrueHD Atmos".to_string()
+                    } else if base == "EAC3" && (profile_up.contains("ATMOS") || profile_up.contains("JOC")) {
+                        "EAC3 Atmos".to_string()
                     } else {
                         base
                     }
                 }
                 None => String::new(),
             };
+            let bitrate_kbps = s.bit_rate.as_deref()
+                .and_then(|b| b.parse::<u64>().ok())
+                .map(|bps| (bps / 1000) as u32)
+                .filter(|&k| k > 0);
             AudioTrack {
                 codec,
                 language: lang,
                 channels: s.channels,
                 is_default: s.disposition.default == 1,
+                bitrate_kbps,
             }
         })
         .collect();
@@ -373,6 +388,7 @@ pub fn ffprobe_analyze(path: &str) -> Result<LocalMediaInfo, String> {
         width,
         height,
         codec,
+        video_bitrate_kbps,
         audio_tracks,
         languages,
         hdr,
