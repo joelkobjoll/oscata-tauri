@@ -1,6 +1,6 @@
 [package]
 name = "oscata-tauri"
-version = "0.8.7"
+version = "0.8.9"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"

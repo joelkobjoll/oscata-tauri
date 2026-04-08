@@ -2,23 +2,25 @@
 
 ## Versión 0.8.9 — 8 de abril de 2026
 
-### 📣 Notificaciones de Telegram: pistas de audio en líneas separadas
+### 📣 Notificaciones de Telegram: pistas de audio mejoradas
 
-Cada pista de audio ocupa ahora su propia línea en la notificación, con 🔊 en la primera y un guion con sangría en las siguientes. Antes todas las pistas iban en una sola línea separadas por «·», lo que hacía difícil leerlas cuando había varias.
+Cada pista de audio ocupa ahora su propia línea con el icono 🔊, lo que facilita la lectura cuando hay varios idiomas o formatos. Antes todas las pistas iban en una sola línea separadas por «·».
 
-### 📊 Bitrate de vídeo en las notificaciones de Telegram
+### 📊 Bitrates en formato legible
 
-ffprobe extrae el bitrate del flujo de vídeo (`bit_rate`) y lo muestra en la línea de especificaciones técnicas (📺), entre el códec y el HDR, cuando el dato está disponible (p. ej. «4K · HEVC · 28000Kbps · HDR10»). El bitrate individual de cada pista de audio ya se mostraba desde la versión anterior.
+El bitrate de vídeo aparece en la línea de especificaciones técnicas (📺), entre el códec y el HDR, cuando ffprobe lo detecta. Los valores de 1.000 Kbps o más se muestran en Mbps con un decimal (p. ej. «1080p · AVC · 11.2 Mbps»); por debajo de ese umbral se expresan en Kbps. La misma lógica se aplica al bitrate de cada pista de audio.
 
 ---
 
-### 🎵 Detección de EAC3 Atmos con ffprobe
+## Versión 0.8.8 — 8 de abril de 2026
 
-ffprobe codifica el Dolby Digital Plus con Atmos como `eac3` en `codec_name` y añade el perfil `EAC3+JOC` (Joint Object Coding). El analizador ya reconoce ese perfil y lo muestra como **EAC3 Atmos** tanto en el selector de pistas del modal de subida como en la notificación de Telegram, igual que ya se hacía con TrueHD Atmos.
+### 🎵 Detección de EAC3 + Atmos con ffprobe
+
+ffprobe codifica el Dolby Digital Plus con Atmos como `eac3` en `codec_name` y añade el perfil `EAC3+JOC` (Joint Object Coding). El analizador ya reconoce ese perfil y lo muestra como **EAC3 + Atmos** tanto en el selector de pistas del modal de subida como en la notificación de Telegram, igual que ya se hacía con TrueHD Atmos.
 
 ### 📊 Bitrate de audio en las notificaciones de Telegram
 
-ffprobe ahora extrae el bitrate de cada pista de audio (`bit_rate`) y lo convierte a Kbps. La línea de audio de la notificación de Telegram muestra el bitrate junto al códec y la configuración de canales cuando el dato está disponible (p. ej. «Español TrueHD Atmos 7.1 4608Kbps · Inglés AC3 5.1 640Kbps»).
+ffprobe extrae el bitrate de cada pista de audio (`bit_rate`) y lo incluye en la notificación junto al códec y la configuración de canales cuando el dato está disponible.
 
 ### 🔧 Botón «Probar SMTP» funcional en la app de escritorio
 
