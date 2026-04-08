@@ -1,5 +1,11 @@
 # Novedades de Oscata
 
+## Versión 0.8.10-beta.2 — 9 de abril de 2026
+
+### 🗓️ El año vuelve a mostrarse en todas las cards
+
+Algunas tarjetas de la biblioteca habían dejado de enseñar el año aunque TMDB sí devolviera la fecha de estreno. La card usa ahora un fallback a `tmdb_release_date` cuando `year` no viene informado, así que el año vuelve a verse correctamente en esos títulos.
+
 ## Versión 0.8.10-beta.1 — 8 de abril de 2026
 
 ### 🎬 Tráilers visibles también en el panel de series de escritorio
