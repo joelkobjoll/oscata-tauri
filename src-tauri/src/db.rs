@@ -76,6 +76,10 @@ pub struct AppConfig {
     /// API key for the metadata-proxy (`x-api-key` header)
     #[serde(default)]
     pub proxy_api_key: String,
+    /// Search provider used by metadata-proxy: "tmdb" (default) or "imdb"
+    /// IMDb mode requires no TMDB quota and returns IMDb IDs directly.
+    #[serde(default = "default_proxy_search_provider")]
+    pub proxy_search_provider: String,
 }
 
 fn default_alphabetical_subfolders() -> bool {
@@ -87,6 +91,10 @@ fn default_close_to_tray() -> bool {
 }
 
 fn default_metadata_provider() -> String {
+    "tmdb".to_string()
+}
+
+fn default_proxy_search_provider() -> String {
     "tmdb".to_string()
 }
 
@@ -1408,6 +1416,7 @@ impl Db {
             ("metadata_provider", config.metadata_provider.as_str()),
             ("proxy_url", config.proxy_url.as_str()),
             ("proxy_api_key", config.proxy_api_key.as_str()),
+            ("proxy_search_provider", config.proxy_search_provider.as_str()),
         ];
         let port_str = config.ftp_port.to_string();
         for (k, v) in &pairs {
@@ -1840,6 +1849,7 @@ impl Db {
             metadata_provider: get("metadata_provider").unwrap_or_else(|_| "tmdb".to_string()),
             proxy_url: get("proxy_url").unwrap_or_default(),
             proxy_api_key: get("proxy_api_key").unwrap_or_default(),
+            proxy_search_provider: get("proxy_search_provider").unwrap_or_else(|_| "tmdb".to_string()),
         })
     }
 

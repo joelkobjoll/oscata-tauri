@@ -46,6 +46,7 @@ interface Config {
   metadata_provider: string; // "tmdb" | "proxy"
   proxy_url: string;
   proxy_api_key: string;
+  proxy_search_provider: string; // "tmdb" | "imdb"
 }
 
 interface GenreDestRule {
@@ -923,6 +924,7 @@ export default function Settings({
           metadata_provider: cfg.metadata_provider ?? "tmdb",
           proxy_url: cfg.proxy_url ?? "",
           proxy_api_key: cfg.proxy_api_key ?? "",
+          proxy_search_provider: cfg.proxy_search_provider ?? "tmdb",
         });
       })
       .catch(console.error);
@@ -1959,6 +1961,22 @@ export default function Settings({
                           onChange={set("proxy_api_key")}
                           placeholder="Tu clave de API"
                         />
+                      </div>
+                      <div style={fieldStyle}>
+                        <label style={labelStyle}>Proveedor de búsqueda</label>
+                        <select
+                          style={selectStyle}
+                          value={form.proxy_search_provider ?? "tmdb"}
+                          onChange={set("proxy_search_provider")}
+                        >
+                          <option value="tmdb">TMDB</option>
+                          <option value="imdb">IMDb (sin cuota TMDB)</option>
+                        </select>
+                        <span style={subtextStyle}>
+                          IMDb permite buscar sin consumir cuota de TMDB. Útil
+                          si no tienes clave TMDB o quieres reducir llamadas
+                          API.
+                        </span>
                       </div>
                     </>
                   )}

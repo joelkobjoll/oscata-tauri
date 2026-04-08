@@ -39,7 +39,7 @@ pub async fn smart_search(
         let other: &'static str = if preferred_type == "tv" { "movie" } else { "tv" };
 
         let primary_results =
-            crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, primary, year)
+            crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, primary, year, &cfg.proxy_search_provider)
                 .await?;
 
         if let Some(best) = primary_results.into_iter().next() {
@@ -47,7 +47,7 @@ pub async fn smart_search(
         }
 
         let other_results =
-            crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, other, year)
+            crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, other, year, &cfg.proxy_search_provider)
                 .await?;
 
         Ok(other_results.into_iter().next().map(|m| (m, other)))
@@ -73,7 +73,7 @@ pub async fn search_multi_with_year(
     hint_year: Option<u16>,
 ) -> Result<Vec<TmdbMovie>, String> {
     if is_proxy(cfg) {
-        crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, query, media_type, hint_year)
+        crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, query, media_type, hint_year, &cfg.proxy_search_provider)
             .await
     } else {
         crate::tmdb::search_tmdb_multi_with_year(
@@ -106,25 +106,12 @@ pub async fn fetch_by_id(
 }
 
 /// Fetch all seasons (excluding specials) for a TV show.
-///
-/// When `imdb_id` is provided and the proxy provider is active the newer
-/// `/v1/title/imdb/{imdbId}/seasons/{n}` endpoint is used, which returns
-/// IMDb-sourced episode data (often more complete than the TMDB equivalent).
-/// Falls back to the TMDB-based proxy endpoint when `imdb_id` is absent.
 pub async fn fetch_tv_seasons(
     cfg: &AppConfig,
     tmdb_id: i64,
-    imdb_id: Option<&str>,
+    _imdb_id: Option<&str>,
 ) -> Result<Vec<TmdbSeason>, String> {
     if is_proxy(cfg) {
-        if let Some(iid) = imdb_id.filter(|s| !s.trim().is_empty()) {
-            return crate::proxy::fetch_proxy_seasons_by_imdb_id(
-                &cfg.proxy_url,
-                &cfg.proxy_api_key,
-                iid,
-            )
-            .await;
-        }
         crate::proxy::fetch_proxy_seasons(&cfg.proxy_url, &cfg.proxy_api_key, tmdb_id).await
     } else {
         crate::tmdb::fetch_tv_seasons(&cfg.tmdb_api_key, tmdb_id).await

@@ -898,17 +898,17 @@ async fn resolve_tmdb_match_with_plex(
     }
 
     let result = if tmdb_search_type == "tv" {
-        crate::metadata::search_multi(config, title, "tv")
-            .await
-            .ok()
-            .and_then(|mut r| if r.is_empty() { None } else { Some(r.remove(0)) })
-            .map(|m| (m, "tv".to_string()))
+        match crate::metadata::search_multi(config, title, "tv").await {
+            Ok(mut r) if !r.is_empty() => Some((r.remove(0), "tv".to_string())),
+            Ok(_) => None,
+            Err(e) => return Err(e),
+        }
     } else {
-        crate::metadata::smart_search(config, title, year, tmdb_search_type)
-            .await
-            .ok()
-            .flatten()
-            .map(|(m, ep)| (m, ep.to_string()))
+        match crate::metadata::smart_search(config, title, year, tmdb_search_type).await {
+            Ok(Some((m, ep))) => Some((m, ep.to_string())),
+            Ok(None) => None,
+            Err(e) => return Err(e),
+        }
     };
 
     if let Some((movie, actual_type)) = result {
@@ -995,6 +995,7 @@ pub async fn test_metadata_config(
         metadata_provider: provider,
         proxy_url,
         proxy_api_key,
+        proxy_search_provider: "tmdb".to_string(),
     };
     // Normalise provider to a known value
     if cfg.metadata_provider != "proxy" {
@@ -1923,6 +1924,24 @@ pub async fn refresh_all_metadata_internal(
 ) -> Result<(), String> {
     let config = db.load_config()?;
     let items = db.get_all_media()?;
+
+    // Log active metadata provider so the user can confirm what config was loaded.
+    {
+        let provider = &config.metadata_provider;
+        if provider == "proxy" {
+            let key_hint = if config.proxy_api_key.trim().is_empty() {
+                "⚠ proxy_api_key vacío".to_string()
+            } else {
+                let k = config.proxy_api_key.trim();
+                let preview = &k[..k.len().min(4)];
+                format!("key={}… ({} chars)", preview, k.len())
+            };
+            emit_index_log(&window, format!("🔧 Proveedor: proxy — {} — {}", config.proxy_url.trim(), key_hint));
+        } else {
+            emit_index_log(&window, "🔧 Proveedor: tmdb".to_string());
+        }
+    }
+
     let mut items: Vec<_> = items
         .into_iter()
         .filter(|item| {

@@ -304,6 +304,7 @@ interface MetadataStepResult {
   tmdbKey: string;
   proxyUrl: string;
   proxyApiKey: string;
+  proxySearchProvider: string;
 }
 
 function StepTMDB({
@@ -319,6 +320,7 @@ function StepTMDB({
   const [tmdbKey, setTmdbKey] = useState("");
   const [proxyUrl, setProxyUrl] = useState("");
   const [proxyApiKey, setProxyApiKey] = useState("");
+  const [proxySearchProvider, setProxySearchProvider] = useState("tmdb");
   const isProxy = provider === "proxy";
   const canSubmit = isProxy
     ? !!(proxyUrl.trim() && proxyApiKey.trim())
@@ -328,7 +330,13 @@ function StepTMDB({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onFinish({ provider, tmdbKey, proxyUrl, proxyApiKey });
+        onFinish({
+          provider,
+          tmdbKey,
+          proxyUrl,
+          proxyApiKey,
+          proxySearchProvider,
+        });
       }}
       style={{ display: "grid", gap: 20 }}
     >
@@ -415,6 +423,26 @@ function StepTMDB({
                   placeholder="Tu clave de API"
                 />
               </div>
+              <div>
+                <label style={labelStyle}>Proveedor de búsqueda</label>
+                <select
+                  style={inputStyle}
+                  value={proxySearchProvider}
+                  onChange={(e) => setProxySearchProvider(e.target.value)}
+                >
+                  <option value="tmdb">TMDB</option>
+                  <option value="imdb">IMDb (sin cuota TMDB)</option>
+                </select>
+                <p
+                  style={{
+                    margin: "4px 0 0",
+                    fontSize: 12,
+                    color: "var(--color-text-muted)",
+                  }}
+                >
+                  IMDb permite buscar sin consumir cuota de TMDB.
+                </p>
+              </div>
             </>
           )}
         </div>
@@ -463,6 +491,7 @@ export default function WebSetupWizard({ onComplete }: WebSetupWizardProps) {
     tmdbKey,
     proxyUrl,
     proxyApiKey,
+    proxySearchProvider,
   }: MetadataStepResult) => {
     setSaving(true);
     setSaveError("");
@@ -478,6 +507,7 @@ export default function WebSetupWizard({ onComplete }: WebSetupWizardProps) {
         metadata_provider: provider,
         proxy_url: proxyUrl,
         proxy_api_key: proxyApiKey,
+        proxy_search_provider: proxySearchProvider,
         default_language: existing.default_language ?? "es",
         download_folder: existing.download_folder ?? "/downloads",
         folder_types: existing.folder_types ?? "{}",

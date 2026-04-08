@@ -437,6 +437,8 @@ function MediaCard({
             overflow: "hidden",
             whiteSpace: "nowrap",
             textOverflow: "ellipsis",
+            userSelect: "text",
+            WebkitUserSelect: "text",
           }}
           title={title}
         >

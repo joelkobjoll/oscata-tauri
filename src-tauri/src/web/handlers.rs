@@ -638,6 +638,7 @@ pub async fn test_metadata_handler(
         close_to_tray: false,
         telegram_bot_token: String::new(),
         telegram_chat_id: String::new(),
+        proxy_search_provider: String::new(),
     };
     let ok = crate::metadata::validate_config(&cfg).await;
     Ok(Json(serde_json::json!({"ok": ok})))

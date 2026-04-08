@@ -155,7 +155,13 @@ export default function ActivityLog({
                 second: "2-digit",
               })}
             </span>
-            <span style={{ color: entryColor(e.msg) }}>
+            <span
+              style={{
+                color: entryColor(e.msg),
+                userSelect: "text",
+                WebkitUserSelect: "text",
+              }}
+            >
               {translateLogMessage(language, e.msg)}
             </span>
           </div>

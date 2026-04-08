@@ -96,6 +96,7 @@ export default function StepTMDB({
     metadata_provider: defaults.metadata_provider ?? "tmdb",
     proxy_url: defaults.proxy_url ?? "",
     proxy_api_key: defaults.proxy_api_key ?? "",
+    proxy_search_provider: defaults.proxy_search_provider ?? "tmdb",
   });
   const isProxyMode = form.metadata_provider === "proxy";
   const alreadyConfigured = isProxyMode
@@ -199,6 +200,25 @@ export default function StepTMDB({
                     }}
                     placeholder="Tu clave de API"
                   />
+                </div>
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>Proveedor de búsqueda</label>
+                  <select
+                    style={inputStyle}
+                    value={form.proxy_search_provider}
+                    onChange={(e) =>
+                      setForm((current) => ({
+                        ...current,
+                        proxy_search_provider: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="tmdb">TMDB</option>
+                    <option value="imdb">IMDb (sin cuota TMDB)</option>
+                  </select>
+                  <span style={subtextStyle}>
+                    IMDb permite buscar sin consumir cuota de TMDB.
+                  </span>
                 </div>
               </>
             )}

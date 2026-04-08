@@ -37,6 +37,7 @@ interface Config {
   metadata_provider: string;
   proxy_url: string;
   proxy_api_key: string;
+  proxy_search_provider: string;
 }
 
 const shellCard: React.CSSProperties = {
@@ -190,6 +191,7 @@ export default function Wizard({
     metadata_provider: "tmdb",
     proxy_url: "",
     proxy_api_key: "",
+    proxy_search_provider: "tmdb",
   });
 
   const next = async (partial: Partial<Config>) => {
