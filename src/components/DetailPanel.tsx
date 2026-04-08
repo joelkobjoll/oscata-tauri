@@ -6,6 +6,7 @@ import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import type { DownloadItem } from "../hooks/useDownloads";
 import type { MediaItem } from "../hooks/useIndexing";
 import FixMatchModal from "./FixMatchModal";
+import TrailerModal from "./TrailerModal";
 import {
   AppLanguage,
   getLocalizedOverview,
@@ -84,6 +85,7 @@ export default function DetailPanel({
   onOpenWatchlist?: () => void;
 }) {
   const [showFix, setShowFix] = useState(false);
+  const [showTrailer, setShowTrailer] = useState(false);
   const [openingUrl, setOpeningUrl] = useState<string | null>(null);
   const [devChecking, setDevChecking] = useState(false);
   const isMobile = useIsMobile();
@@ -710,6 +712,21 @@ export default function DetailPanel({
             {t(language, "detail.links")}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {(item.youtube_trailer_url ?? item.imdb_trailer_url) && (
+              <button
+                onClick={() => setShowTrailer(true)}
+                style={{
+                  ...externalLinkBtn,
+                  background:
+                    "color-mix(in srgb, var(--color-danger) 18%, var(--color-surface-2) 82%)",
+                  borderColor:
+                    "color-mix(in srgb, var(--color-danger) 38%, var(--color-border) 62%)",
+                  color: "var(--color-text)",
+                }}
+              >
+                ▶ {t(language, "detail.watchTrailer")}
+              </button>
+            )}
             <button
               onClick={() => handleOpenUrl(tmdbUrl)}
               style={{
@@ -898,6 +915,14 @@ export default function DetailPanel({
               });
             }}
             onClose={() => setShowFix(false)}
+          />
+        )}
+
+        {showTrailer && (item.youtube_trailer_url ?? item.imdb_trailer_url) && (
+          <TrailerModal
+            trailerUrl={(item.youtube_trailer_url ?? item.imdb_trailer_url)!}
+            title={title}
+            onClose={() => setShowTrailer(false)}
           />
         )}
       </div>

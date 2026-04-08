@@ -218,6 +218,8 @@ pub async fn search_proxy(
                 poster_path_en: None,
                 vote_average: r.vote_average,
                 imdb_rating: None,
+                youtube_trailer_url: None,
+                imdb_trailer_url: None,
                 genre_ids: vec![],
                 genres: vec![],
                 runtime_mins: None,
@@ -342,6 +344,9 @@ pub async fn fetch_proxy_seasons(
             name: String,
             air_date: Option<String>,
             overview: Option<String>,
+            runtime_mins: Option<u32>,
+            vote_average: Option<f64>,
+            still_url: Option<String>,
         }
 
         #[derive(Deserialize)]
@@ -350,6 +355,8 @@ pub async fn fetch_proxy_seasons(
             season_number: i64,
             name: String,
             air_date: Option<String>,
+            overview: Option<String>,
+            poster_url: Option<String>,
             episodes: Vec<ProxySeasonEpisode>,
         }
 
@@ -371,6 +378,9 @@ pub async fn fetch_proxy_seasons(
                 name: e.name,
                 air_date: e.air_date,
                 overview: e.overview,
+                runtime_mins: e.runtime_mins,
+                vote_average: e.vote_average,
+                still_url: e.still_url,
             })
             .collect();
 
@@ -380,6 +390,8 @@ pub async fn fetch_proxy_seasons(
             air_date: ps.air_date,
             episode_count,
             episodes,
+            overview: ps.overview,
+            poster_url: ps.poster_url,
         });
     }
 
@@ -412,6 +424,8 @@ struct TitleDocument {
     genres: Vec<String>,
     vote_average: Option<f64>,
     imdb_rating: Option<f64>,
+    youtube_trailer_url: Option<String>,
+    imdb_trailer_url: Option<String>,
 }
 
 async fn fetch_title_document(url: &str, api_key: &str) -> Result<TitleDocument, String> {
@@ -454,6 +468,8 @@ fn title_document_to_movie(
         poster_path_en: doc.poster_url_en,
         vote_average: doc.vote_average,
         imdb_rating: doc.imdb_rating,
+        youtube_trailer_url: doc.youtube_trailer_url,
+        imdb_trailer_url: doc.imdb_trailer_url,
         genre_ids: vec![],
         genres: doc.genres,
         runtime_mins: doc.runtime_mins,

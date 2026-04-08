@@ -23,6 +23,12 @@ pub struct TmdbMovie {
     /// IMDb rating (0–10), populated by the metadata proxy when available.
     #[serde(default)]
     pub imdb_rating: Option<f64>,
+    /// YouTube trailer URL (from TMDB videos), e.g. https://www.youtube.com/watch?v=...
+    #[serde(default)]
+    pub youtube_trailer_url: Option<String>,
+    /// IMDb-scraped trailer URL.
+    #[serde(default)]
+    pub imdb_trailer_url: Option<String>,
     #[serde(default)]
     pub genre_ids: Vec<i64>,
     /// Localized genre names (from the fetch language, prefer Spanish).
@@ -418,6 +424,8 @@ async fn search_endpoint_results(
                 poster_path_en: None,
                 vote_average: result.vote_average,
                 imdb_rating: None,
+                youtube_trailer_url: None,
+                imdb_trailer_url: None,
                 genre_ids: result.genre_ids,
                 genres: result.genres,
                 runtime_mins: result.runtime_mins,
@@ -461,6 +469,8 @@ async fn search_endpoint_results(
                 poster_path_en: result.poster_path,
                 vote_average: result.vote_average,
                 imdb_rating: None,
+                youtube_trailer_url: None,
+                imdb_trailer_url: None,
                 genre_ids: result.genre_ids,
                 genres: result.genres,
                 runtime_mins: result.runtime_mins,
@@ -713,10 +723,11 @@ async fn fetch_imdb_id(
 pub async fn fetch_movie_by_id(api_key: &str, tmdb_id: i64, media_type: &str) -> Result<TmdbMovie, String> {
     let endpoint = if media_type == "tv" { "tv" } else { "movie" };
 
-    let (spanish, english, imdb_id) = tokio::join!(
+    let (spanish, english, imdb_id, youtube_trailer_url) = tokio::join!(
         fetch_detail_lang(api_key, tmdb_id, endpoint, "es-ES"),
         fetch_detail_lang(api_key, tmdb_id, endpoint, "en-US"),
         async { fetch_imdb_id(api_key, tmdb_id, endpoint).await.ok().flatten() },
+        async { fetch_youtube_trailer(api_key, tmdb_id, endpoint).await.ok().flatten() },
     );
     let spanish = spanish?;
     let english = english?;
@@ -741,6 +752,8 @@ pub async fn fetch_movie_by_id(api_key: &str, tmdb_id: i64, media_type: &str) ->
         poster_path_en: english.poster_path.or(spanish.poster_path),
         vote_average: spanish.vote_average.or(english.vote_average),
         imdb_rating: None,
+        youtube_trailer_url,
+        imdb_trailer_url: None,
         genre_ids: if spanish.genre_ids.is_empty() {
             english.genre_ids
         } else {
@@ -756,6 +769,48 @@ pub async fn fetch_movie_by_id(api_key: &str, tmdb_id: i64, media_type: &str) ->
     })
 }
 
+/// Fetch the first YouTube trailer URL for a movie or TV show from TMDB's
+/// `/videos` endpoint. Returns the URL for the first official YouTube trailer,
+/// or `Ok(None)` when none is found. Errors are intentionally soft-ignored by
+/// the caller since trailers are a best-effort enrichment.
+async fn fetch_youtube_trailer(
+    api_key: &str,
+    tmdb_id: i64,
+    endpoint: &str,
+) -> Result<Option<String>, String> {
+    let url = format!(
+        "https://api.themoviedb.org/3/{endpoint}/{tmdb_id}/videos?api_key={api_key}&language=en-US"
+    );
+
+    #[derive(Deserialize)]
+    struct VideoResult {
+        #[serde(rename = "type")]
+        kind: String,
+        site: String,
+        key: String,
+        official: Option<bool>,
+    }
+    #[derive(Deserialize)]
+    struct VideosResponse {
+        results: Vec<VideoResult>,
+    }
+
+    let resp: VideosResponse = fetch_json_with_retry(&url, "videos request").await?;
+
+    // Prefer official trailers, fall back to any trailer, then any teaser.
+    let youtube_videos: Vec<_> = resp.results
+        .into_iter()
+        .filter(|v| v.site.eq_ignore_ascii_case("YouTube"))
+        .collect();
+
+    let pick = youtube_videos.iter()
+        .find(|v| v.kind.eq_ignore_ascii_case("Trailer") && v.official.unwrap_or(true))
+        .or_else(|| youtube_videos.iter().find(|v| v.kind.eq_ignore_ascii_case("Trailer")))
+        .or_else(|| youtube_videos.iter().find(|v| v.kind.eq_ignore_ascii_case("Teaser")));
+
+    Ok(pick.map(|v| format!("https://www.youtube.com/watch?v={}", v.key)))
+}
+
 /// A single episode returned by TMDB season detail.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TmdbEpisode {
@@ -763,6 +818,15 @@ pub struct TmdbEpisode {
     pub name: String,
     pub air_date: Option<String>,
     pub overview: Option<String>,
+    /// Episode runtime in minutes.
+    #[serde(default)]
+    pub runtime_mins: Option<u32>,
+    /// TMDB vote average for this episode.
+    #[serde(default)]
+    pub vote_average: Option<f64>,
+    /// Thumbnail still image URL (fully qualified).
+    #[serde(default)]
+    pub still_url: Option<String>,
 }
 
 /// A TV season with its episodes, as returned by TMDB.
@@ -773,6 +837,12 @@ pub struct TmdbSeason {
     pub air_date: Option<String>,
     pub episode_count: usize,
     pub episodes: Vec<TmdbEpisode>,
+    /// Season overview, if available.
+    #[serde(default)]
+    pub overview: Option<String>,
+    /// Season poster URL (fully qualified), if available.
+    #[serde(default)]
+    pub poster_url: Option<String>,
 }
 
 /// Fetch all seasons (excluding season 0 / specials) with their episodes for a
@@ -836,6 +906,9 @@ pub async fn fetch_tv_seasons(api_key: &str, tmdb_id: i64) -> Result<Vec<TmdbSea
                     name: e.name,
                     air_date: e.air_date,
                     overview: e.overview,
+                    runtime_mins: None,
+                    vote_average: None,
+                    still_url: None,
                 })
                 .collect::<Vec<_>>(),
             Err(_) => {
@@ -846,6 +919,9 @@ pub async fn fetch_tv_seasons(api_key: &str, tmdb_id: i64) -> Result<Vec<TmdbSea
                         name: format!("Episodio {n}"),
                         air_date: None,
                         overview: None,
+                        runtime_mins: None,
+                        vote_average: None,
+                        still_url: None,
                     })
                     .collect()
             }
@@ -856,6 +932,8 @@ pub async fn fetch_tv_seasons(api_key: &str, tmdb_id: i64) -> Result<Vec<TmdbSea
             air_date,
             episode_count: episodes.len(),
             episodes,
+            overview: None,
+            poster_url: None,
         });
     }
 

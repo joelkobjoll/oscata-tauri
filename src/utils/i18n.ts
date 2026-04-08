@@ -41,6 +41,14 @@ const messages = {
     es: "Actualizar metadatos faltantes",
     en: "Refresh Missing Metadata",
   },
+  "library.forceRefreshAllMetadata": {
+    es: "Forzar actualización de todos los metadatos",
+    en: "Force Refresh All Metadata",
+  },
+  "library.forcingRefreshMetadata": {
+    es: "Actualizando todos los metadatos…",
+    en: "Refreshing all metadata…",
+  },
   "library.rematchAll": { es: "Re-hacer match global", en: "Re-Match All" },
   "library.clearAllMetadata": {
     es: "Limpiar metadatos",
@@ -148,6 +156,7 @@ const messages = {
   "detail.links": { es: "Enlaces", en: "Links" },
   "detail.openTmdb": { es: "Abrir en TMDB", en: "Open in TMDB" },
   "detail.openImdb": { es: "Abrir en IMDb", en: "Open in IMDb" },
+  "detail.watchTrailer": { es: "Ver tráiler", en: "Watch trailer" },
   "detail.availableVersions": {
     es: "Versiones disponibles",
     en: "Available Versions",

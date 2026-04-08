@@ -51,6 +51,9 @@ export interface TmdbEpisode {
   name: string;
   air_date?: string;
   overview?: string;
+  runtime_mins?: number;
+  vote_average?: number;
+  still_url?: string;
 }
 
 export interface TmdbSeason {
@@ -59,6 +62,8 @@ export interface TmdbSeason {
   air_date?: string;
   episode_count: number;
   episodes: TmdbEpisode[];
+  overview?: string;
+  poster_url?: string;
 }
 
 export interface AddWatchlistParams {

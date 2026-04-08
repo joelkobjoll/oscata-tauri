@@ -299,6 +299,14 @@ function deduplicateByTitle(entries: MediaItem[]): MediaItem[] {
       seen.set(key, entry);
       continue;
     }
+    // Prefer an entry that has a trailer URL
+    if (entry.youtube_trailer_url && !current.youtube_trailer_url) {
+      seen.set(key, entry);
+      continue;
+    }
+    if (current.youtube_trailer_url && !entry.youtube_trailer_url) {
+      continue;
+    }
     const entryAddedAt = getAddedTimestamp(entry);
     const currentAddedAt = getAddedTimestamp(current);
     if (entryAddedAt > currentAddedAt) {
@@ -381,6 +389,7 @@ export default function Library({
   const [clearingAll, setClearingAll] = useState(false);
   const [refreshingLibrary, setRefreshingLibrary] = useState(false);
   const [refreshingMetadata, setRefreshingMetadata] = useState(false);
+  const [forceRefreshingMetadata, setForceRefreshingMetadata] = useState(false);
   const [tvShow, setTvShow] = useState<MediaItem | null>(null);
   const [fixMatchRequest, setFixMatchRequest] = useState<{
     itemIds: number[];
@@ -559,6 +568,19 @@ export default function Library({
       console.error("Failed to refresh missing metadata:", error);
     } finally {
       setRefreshingMetadata(false);
+    }
+  };
+
+  const forceRefreshAllMetadata = async () => {
+    setForceRefreshingMetadata(true);
+    if (showDevLog) setShowLog(true);
+    setShowActionsMenu(false);
+    try {
+      await call("force_refresh_all_metadata");
+    } catch (error) {
+      console.error("Failed to force-refresh metadata:", error);
+    } finally {
+      setForceRefreshingMetadata(false);
     }
   };
 
@@ -2241,12 +2263,57 @@ export default function Library({
                             : t(language, "library.refreshAllMetadata")}
                         </button>
                         <button
+                          onClick={forceRefreshAllMetadata}
+                          disabled={
+                            forceRefreshingMetadata ||
+                            refreshingMetadata ||
+                            rematching ||
+                            clearingAll ||
+                            refreshingLibrary ||
+                            isIndexing
+                          }
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: "var(--radius)",
+                            border: "none",
+                            background: "transparent",
+                            color: "var(--color-text)",
+                            textAlign: "left",
+                            cursor:
+                              forceRefreshingMetadata ||
+                              refreshingMetadata ||
+                              rematching ||
+                              clearingAll ||
+                              refreshingLibrary ||
+                              isIndexing
+                                ? "default"
+                                : "pointer",
+                            opacity:
+                              forceRefreshingMetadata ||
+                              refreshingMetadata ||
+                              rematching ||
+                              clearingAll ||
+                              refreshingLibrary ||
+                              isIndexing
+                                ? 0.5
+                                : 1,
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {forceRefreshingMetadata
+                            ? t(language, "library.forcingRefreshMetadata")
+                            : t(language, "library.forceRefreshAllMetadata")}
+                        </button>
+                        <button
                           onClick={runRematchAll}
                           disabled={
                             rematching ||
                             clearingAll ||
                             refreshingLibrary ||
-                            refreshingMetadata
+                            refreshingMetadata ||
+                            forceRefreshingMetadata
                           }
                           style={{
                             width: "100%",
@@ -2260,14 +2327,16 @@ export default function Library({
                               rematching ||
                               clearingAll ||
                               refreshingLibrary ||
-                              refreshingMetadata
+                              refreshingMetadata ||
+                              forceRefreshingMetadata
                                 ? "default"
                                 : "pointer",
                             opacity:
                               rematching ||
                               clearingAll ||
                               refreshingLibrary ||
-                              refreshingMetadata
+                              refreshingMetadata ||
+                              forceRefreshingMetadata
                                 ? 0.5
                                 : 1,
                             fontSize: 13,
@@ -2284,7 +2353,8 @@ export default function Library({
                             rematching ||
                             clearingAll ||
                             refreshingLibrary ||
-                            refreshingMetadata
+                            refreshingMetadata ||
+                            forceRefreshingMetadata
                           }
                           style={{
                             width: "100%",
@@ -2298,14 +2368,16 @@ export default function Library({
                               rematching ||
                               clearingAll ||
                               refreshingLibrary ||
-                              refreshingMetadata
+                              refreshingMetadata ||
+                              forceRefreshingMetadata
                                 ? "default"
                                 : "pointer",
                             opacity:
                               rematching ||
                               clearingAll ||
                               refreshingLibrary ||
-                              refreshingMetadata
+                              refreshingMetadata ||
+                              forceRefreshingMetadata
                                 ? 0.5
                                 : 1,
                             fontSize: 13,
@@ -2719,7 +2791,7 @@ export default function Library({
 
       {selected && (
         <DetailPanel
-          item={selected}
+          item={items.find((i) => i.id === selected.id) ?? selected}
           language={language}
           relatedItems={
             selected.media_type === "movie" ? getMovieVersions(selected) : []
@@ -2749,32 +2821,36 @@ export default function Library({
         />
       )}
 
-      {tvShow && (
-        <TVShowPanel
-          show={tvShow}
-          allEpisodes={getTvEpisodes(tvShow)}
-          language={language}
-          onClose={() => setTvShow(null)}
-          onDownload={startDownload}
-          onDownloadSeason={handleDownloadSeason}
-          downloadMap={downloadMap}
-          isDownloadPending={isDownloadPending}
-          downloadedBadgeMap={badgeMap}
-          onDevCheckInLibrary={recheckBadgeForItem}
-          watchlistedTmdbIds={watchlist.watchlistedTmdbIds}
-          onAddToWatchlist={watchlist.add}
-          onOpenWatchlist={() => setActiveTab("watchlist")}
-          onFixMatch={(episodes) => {
-            const [first] = episodes;
-            setFixMatchRequest({
-              itemIds: episodes.map((episode) => episode.id),
-              initialQuery: getLocalizedTitle(first ?? tvShow, language),
-              initialMediaType:
-                tvShow.media_type === "documentary" ? "documentary" : "tv",
-            });
-          }}
-        />
-      )}
+      {tvShow &&
+        (() => {
+          const liveShow = items.find((i) => i.id === tvShow.id) ?? tvShow;
+          return (
+            <TVShowPanel
+              show={liveShow}
+              allEpisodes={getTvEpisodes(liveShow)}
+              language={language}
+              onClose={() => setTvShow(null)}
+              onDownload={startDownload}
+              onDownloadSeason={handleDownloadSeason}
+              downloadMap={downloadMap}
+              isDownloadPending={isDownloadPending}
+              downloadedBadgeMap={badgeMap}
+              onDevCheckInLibrary={recheckBadgeForItem}
+              watchlistedTmdbIds={watchlist.watchlistedTmdbIds}
+              onAddToWatchlist={watchlist.add}
+              onOpenWatchlist={() => setActiveTab("watchlist")}
+              onFixMatch={(episodes) => {
+                const [first] = episodes;
+                setFixMatchRequest({
+                  itemIds: episodes.map((episode) => episode.id),
+                  initialQuery: getLocalizedTitle(first ?? tvShow, language),
+                  initialMediaType:
+                    tvShow.media_type === "documentary" ? "documentary" : "tv",
+                });
+              }}
+            />
+          );
+        })()}
 
       {fixMatchRequest && (
         <FixMatchModal

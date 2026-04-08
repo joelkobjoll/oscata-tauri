@@ -162,6 +162,7 @@ pub fn run() {
             commands::clear_show_metadata,
             commands::clear_all_metadata,
             commands::refresh_all_metadata,
+            commands::force_refresh_all_metadata,
             commands::check_media_badges,
             commands::ftp_list_root_dirs,
             commands::ftp_list_root_dirs_preview,
@@ -389,7 +390,7 @@ pub fn run() {
                 // so the app works correctly in background (tray) and headless mode.
                 commands::resume_pending_downloads(db.clone(), queue.clone(), visible_main_window(&handle)).await.ok();
                 commands::resume_pending_uploads(db.clone(), handle.state::<uploads::SharedUploadQueue>().inner().clone(), handle.clone()).await.ok();
-                commands::refresh_all_metadata_internal(db.clone(), visible_main_window(&handle)).await.ok();
+                commands::refresh_all_metadata_internal(db.clone(), visible_main_window(&handle), false).await.ok();
                 let last_indexed_at = db.load_last_indexed_at().ok().flatten();
                 let should_run_now = last_indexed_at
                     .as_deref()
@@ -403,7 +404,7 @@ pub fn run() {
                     crate::INDEXING_RUNNING.store(true, std::sync::atomic::Ordering::SeqCst);
                     commands::start_indexing_internal(db.clone(), window.clone(), Some(queue.clone())).await.ok();
                     crate::INDEXING_RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
-                    commands::refresh_all_metadata_internal(db.clone(), window).await.ok();
+                    commands::refresh_all_metadata_internal(db.clone(), window, false).await.ok();
                 } else if let Some(value) = last_indexed_at
                     .as_deref()
                     .and_then(|raw| chrono::DateTime::parse_from_rfc3339(raw).ok())
@@ -449,7 +450,7 @@ pub fn run() {
                     crate::INDEXING_RUNNING.store(true, std::sync::atomic::Ordering::SeqCst);
                     commands::start_indexing_internal(db.clone(), window.clone(), Some(queue.clone())).await.ok();
                     crate::INDEXING_RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
-                    commands::refresh_all_metadata_internal(db.clone(), window).await.ok();
+                    commands::refresh_all_metadata_internal(db.clone(), window, false).await.ok();
                 }
             });
             Ok(())

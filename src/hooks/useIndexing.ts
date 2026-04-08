@@ -31,6 +31,8 @@ export interface MediaItem {
   tmdb_poster_en?: string;
   tmdb_rating?: number;
   imdb_rating?: number;
+  youtube_trailer_url?: string;
+  imdb_trailer_url?: string;
   tmdb_overview?: string;
   tmdb_overview_en?: string;
   tmdb_genres?: number[] | string;
@@ -168,6 +170,8 @@ export function useIndexing() {
                   tmdb_poster_en: memItem.tmdb_poster_en,
                   tmdb_rating: memItem.tmdb_rating,
                   imdb_rating: memItem.imdb_rating,
+                  youtube_trailer_url: memItem.youtube_trailer_url,
+                  imdb_trailer_url: memItem.imdb_trailer_url,
                   tmdb_genres: memItem.tmdb_genres,
                   metadata_at: memItem.metadata_at,
                 };
@@ -243,6 +247,18 @@ export function useIndexing() {
       },
     );
 
+    const unMetaComplete = listen<{ total: number }>(
+      "metadata:refresh_complete",
+      () => {
+        call<MediaItem[]>("get_all_media")
+          .then((loaded) => {
+            rebuildIndex(loaded);
+            setItems(loaded);
+          })
+          .catch(console.error);
+      },
+    );
+
     return () => {
       unProgress.then((f) => f());
       unUpdate.then((f) => f());
@@ -252,6 +268,7 @@ export function useIndexing() {
       unLog.then((f) => f());
       unTmdbProgress.then((f) => f());
       unMetaRefresh.then((f) => f());
+      unMetaComplete.then((f) => f());
     };
   }, []);
 
@@ -299,6 +316,13 @@ export function useIndexing() {
           next[index] = { ...next[index], ...(p as Partial<MediaItem>) };
           return next;
         });
+      } else if (event === "metadata:refresh_complete") {
+        call<MediaItem[]>("get_all_media")
+          .then((loaded) => {
+            rebuildIndex(loaded);
+            setItems(loaded);
+          })
+          .catch(console.error);
       }
     };
 

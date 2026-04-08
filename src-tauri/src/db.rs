@@ -175,6 +175,8 @@ pub struct MediaItem {
     pub tmdb_poster_en: Option<String>,
     pub tmdb_rating: Option<f64>,
     pub imdb_rating: Option<f64>,
+    pub youtube_trailer_url: Option<String>,
+    pub imdb_trailer_url: Option<String>,
     pub tmdb_genres: Option<String>,
     pub indexed_at: Option<String>,
     pub metadata_at: Option<String>,
@@ -530,6 +532,8 @@ impl Db {
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN imdb_id TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN ftp_relative_path TEXT;").ok();
         conn.execute_batch("ALTER TABLE media_items ADD COLUMN imdb_rating REAL;").ok();
+        conn.execute_batch("ALTER TABLE media_items ADD COLUMN youtube_trailer_url TEXT;").ok();
+        conn.execute_batch("ALTER TABLE media_items ADD COLUMN imdb_trailer_url TEXT;").ok();
         // Web GUI auth tables
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS web_users (
@@ -2146,7 +2150,7 @@ impl Db {
                 "UPDATE media_items SET
                     tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
                     tmdb_title_en=NULL, tmdb_release_date=NULL, tmdb_overview=NULL, tmdb_overview_en=NULL, tmdb_poster=NULL, tmdb_poster_en=NULL,
-                    tmdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
+                    tmdb_rating=NULL, tmdb_genres=NULL, youtube_trailer_url=NULL, imdb_trailer_url=NULL, metadata_at=NULL, manual_match=0
                  WHERE id=?1",
                 params![id],
             )
@@ -2182,8 +2186,11 @@ impl Db {
             "UPDATE media_items SET
                 tmdb_id=?1, imdb_id=?2, tmdb_type=?3, tmdb_title=?4, tmdb_title_en=?5, tmdb_year=?6,
                 tmdb_release_date=?7, tmdb_overview=?8, tmdb_overview_en=?9, tmdb_poster=?10, tmdb_poster_en=?11,
-                tmdb_rating=?12, imdb_rating=?13, tmdb_genres=?14, metadata_at=?15, manual_match=?16
-             WHERE id=?17",
+                tmdb_rating=?12, imdb_rating=?13,
+                youtube_trailer_url=COALESCE(?14, youtube_trailer_url),
+                imdb_trailer_url=COALESCE(?15, imdb_trailer_url),
+                tmdb_genres=?16, metadata_at=?17, manual_match=?18
+             WHERE id=?19",
             params![
                 movie.id,
                 movie.imdb_id,
@@ -2198,6 +2205,8 @@ impl Db {
                 movie.poster_path_en,
                 movie.vote_average,
                 movie.imdb_rating,
+                movie.youtube_trailer_url,
+                movie.imdb_trailer_url,
                 genres,
                 now,
                 if manual_match { 1 } else { 0 },
@@ -2242,7 +2251,7 @@ impl Db {
             .prepare("SELECT id, ftp_path, filename, size_bytes, title, year, season, episode, episode_end, \
                       resolution, codec, audio_codec, languages, hdr, release_type, release_group, \
                       media_type, tmdb_id, imdb_id, tmdb_type, tmdb_title, tmdb_title_en, tmdb_year, tmdb_release_date, \
-                      tmdb_overview, tmdb_overview_en, tmdb_poster, tmdb_poster_en, tmdb_rating, imdb_rating, tmdb_genres, indexed_at, metadata_at, manual_match \
+                      tmdb_overview, tmdb_overview_en, tmdb_poster, tmdb_poster_en, tmdb_rating, imdb_rating, youtube_trailer_url, imdb_trailer_url, tmdb_genres, indexed_at, metadata_at, manual_match \
                       FROM media_items ORDER BY COALESCE(tmdb_title, title, filename)")
             .map_err(|e| e.to_string())?;
 
@@ -2279,10 +2288,12 @@ impl Db {
                     tmdb_poster_en: row.get(27)?,
                     tmdb_rating: row.get(28)?,
                     imdb_rating: row.get(29)?,
-                    tmdb_genres: row.get(30)?,
-                    indexed_at: row.get(31)?,
-                    metadata_at: row.get(32)?,
-                    manual_match: row.get(33)?,
+                    youtube_trailer_url: row.get(30)?,
+                    imdb_trailer_url: row.get(31)?,
+                    tmdb_genres: row.get(32)?,
+                    indexed_at: row.get(33)?,
+                    metadata_at: row.get(34)?,
+                    manual_match: row.get(35)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -2316,7 +2327,7 @@ impl Db {
             "UPDATE media_items SET
                 tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
                 tmdb_title_en=NULL, tmdb_release_date=NULL, tmdb_overview=NULL, tmdb_overview_en=NULL, tmdb_poster=NULL, tmdb_poster_en=NULL,
-                tmdb_rating=NULL, imdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
+                tmdb_rating=NULL, imdb_rating=NULL, youtube_trailer_url=NULL, imdb_trailer_url=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
              WHERE id=?1",
             params![id],
         )
@@ -2330,7 +2341,7 @@ impl Db {
             "UPDATE media_items SET
                 tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
                 tmdb_title_en=NULL, tmdb_release_date=NULL, tmdb_overview=NULL, tmdb_overview_en=NULL, tmdb_poster=NULL, tmdb_poster_en=NULL,
-                tmdb_rating=NULL, imdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL
+                tmdb_rating=NULL, imdb_rating=NULL, youtube_trailer_url=NULL, imdb_trailer_url=NULL, tmdb_genres=NULL, metadata_at=NULL
              WHERE COALESCE(manual_match, 0) = 0",
             [],
         )
@@ -2345,7 +2356,7 @@ impl Db {
             "UPDATE media_items SET
                 tmdb_id=NULL, imdb_id=NULL, tmdb_type=NULL, tmdb_title=NULL, tmdb_year=NULL,
                 tmdb_title_en=NULL, tmdb_release_date=NULL, tmdb_overview=NULL, tmdb_overview_en=NULL, tmdb_poster=NULL, tmdb_poster_en=NULL,
-                tmdb_rating=NULL, imdb_rating=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
+                tmdb_rating=NULL, imdb_rating=NULL, youtube_trailer_url=NULL, imdb_trailer_url=NULL, tmdb_genres=NULL, metadata_at=NULL, manual_match=0
              WHERE tmdb_id=?1",
             params![tmdb_id],
         )

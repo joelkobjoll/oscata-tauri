@@ -145,6 +145,7 @@ fn build_router(state: AppState) -> Router {
         .route("/indexing/start",          post(handlers::start_indexing_handler))
         .route("/indexing/rematch",        post(handlers::rematch_all_handler))
         .route("/indexing/refresh-metadata", post(handlers::refresh_all_metadata_handler))
+        .route("/indexing/force-refresh-metadata", post(handlers::force_refresh_all_metadata_handler))
         .route("/indexing/status",         get(handlers::indexing_status_handler))
         .route("/settings",                get(handlers::get_settings).put(handlers::put_settings))
         .route("/settings/smtp-test",      post(handlers::smtp_test_handler))

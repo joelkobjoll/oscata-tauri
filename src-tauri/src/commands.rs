@@ -898,7 +898,7 @@ async fn resolve_tmdb_match_with_plex(
     }
 
     let result = if tmdb_search_type == "tv" {
-        match crate::metadata::search_multi(config, title, "tv").await {
+        match crate::metadata::search_multi_with_year(config, title, "tv", year).await {
             Ok(mut r) if !r.is_empty() => Some((r.remove(0), "tv".to_string())),
             Ok(_) => None,
             Err(e) => return Err(e),
@@ -1298,6 +1298,8 @@ pub async fn rematch_all_internal(
                     "tmdb_poster_en": movie.poster_path_en,
                     "tmdb_rating": movie.vote_average,
                     "imdb_rating": movie.imdb_rating,
+                    "youtube_trailer_url": movie.youtube_trailer_url,
+                    "imdb_trailer_url": movie.imdb_trailer_url,
                     "tmdb_overview": movie.overview,
                     "tmdb_overview_en": movie.overview_en,
                     "tmdb_genres": movie.genre_ids,
@@ -1520,6 +1522,8 @@ pub async fn start_indexing_internal(
                                         "tmdb_poster_en": movie.poster_path_en,
                                         "tmdb_rating": movie.vote_average,
                                         "imdb_rating": movie.imdb_rating,
+                                        "youtube_trailer_url": movie.youtube_trailer_url,
+                                        "imdb_trailer_url": movie.imdb_trailer_url,
                                         "tmdb_overview": movie.overview,
                                         "tmdb_overview_en": movie.overview_en,
                                         "tmdb_genres": movie.genre_ids,
@@ -1929,12 +1933,21 @@ pub async fn refresh_all_metadata(
     state: tauri::State<'_, crate::db::Db>,
     window: WebviewWindow,
 ) -> Result<(), String> {
-    refresh_all_metadata_internal(state.inner().clone(), Some(window)).await
+    refresh_all_metadata_internal(state.inner().clone(), Some(window), false).await
+}
+
+#[tauri::command]
+pub async fn force_refresh_all_metadata(
+    state: tauri::State<'_, crate::db::Db>,
+    window: WebviewWindow,
+) -> Result<(), String> {
+    refresh_all_metadata_internal(state.inner().clone(), Some(window), true).await
 }
 
 pub async fn refresh_all_metadata_internal(
     db: crate::db::Db,
     window: Option<tauri::WebviewWindow>,
+    force: bool,
 ) -> Result<(), String> {
     let config = db.load_config()?;
     let items = db.get_all_media()?;
@@ -1956,26 +1969,31 @@ pub async fn refresh_all_metadata_internal(
         }
     }
 
-    let mut items: Vec<_> = items
-        .into_iter()
-        .filter(|item| {
-            // Always include items that were never matched at all
-            if item.tmdb_id.is_none() {
-                return true;
-            }
-            // Include matched items that are missing core display fields.
-            // imdb_id, tmdb_title_en, tmdb_overview_en, tmdb_poster_en are intentionally
-            // excluded: they are legitimately absent for many items (TV shows have no IMDb ID,
-            // non-English originals have no _en variant). Including them caused the same
-            // items to be re-fetched every 15 minutes in an infinite loop.
-            item.tmdb_title.as_deref().unwrap_or("").is_empty()
-                || item.tmdb_poster.as_deref().unwrap_or("").is_empty()
-                || item.tmdb_overview.as_deref().unwrap_or("").is_empty()
-                || item.tmdb_release_date.as_deref().unwrap_or("").is_empty()
-                || item.tmdb_rating.is_none()
-                || item.tmdb_genres.as_deref().unwrap_or("").is_empty()
-        })
-        .collect();
+    let mut items: Vec<_> = if force {
+        // Force mode: re-fetch every item in the library regardless of completeness.
+        items.into_iter().collect()
+    } else {
+        items
+            .into_iter()
+            .filter(|item| {
+                // Always include items that were never matched at all
+                if item.tmdb_id.is_none() {
+                    return true;
+                }
+                // Include matched items that are missing core display fields.
+                // imdb_id, tmdb_title_en, tmdb_overview_en, tmdb_poster_en are intentionally
+                // excluded: they are legitimately absent for many items (TV shows have no IMDb ID,
+                // non-English originals have no _en variant). Including them caused the same
+                // items to be re-fetched every 15 minutes in an infinite loop.
+                item.tmdb_title.as_deref().unwrap_or("").is_empty()
+                    || item.tmdb_poster.as_deref().unwrap_or("").is_empty()
+                    || item.tmdb_overview.as_deref().unwrap_or("").is_empty()
+                    || item.tmdb_release_date.as_deref().unwrap_or("").is_empty()
+                    || item.tmdb_rating.is_none()
+                    || item.tmdb_genres.as_deref().unwrap_or("").is_empty()
+            })
+            .collect()
+    };
 
     // Process newest entries first on boot/library refresh.
     items.sort_by(|a, b| {
@@ -1992,16 +2010,26 @@ pub async fn refresh_all_metadata_internal(
     });
 
     let total = items.len();
-    emit_index_log(&window, format!("🔄 Refreshing metadata for {} matched items…", total));
+    let refresh_label = if force { "Forzando actualización de metadatos" } else { "Refreshing metadata" };
+    emit_index_log(&window, format!("🔄 {} for {} items…", refresh_label, total));
 
     if total == 0 {
-        emit_index_log(&window, "✓ Metadata refresh complete — nothing missing".to_string());
+        let done_msg = if force {
+            "✓ Actualización forzada completada — biblioteca vacía".to_string()
+        } else {
+            "✓ Metadata refresh complete — nothing missing".to_string()
+        };
+        emit_index_log(&window, done_msg);
         return Ok(());
     }
 
     // Emit initial progress so the frontend shows the banner immediately
-    if let Some(ref w) = window {
-        w.emit("metadata:refresh_progress", serde_json::json!({ "done": 0, "total": total })).ok();
+    {
+        let p = serde_json::json!({ "done": 0, "total": total });
+        if let Some(ref w) = window {
+            w.emit("metadata:refresh_progress", p.clone()).ok();
+        }
+        crate::ws_broadcast("metadata:refresh_progress", p);
     }
 
     for (i, item) in items.into_iter().enumerate() {
@@ -2051,6 +2079,8 @@ pub async fn refresh_all_metadata_internal(
                             "tmdb_poster_en": movie.poster_path_en,
                             "tmdb_rating": movie.vote_average,
                             "imdb_rating": movie.imdb_rating,
+                            "youtube_trailer_url": movie.youtube_trailer_url,
+                            "imdb_trailer_url": movie.imdb_trailer_url,
                             "tmdb_overview": movie.overview,
                             "tmdb_overview_en": movie.overview_en,
                             "tmdb_genres": movie.genre_ids,
@@ -2090,6 +2120,8 @@ pub async fn refresh_all_metadata_internal(
                         "tmdb_poster_en": movie.poster_path_en,
                         "tmdb_rating": movie.vote_average,
                         "imdb_rating": movie.imdb_rating,
+                        "youtube_trailer_url": movie.youtube_trailer_url,
+                        "imdb_trailer_url": movie.imdb_trailer_url,
                         "tmdb_overview": movie.overview,
                         "tmdb_overview_en": movie.overview_en,
                         "tmdb_genres": movie.genre_ids,
@@ -2107,18 +2139,28 @@ pub async fn refresh_all_metadata_internal(
         }
 
         // Emit per-item progress
-        if let Some(ref w) = window {
-            w.emit(
-                "metadata:refresh_progress",
-                serde_json::json!({ "done": i + 1, "total": total }),
-            ).ok();
+        {
+            let p = serde_json::json!({ "done": i + 1, "total": total });
+            if let Some(ref w) = window {
+                w.emit("metadata:refresh_progress", p.clone()).ok();
+            }
+            crate::ws_broadcast("metadata:refresh_progress", p);
         }
     }
 
-    emit_index_log(
-        &window,
-        format!("✓ Metadata refresh complete — {} items processed", total),
-    );
+    let done_label = if force {
+        format!("✓ Actualización forzada completada — {} elementos procesados", total)
+    } else {
+        format!("✓ Metadata refresh complete — {} items processed", total)
+    };
+    emit_index_log(&window, done_label);
+    {
+        let p = serde_json::json!({ "total": total });
+        if let Some(ref w) = window {
+            w.emit("metadata:refresh_complete", p.clone()).ok();
+        }
+        crate::ws_broadcast("metadata:refresh_complete", p);
+    }
     Ok(())
 }
 
@@ -2227,6 +2269,8 @@ pub async fn apply_tmdb_match(
             "tmdb_poster_en": movie.poster_path_en,
             "tmdb_rating": movie.vote_average,
             "imdb_rating": movie.imdb_rating,
+            "youtube_trailer_url": movie.youtube_trailer_url,
+            "imdb_trailer_url": movie.imdb_trailer_url,
             "tmdb_overview": movie.overview,
             "tmdb_overview_en": movie.overview_en,
             "tmdb_genres": movie.genre_ids,

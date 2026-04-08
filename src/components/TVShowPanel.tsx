@@ -14,6 +14,7 @@ import { PlexIcon, EmbyIcon } from "./ServerIcons";
 import type { MediaItem } from "../hooks/useIndexing";
 import type { DownloadItem } from "../hooks/useDownloads";
 import WatchlistButton from "../features/watchlist/WatchlistButton";
+import TrailerModal from "./TrailerModal";
 import type { AddWatchlistParams } from "../features/watchlist/types";
 import {
   AppLanguage,
@@ -893,6 +894,7 @@ export default function TVShowPanel({
   const [filterResolution, setFilterResolution] = useState("all");
   const [filterSeason, setFilterSeason] = useState("all");
   const [openingUrl, setOpeningUrl] = useState<string | null>(null);
+  const [showTrailer, setShowTrailer] = useState(false);
   const [devChecking, setDevChecking] = useState(false);
   const isMobile = useIsMobile();
 
@@ -935,6 +937,13 @@ export default function TVShowPanel({
   const imdbUrl = show.imdb_id
     ? `https://www.imdb.com/title/${encodeURIComponent(show.imdb_id)}/`
     : `https://www.imdb.com/find/?q=${encodeURIComponent(searchQuery)}&s=tt`;
+  // Trailer URL: use representative's URL, or fall back to any episode that has one
+  const trailerUrl =
+    show.youtube_trailer_url ??
+    show.imdb_trailer_url ??
+    allEpisodes.find((e) => e.youtube_trailer_url)?.youtube_trailer_url ??
+    allEpisodes.find((e) => e.imdb_trailer_url)?.imdb_trailer_url ??
+    null;
   const externalLinkBtn: React.CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
@@ -1373,6 +1382,14 @@ export default function TVShowPanel({
                   ? "↗ …"
                   : t(language, "detail.openImdb")}
               </button>
+              {trailerUrl && (
+                <button
+                  onClick={() => setShowTrailer(true)}
+                  style={externalLinkBtn}
+                >
+                  ▶ {t(language, "detail.watchTrailer")}
+                </button>
+              )}
               {show.tmdb_id != null &&
                 watchlistedTmdbIds &&
                 onAddToWatchlist && (
@@ -2104,6 +2121,14 @@ export default function TVShowPanel({
           )}
         </div>
       </aside>
+
+      {showTrailer && trailerUrl && (
+        <TrailerModal
+          trailerUrl={trailerUrl}
+          title={showTitle}
+          onClose={() => setShowTrailer(false)}
+        />
+      )}
     </>
   );
 }

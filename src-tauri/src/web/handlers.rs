@@ -547,11 +547,25 @@ pub async fn refresh_all_metadata_handler(
     let db = state.db.clone();
     let window = state.app_handle.get_webview_window("main");
     tauri::async_runtime::spawn(async move {
-        crate::commands::refresh_all_metadata_internal(db, window)
+        crate::commands::refresh_all_metadata_internal(db, window, false)
             .await
             .ok();
     });
     Ok(Json(serde_json::json!({"ok": true, "message": "Metadata refresh started"})))
+}
+
+pub async fn force_refresh_all_metadata_handler(
+    AuthUser(_u): AuthUser,
+    State(state): State<AppState>,
+) -> ApiResult<Json<Value>> {
+    let db = state.db.clone();
+    let window = state.app_handle.get_webview_window("main");
+    tauri::async_runtime::spawn(async move {
+        crate::commands::refresh_all_metadata_internal(db, window, true)
+            .await
+            .ok();
+    });
+    Ok(Json(serde_json::json!({"ok": true, "message": "Force metadata refresh started"})))
 }
 
 pub async fn indexing_status_handler(
@@ -673,10 +687,9 @@ pub async fn search_tmdb_handler(
     let config = state.db.load_config().map_err(ApiError::from)?;
     let media_type = body.media_type.as_deref().unwrap_or("movie");
     let year = body.year.map(|y| y as u16);
-    let results = crate::metadata::search_multi(
-        &config, &body.query, media_type,
+    let results = crate::metadata::search_multi_with_year(
+        &config, &body.query, media_type, year,
     ).await.map_err(ApiError::from)?;
-    let _ = year; // year filtering can be added client-side
     Ok(Json(results))
 }
 

@@ -80,15 +80,6 @@ pub async fn smart_search(
 }
 
 /// Return up to 10 candidate results for the Fix-Match / manual search UI.
-pub async fn search_multi(
-    cfg: &AppConfig,
-    query: &str,
-    media_type: &str,
-) -> Result<Vec<TmdbMovie>, String> {
-    search_multi_with_year(cfg, query, media_type, None).await
-}
-
-/// Same as `search_multi` but accepts an explicit year hint for scoring.
 pub async fn search_multi_with_year(
     cfg: &AppConfig,
     query: &str,
