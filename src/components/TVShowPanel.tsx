@@ -852,6 +852,7 @@ function SeasonGroup({
 export default function TVShowPanel({
   show,
   allEpisodes,
+  trailerUrlOverride,
   language,
   onClose,
   onDownload,
@@ -867,6 +868,7 @@ export default function TVShowPanel({
 }: {
   show: MediaItem;
   allEpisodes: MediaItem[];
+  trailerUrlOverride?: string | null;
   language: AppLanguage;
   onClose: () => void;
   onDownload: (item: MediaItem) => void;
@@ -937,12 +939,19 @@ export default function TVShowPanel({
   const imdbUrl = show.imdb_id
     ? `https://www.imdb.com/title/${encodeURIComponent(show.imdb_id)}/`
     : `https://www.imdb.com/find/?q=${encodeURIComponent(searchQuery)}&s=tt`;
+  const firstEpisodeYoutubeTrailer = allEpisodes.find(
+    (e) => e.youtube_trailer_url,
+  )?.youtube_trailer_url;
+  const firstEpisodeImdbTrailer = allEpisodes.find(
+    (e) => e.imdb_trailer_url,
+  )?.imdb_trailer_url;
   // Trailer URL: use representative's URL, or fall back to any episode that has one
   const trailerUrl =
+    trailerUrlOverride ??
     show.youtube_trailer_url ??
     show.imdb_trailer_url ??
-    allEpisodes.find((e) => e.youtube_trailer_url)?.youtube_trailer_url ??
-    allEpisodes.find((e) => e.imdb_trailer_url)?.imdb_trailer_url ??
+    firstEpisodeYoutubeTrailer ??
+    firstEpisodeImdbTrailer ??
     null;
   const externalLinkBtn: React.CSSProperties = {
     display: "inline-flex",
@@ -1448,6 +1457,21 @@ export default function TVShowPanel({
                 <div>debug.item_id: {show.id}</div>
                 <div>debug.tmdb_id: {show.tmdb_id ?? "-"}</div>
                 <div>debug.ftp_path: {show.ftp_path}</div>
+                <div>
+                  debug.trailer.show_youtube: {show.youtube_trailer_url ?? "-"}
+                </div>
+                <div>
+                  debug.trailer.show_imdb: {show.imdb_trailer_url ?? "-"}
+                </div>
+                <div>
+                  debug.trailer.episode_youtube:{" "}
+                  {firstEpisodeYoutubeTrailer ?? "-"}
+                </div>
+                <div>
+                  debug.trailer.episode_imdb: {firstEpisodeImdbTrailer ?? "-"}
+                </div>
+                <div>debug.trailer.override: {trailerUrlOverride ?? "-"}</div>
+                <div>debug.trailer.final: {trailerUrl ?? "-"}</div>
                 {onDevCheckInLibrary && (
                   <button
                     onClick={() => {
@@ -1790,6 +1814,14 @@ export default function TVShowPanel({
                       ? t(language, "tv.fixShow")
                       : t(language, "tv.fixVisible")}
                   </button>
+                  {trailerUrl && (
+                    <button
+                      onClick={() => setShowTrailer(true)}
+                      style={externalLinkBtn}
+                    >
+                      ▶ {t(language, "detail.watchTrailer")}
+                    </button>
+                  )}
                   <button
                     onClick={() => handleOpenUrl(tmdbUrl)}
                     style={{
@@ -1839,6 +1871,25 @@ export default function TVShowPanel({
                     <div>debug.filename: {show.filename}</div>
                     <div>debug.imdb_id: {show.imdb_id ?? "-"}</div>
                     <div>debug.tmdb_id: {show.tmdb_id ?? "-"}</div>
+                    <div>
+                      debug.trailer.show_youtube:{" "}
+                      {show.youtube_trailer_url ?? "-"}
+                    </div>
+                    <div>
+                      debug.trailer.show_imdb: {show.imdb_trailer_url ?? "-"}
+                    </div>
+                    <div>
+                      debug.trailer.episode_youtube:{" "}
+                      {firstEpisodeYoutubeTrailer ?? "-"}
+                    </div>
+                    <div>
+                      debug.trailer.episode_imdb:{" "}
+                      {firstEpisodeImdbTrailer ?? "-"}
+                    </div>
+                    <div>
+                      debug.trailer.override: {trailerUrlOverride ?? "-"}
+                    </div>
+                    <div>debug.trailer.final: {trailerUrl ?? "-"}</div>
                     <div>
                       debug.badge.in_library:{" "}
                       {showBadge?.inEmby ? "true" : "false"}

@@ -324,6 +324,29 @@ function deduplicateByTitle(entries: MediaItem[]): MediaItem[] {
   return [...seen.values()];
 }
 
+function getEpisodesForShow(
+  show: MediaItem,
+  entries: MediaItem[],
+): MediaItem[] {
+  return entries.filter((ep) =>
+    ep.tmdb_type === "tv" ||
+    ep.media_type === "tv" ||
+    ep.media_type === "documentary"
+      ? show.tmdb_id
+        ? ep.tmdb_id === show.tmdb_id
+        : (ep.title ?? ep.filename) === (show.title ?? show.filename)
+      : false,
+  );
+}
+
+function getTrailerUrlFromItems(entries: MediaItem[]): string | null {
+  return (
+    entries.find((entry) => entry.youtube_trailer_url)?.youtube_trailer_url ??
+    entries.find((entry) => entry.imdb_trailer_url)?.imdb_trailer_url ??
+    null
+  );
+}
+
 export default function Library({
   startIndexingOnMount = false,
   headerSlot,
@@ -391,6 +414,9 @@ export default function Library({
   const [refreshingMetadata, setRefreshingMetadata] = useState(false);
   const [forceRefreshingMetadata, setForceRefreshingMetadata] = useState(false);
   const [tvShow, setTvShow] = useState<MediaItem | null>(null);
+  const [tvShowTrailerUrlOverride, setTvShowTrailerUrlOverride] = useState<
+    string | null
+  >(null);
   const [fixMatchRequest, setFixMatchRequest] = useState<{
     itemIds: number[];
     initialQuery: string;
@@ -488,16 +514,50 @@ export default function Library({
   }, [startIndexingOnMount]);
 
   const getTvEpisodes = (show: MediaItem): MediaItem[] => {
-    return items.filter((ep) =>
-      ep.tmdb_type === "tv" ||
-      ep.media_type === "tv" ||
-      ep.media_type === "documentary"
-        ? show.tmdb_id
-          ? ep.tmdb_id === show.tmdb_id
-          : (ep.title ?? ep.filename) === (show.title ?? show.filename)
-        : false,
-    );
+    return getEpisodesForShow(show, items);
   };
+
+  useEffect(() => {
+    if (!tvShow) {
+      setTvShowTrailerUrlOverride(null);
+      return;
+    }
+
+    const liveShow = items.find((item) => item.id === tvShow.id) ?? tvShow;
+    const liveEpisodes = getEpisodesForShow(liveShow, items);
+    const inMemoryTrailerUrl = getTrailerUrlFromItems([
+      liveShow,
+      ...liveEpisodes,
+    ]);
+
+    if (inMemoryTrailerUrl) {
+      setTvShowTrailerUrlOverride(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    call<MediaItem[]>("get_all_media")
+      .then((loaded) => {
+        if (cancelled) return;
+        const refreshedShow =
+          loaded.find((item) => item.id === tvShow.id) ?? liveShow;
+        const refreshedEpisodes = getEpisodesForShow(refreshedShow, loaded);
+        setTvShowTrailerUrlOverride(
+          getTrailerUrlFromItems([refreshedShow, ...refreshedEpisodes]),
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setTvShowTrailerUrlOverride(null);
+        }
+        console.error("Failed to refresh trailer URL for TV sidebar:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tvShow, items]);
 
   const runRematchAll = async () => {
     setRematching(true);
@@ -2828,6 +2888,7 @@ export default function Library({
             <TVShowPanel
               show={liveShow}
               allEpisodes={getTvEpisodes(liveShow)}
+              trailerUrlOverride={tvShowTrailerUrlOverride}
               language={language}
               onClose={() => setTvShow(null)}
               onDownload={startDownload}
