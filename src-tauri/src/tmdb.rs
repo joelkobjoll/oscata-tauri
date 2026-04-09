@@ -108,7 +108,11 @@ fn title_similarity_score(title: &str, query: &str) -> f64 {
     }
 
     if title_n.contains(&query_n) || query_n.contains(&title_n) {
-        return 50.0;
+        // Weight by length ratio: "Kingdom" matching a very long Chinese title should score low
+        let shorter = query_n.len().min(title_n.len()) as f64;
+        let longer = query_n.len().max(title_n.len()) as f64;
+        let ratio = shorter / longer.max(1.0);
+        return 50.0 * ratio;
     }
 
     let query_words: std::collections::HashSet<&str> = query_n.split_whitespace().collect();
@@ -497,6 +501,10 @@ pub async fn smart_search(
     year: Option<u16>,
     preferred_type: &str,
 ) -> Result<Option<(TmdbMovie, &'static str)>, String> {
+    // Minimum score to accept an auto-match. Below this the title similarity
+    // is too weak to be reliable — better to leave unmatched than wrong.
+    const MIN_MATCH_SCORE: f64 = 35.0;
+
     let primary_endpoint: &'static str = if preferred_type == "tv" { "tv" } else { "movie" };
     let other_endpoint: &'static str = if preferred_type == "tv" { "movie" } else { "tv" };
 
@@ -512,7 +520,7 @@ pub async fn smart_search(
     let secondary = search_endpoint_results(api_key, title, year, other_endpoint).await?;
     let secondary_best = secondary.first().cloned();
 
-    Ok(match (primary_best, secondary_best) {
+    let winner = match (primary_best, secondary_best) {
         (Some(p), Some(s)) => {
             if score_result(&s, title, year) > score_result(&p, title, year) {
                 Some((s, other_endpoint))
@@ -523,7 +531,10 @@ pub async fn smart_search(
         (Some(p), None) => Some((p, primary_endpoint)),
         (None, Some(s)) => Some((s, other_endpoint)),
         (None, None) => None,
-    })
+    };
+
+    // Apply minimum score threshold: reject weak matches entirely.
+    Ok(winner.filter(|(movie, _)| score_result(movie, title, year) >= MIN_MATCH_SCORE))
 }
 
 pub async fn search_tmdb_multi_with_year(api_key: &str, query: &str, media_type: &str, hint_year: Option<u16>) -> Result<Vec<TmdbMovie>, String> {
