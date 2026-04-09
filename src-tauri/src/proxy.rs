@@ -14,6 +14,9 @@ use tokio::time::Instant;
 
 use crate::tmdb::{TmdbEpisode, TmdbMovie, TmdbSeason};
 
+const MIN_PROXY_MATCH_SCORE: f64 = 35.0;
+const STRONG_PROXY_MATCH_SCORE: f64 = 50.0;
+
 // ── Global rate-limit gate ────────────────────────────────────────────────────
 //
 // Stores the earliest Instant at which the next proxy request may be sent.
@@ -291,7 +294,12 @@ struct FaSearchResult {
 
 /// Convert an embedded `FaTmdbData` (+ optional `FaOmdbData`) into a `TmdbMovie`.
 /// Returns `None` when `FaTmdbData.tmdb_id` is absent (can't build a useful movie record).
-fn fa_tmdb_to_movie(t: FaTmdbData, omdb: Option<FaOmdbData>) -> Option<TmdbMovie> {
+fn fa_tmdb_to_movie(
+    t: FaTmdbData,
+    omdb: Option<FaOmdbData>,
+    fa_local_title: &str,
+    fa_original_title: &str,
+) -> Option<TmdbMovie> {
     let id = t.tmdb_id?;
     // Prefer the imdb_id from omdb if available, fall back to tmdb's imdbRating-only approach.
     let imdb_id = omdb.as_ref().and_then(|o| o.imdb_id.clone());
@@ -299,11 +307,30 @@ fn fa_tmdb_to_movie(t: FaTmdbData, omdb: Option<FaOmdbData>) -> Option<TmdbMovie
     let imdb_rating = t.imdb_rating.or_else(|| omdb.as_ref().and_then(|o| o.imdb_rating));
     let imdb_trailer_url = t.imdb_trailer_url.or_else(|| omdb.as_ref().and_then(|o| o.imdb_trailer_url.clone()));
 
+    let title = t
+        .title
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| {
+            if !fa_local_title.trim().is_empty() {
+                fa_local_title.to_string()
+            } else {
+                fa_original_title.to_string()
+            }
+        });
+    let title_en = t.title_en.or_else(|| {
+        let original = fa_original_title.trim();
+        if !original.is_empty() && !original.eq_ignore_ascii_case(&title) {
+            Some(original.to_string())
+        } else {
+            None
+        }
+    });
+
     Some(TmdbMovie {
         id,
         imdb_id,
-        title: t.title.unwrap_or_default(),
-        title_en: t.title_en,
+        title,
+        title_en,
         release_date: t.release_date,
         overview: t.overview,
         overview_en: t.overview_en,
@@ -411,7 +438,12 @@ async fn filmaffinity_fallback(
     // Convert it directly — no extra HTTP request needed.
     if let Some(tmdb_data) = best.tmdb {
         if tmdb_data.tmdb_id.is_some() {
-            if let Some(movie) = fa_tmdb_to_movie(tmdb_data, best.omdb) {
+            if let Some(movie) = fa_tmdb_to_movie(
+                tmdb_data,
+                best.omdb,
+                &best.local_title,
+                &best.original_title,
+            ) {
                 return Some(FaFallback::FullMovie(movie));
             }
         }
@@ -434,6 +466,45 @@ async fn filmaffinity_fallback(
 /// for a Spanish-language release), which is then used to re-query the configured
 /// provider. This enables matching of titles that TMDB/IMDb can only find by their
 /// original name.
+fn proxy_match_score(result: &TmdbMovie, query: &str, year: Option<u16>) -> f64 {
+    let mut score = crate::tmdb::title_similarity_score(&result.title, query).max(
+        result
+            .title_en
+            .as_deref()
+            .map(|title| crate::tmdb::title_similarity_score(title, query))
+            .unwrap_or(0.0),
+    );
+
+    if let Some(y) = year {
+        let result_year: Option<i32> = result
+            .release_date
+            .as_deref()
+            .and_then(|d| d.get(..4))
+            .and_then(|s| s.parse().ok());
+        if let Some(ry) = result_year {
+            let diff = (ry - y as i32).abs();
+            if diff == 0 {
+                score += 50.0;
+            } else if diff == 1 {
+                score += 20.0;
+            } else if diff <= 3 {
+                score -= 10.0;
+            } else {
+                score -= 25.0;
+            }
+        }
+    }
+
+    score + result.vote_average.unwrap_or(0.0) * 0.5
+}
+
+fn best_proxy_match_score(results: &[TmdbMovie], query: &str, year: Option<u16>) -> Option<f64> {
+    results
+        .iter()
+        .map(|movie| proxy_match_score(movie, query, year))
+        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+}
+
 pub async fn search_proxy(
     base_url: &str,
     api_key: &str,
@@ -449,15 +520,21 @@ pub async fn search_proxy(
     let base = base_url.trim_end_matches('/');
 
     let mut movies = search_proxy_direct(base, api_key, query, media_type, hint_year, provider).await?;
+    let needs_filmaffinity_fallback = movies.is_empty()
+        || best_proxy_match_score(&movies, query, hint_year)
+            .map(|score| score < MIN_PROXY_MATCH_SCORE)
+            .unwrap_or(true);
 
-    // FilmAffinity fallback: if the configured provider returned nothing, try FA to
-    // either obtain a ready TmdbMovie from embedded TMDB data (no extra request),
-    // or discover the canonical original title to re-query with.
-    if movies.is_empty() {
+    // FilmAffinity fallback: if the configured provider returned nothing or only
+    // low-confidence matches, try FA to either obtain a ready TmdbMovie from
+    // embedded TMDB data (no extra request), or discover the canonical original
+    // title to re-query with.
+    if needs_filmaffinity_fallback {
         match filmaffinity_fallback(base, api_key, query, media_type, hint_year).await {
             Some(FaFallback::FullMovie(movie)) => {
-                // FA already had embedded TMDB data — use it directly.
-                movies.push(movie);
+                // FA already had embedded TMDB data — use it directly as the
+                // fallback candidate instead of keeping the weak initial hit.
+                movies = vec![movie];
             }
             Some(FaFallback::TitleHint(original_title)) => {
                 // Only retry when FA gave us something meaningfully different from the
@@ -480,6 +557,45 @@ pub async fn search_proxy(
     }
 
     Ok(movies)
+}
+
+pub async fn smart_search_proxy(
+    base_url: &str,
+    api_key: &str,
+    title: &str,
+    year: Option<u16>,
+    preferred_type: &str,
+    provider: &str,
+) -> Result<Option<(TmdbMovie, &'static str)>, String> {
+    let primary: &'static str = if preferred_type == "tv" { "tv" } else { "movie" };
+    let other: &'static str = if preferred_type == "tv" { "movie" } else { "tv" };
+
+    let primary_results = search_proxy(base_url, api_key, title, primary, year, provider).await?;
+    let primary_best = primary_results.first().cloned();
+
+    if let Some(ref movie) = primary_best {
+        if proxy_match_score(movie, title, year) >= STRONG_PROXY_MATCH_SCORE {
+            return Ok(primary_best.map(|m| (m, primary)));
+        }
+    }
+
+    let other_results = search_proxy(base_url, api_key, title, other, year, provider).await?;
+    let other_best = other_results.first().cloned();
+
+    let winner = match (primary_best, other_best) {
+        (Some(p), Some(s)) => {
+            if proxy_match_score(&s, title, year) > proxy_match_score(&p, title, year) {
+                Some((s, other))
+            } else {
+                Some((p, primary))
+            }
+        }
+        (Some(p), None) => Some((p, primary)),
+        (None, Some(s)) => Some((s, other)),
+        (None, None) => None,
+    };
+
+    Ok(winner.filter(|(movie, _)| proxy_match_score(movie, title, year) >= MIN_PROXY_MATCH_SCORE))
 }
 
 /// `GET /v1/title/tmdb/{mediaType}/{tmdbId}`
@@ -709,5 +825,134 @@ fn title_document_to_movie(
         genres: doc.genres,
         runtime_mins: doc.runtime_mins,
         origin_country: doc.origin_country,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        extract::{Query, State},
+        routing::get,
+        Json, Router,
+    };
+    use serde_json::json;
+    use std::{collections::HashMap, sync::Arc};
+    use tokio::{net::TcpListener, sync::Mutex};
+
+    #[derive(Clone, Default)]
+    struct TestState {
+        hits: Arc<Mutex<Vec<String>>>,
+    }
+
+    async fn start_test_server(state: TestState) -> String {
+        async fn search_handler(
+            State(state): State<TestState>,
+            Query(params): Query<HashMap<String, String>>,
+        ) -> Json<serde_json::Value> {
+            let provider = params
+                .get("provider")
+                .cloned()
+                .unwrap_or_else(|| "tmdb".to_string());
+            let query = params.get("query").cloned().unwrap_or_default();
+            state
+                .hits
+                .lock()
+                .await
+                .push(format!("provider={provider};query={query}"));
+
+            let body = if provider == "filmaffinity" {
+                json!({
+                    "results": [{
+                        "localTitle": "La semilla del diablo",
+                        "originalTitle": "Rosemary's Baby",
+                        "year": 1968,
+                        "tmdb": {
+                            "tmdbId": 805,
+                            "title": "La semilla del diablo",
+                            "titleEn": "Rosemary's Baby",
+                            "releaseDate": "1968-06-12",
+                            "voteAverage": 7.8
+                        },
+                        "omdb": {
+                            "imdbId": "tt0063522"
+                        }
+                    }]
+                })
+            } else {
+                json!({
+                    "results": [{
+                        "tmdbId": 999,
+                        "imdbId": "tt0118665",
+                        "title": "Baby Geniuses",
+                        "titleEn": "Baby Geniuses",
+                        "releaseDate": "1999-03-10",
+                        "voteAverage": 2.7
+                    }]
+                })
+            };
+
+            Json(body)
+        }
+
+        let app = Router::new()
+            .route("/v1/search", get(search_handler))
+            .with_state(state);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{}", addr)
+    }
+
+    #[tokio::test]
+    async fn weak_first_proxy_hit_triggers_filmaffinity_fallback() {
+        let state = TestState::default();
+        let base_url = start_test_server(state.clone()).await;
+
+        let movies = search_proxy(
+            &base_url,
+            "test-key",
+            "La semilla del diablo",
+            "movie",
+            Some(1968),
+            "tmdb",
+        )
+        .await
+        .unwrap();
+
+        let hits = state.hits.lock().await.clone();
+        assert_eq!(hits.len(), 2, "expected initial search + FA fallback, got {hits:?}");
+        assert!(hits[0].contains("provider=tmdb"), "first hit should use default provider: {hits:?}");
+        assert!(hits[1].contains("provider=filmaffinity"), "second hit should use FilmAffinity: {hits:?}");
+        assert_eq!(movies.first().map(|m| m.id), Some(805));
+        assert_eq!(movies.first().and_then(|m| m.title_en.as_deref()), Some("Rosemary's Baby"));
+    }
+
+    #[tokio::test]
+    async fn strong_first_proxy_hit_skips_filmaffinity_fallback() {
+        let movie = TmdbMovie {
+            id: 1,
+            imdb_id: None,
+            title: "La semilla del diablo".to_string(),
+            title_en: Some("Rosemary's Baby".to_string()),
+            release_date: Some("1968-06-12".to_string()),
+            overview: None,
+            overview_en: None,
+            poster_path: None,
+            poster_path_en: None,
+            vote_average: Some(7.8),
+            imdb_rating: None,
+            youtube_trailer_url: None,
+            imdb_trailer_url: None,
+            genre_ids: vec![],
+            genres: vec![],
+            runtime_mins: None,
+            origin_country: None,
+        };
+
+        assert!(proxy_match_score(&movie, "La semilla del diablo", Some(1968)) >= MIN_PROXY_MATCH_SCORE);
+        assert!(proxy_match_score(&movie, "La semilla del diablo", Some(1968)) >= STRONG_PROXY_MATCH_SCORE);
     }
 }
