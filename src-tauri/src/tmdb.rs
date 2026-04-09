@@ -58,7 +58,7 @@ struct LocalizedTmdbResult {
 /// "años" matches "anos", "después" matches "despues", etc.
 /// Covers the full set of accented Latin characters used in Spanish, French,
 /// German, Portuguese, Italian and Catalan — no external crate required.
-fn ascii_fold(s: &str) -> String {
+pub(crate) fn ascii_fold(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         // Strip Unicode combining diacritics (U+0300–U+036F) that appear when
@@ -85,7 +85,7 @@ fn ascii_fold(s: &str) -> String {
 
 /// Normalise a string for word-level comparison:
 /// lowercase → fold accents → replace non-alphanumeric with space → collapse spaces.
-fn normalise(s: &str) -> String {
+pub(crate) fn normalise(s: &str) -> String {
     let folded = ascii_fold(&s.to_lowercase());
     let stripped: String = folded
         .chars()
@@ -95,7 +95,7 @@ fn normalise(s: &str) -> String {
     stripped.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn title_similarity_score(title: &str, query: &str) -> f64 {
+pub(crate) fn title_similarity_score(title: &str, query: &str) -> f64 {
     let title_n = normalise(title);
     let query_n = normalise(query);
 

@@ -145,19 +145,16 @@ async fn proxy_get(client: &reqwest::Client, url: &str, api_key: &str) -> Result
 /// `GET /v1/search?query=…&type=…&year=…&provider=…`
 /// `provider` is `"tmdb"` (default) or `"imdb"` — IMDb mode uses the free
 /// IMDb suggestion API (no TMDB quota).
-pub async fn search_proxy(
-    base_url: &str,
+/// Inner search: calls `/v1/search` with the configured provider (tmdb/imdb) and returns
+/// TMDB-enriched `TmdbMovie` results. Does not perform a FilmAffinity fallback.
+async fn search_proxy_direct(
+    base: &str,
     api_key: &str,
     query: &str,
     media_type: &str,
     hint_year: Option<u16>,
     provider: &str,
 ) -> Result<Vec<TmdbMovie>, String> {
-    let api_key = api_key.trim();
-    if api_key.is_empty() {
-        return Err("proxy_api_key no está configurado — ve a Ajustes → Metadatos y guarda tu API key del proxy".to_string());
-    }
-    let base = base_url.trim_end_matches('/');
     let encoded = urlencoding::encode(query);
     let type_param = if media_type == "tv" { "tv" } else { "movie" };
     // Only pass provider when it's not the default ("tmdb") to stay backward-compat.
@@ -241,6 +238,244 @@ pub async fn search_proxy(
                 let imdb_stored = doc.imdb_id.clone();
                 movies.push(title_document_to_movie(doc, tmdb_id, imdb_stored));
             }
+        }
+    }
+
+    Ok(movies)
+}
+
+/// TMDB data embedded in a FilmAffinity search result (mirrors TitleDocument fields).
+/// All fields are optional — the proxy may omit them when not yet populated.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FaTmdbData {
+    tmdb_id: Option<i64>,
+    title: Option<String>,
+    title_en: Option<String>,
+    overview: Option<String>,
+    overview_en: Option<String>,
+    poster_url: Option<String>,
+    poster_url_en: Option<String>,
+    release_date: Option<String>,
+    vote_average: Option<f64>,
+    imdb_rating: Option<f64>,
+    youtube_trailer_url: Option<String>,
+    imdb_trailer_url: Option<String>,
+    #[serde(default)]
+    genres: Vec<String>,
+    runtime_mins: Option<u32>,
+    origin_country: Option<String>,
+}
+
+/// IMDb/OMDB data embedded in a FilmAffinity search result.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FaOmdbData {
+    imdb_id: Option<String>,
+    imdb_rating: Option<f64>,
+    imdb_trailer_url: Option<String>,
+}
+
+/// FilmAffinity-specific result shape returned by `provider=filmaffinity`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FaSearchResult {
+    local_title: String,
+    original_title: String,
+    year: Option<i32>,
+    /// TMDB data embedded by the proxy — present when the proxy has already matched this FA title.
+    tmdb: Option<FaTmdbData>,
+    /// IMDb/OMDB data embedded by the proxy.
+    omdb: Option<FaOmdbData>,
+}
+
+/// Convert an embedded `FaTmdbData` (+ optional `FaOmdbData`) into a `TmdbMovie`.
+/// Returns `None` when `FaTmdbData.tmdb_id` is absent (can't build a useful movie record).
+fn fa_tmdb_to_movie(t: FaTmdbData, omdb: Option<FaOmdbData>) -> Option<TmdbMovie> {
+    let id = t.tmdb_id?;
+    // Prefer the imdb_id from omdb if available, fall back to tmdb's imdbRating-only approach.
+    let imdb_id = omdb.as_ref().and_then(|o| o.imdb_id.clone());
+    // Merge trailer/rating from omdb when the tmdb object is missing them.
+    let imdb_rating = t.imdb_rating.or_else(|| omdb.as_ref().and_then(|o| o.imdb_rating));
+    let imdb_trailer_url = t.imdb_trailer_url.or_else(|| omdb.as_ref().and_then(|o| o.imdb_trailer_url.clone()));
+
+    Some(TmdbMovie {
+        id,
+        imdb_id,
+        title: t.title.unwrap_or_default(),
+        title_en: t.title_en,
+        release_date: t.release_date,
+        overview: t.overview,
+        overview_en: t.overview_en,
+        poster_path: t.poster_url,
+        poster_path_en: t.poster_url_en,
+        vote_average: t.vote_average,
+        imdb_rating,
+        youtube_trailer_url: t.youtube_trailer_url,
+        imdb_trailer_url,
+        genre_ids: vec![],
+        genres: t.genres,
+        runtime_mins: t.runtime_mins,
+        origin_country: t.origin_country,
+    })
+}
+
+/// Call `/v1/search?provider=filmaffinity` and return raw FilmAffinity results.
+/// Returns an empty vec on any error — this is a fallback and must never fail callers.
+async fn search_filmaffinity_results(
+    base: &str,
+    api_key: &str,
+    query: &str,
+    media_type: &str,
+    hint_year: Option<u16>,
+) -> Vec<FaSearchResult> {
+    let encoded = urlencoding::encode(query);
+    let type_param = if media_type == "tv" { "tv" } else { "movie" };
+    let mut url = format!("{base}/v1/search?query={encoded}&type={type_param}&provider=filmaffinity");
+    if let Some(y) = hint_year {
+        url.push_str(&format!("&year={y}"));
+    }
+
+    #[derive(Deserialize)]
+    struct FaSearchResponse {
+        results: Vec<FaSearchResult>,
+    }
+
+    let client = match build_client() {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    let resp = match proxy_get(&client, &url, api_key).await {
+        Ok(r) => r,
+        Err(_) => return vec![],
+    };
+    if !resp.status().is_success() {
+        return vec![];
+    }
+    resp.json::<FaSearchResponse>().await.map(|r| r.results).unwrap_or_default()
+}
+
+/// Score a single FilmAffinity result against `query`.
+/// Takes the best score across `localTitle` / `originalTitle` and adds a year bonus.
+fn score_fa_result(fa: &FaSearchResult, query: &str, hint_year: Option<u16>) -> f64 {
+    let local_score = crate::tmdb::title_similarity_score(&fa.local_title, query);
+    let orig_score = crate::tmdb::title_similarity_score(&fa.original_title, query);
+    let mut score = local_score.max(orig_score);
+    if let (Some(hy), Some(fy)) = (hint_year, fa.year) {
+        let diff = (fy - hy as i32).abs();
+        if diff == 0 {
+            score += 30.0;
+        } else if diff <= 1 {
+            score += 10.0;
+        } else if diff > 3 {
+            score -= 20.0;
+        }
+    }
+    score
+}
+
+/// Outcome of the FilmAffinity fallback search.
+enum FaFallback {
+    /// FA result contained embedded TMDB data — use it directly without another HTTP request.
+    FullMovie(TmdbMovie),
+    /// FA had no embedded TMDB data but provided an original title to re-query with.
+    TitleHint(String),
+}
+
+/// Search FilmAffinity for `query` and return the best-scoring result as either a
+/// ready `TmdbMovie` (when the proxy includes embedded TMDB data) or a plain title
+/// hint to re-query the configured provider with.
+/// Returns `None` when no confident match is found (score < 25) or FA is unavailable.
+async fn filmaffinity_fallback(
+    base: &str,
+    api_key: &str,
+    query: &str,
+    media_type: &str,
+    hint_year: Option<u16>,
+) -> Option<FaFallback> {
+    let fa_results = search_filmaffinity_results(base, api_key, query, media_type, hint_year).await;
+    if fa_results.is_empty() {
+        return None;
+    }
+    // Find the best-scored FA result above the confidence threshold.
+    let (best, _score) = fa_results
+        .into_iter()
+        .map(|r| {
+            let score = score_fa_result(&r, query, hint_year);
+            (r, score)
+        })
+        .filter(|(_, score)| *score >= 25.0)
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))?;
+
+    // Path 1: FA result already has embedded TMDB data with a valid TMDB ID.
+    // Convert it directly — no extra HTTP request needed.
+    if let Some(tmdb_data) = best.tmdb {
+        if tmdb_data.tmdb_id.is_some() {
+            if let Some(movie) = fa_tmdb_to_movie(tmdb_data, best.omdb) {
+                return Some(FaFallback::FullMovie(movie));
+            }
+        }
+    }
+
+    // Path 2: No embedded TMDB data but we have an original title to search with.
+    let original = best.original_title;
+    if !original.is_empty() {
+        return Some(FaFallback::TitleHint(original));
+    }
+
+    None
+}
+
+/// `GET /v1/search?query=…&type=…&year=…&provider=…`
+///
+/// Returns TMDB-enriched results for the configured provider (tmdb/imdb).
+/// When no results are found, a FilmAffinity fallback search is attempted: FA is
+/// queried to discover the canonical original title (e.g. the International title
+/// for a Spanish-language release), which is then used to re-query the configured
+/// provider. This enables matching of titles that TMDB/IMDb can only find by their
+/// original name.
+pub async fn search_proxy(
+    base_url: &str,
+    api_key: &str,
+    query: &str,
+    media_type: &str,
+    hint_year: Option<u16>,
+    provider: &str,
+) -> Result<Vec<TmdbMovie>, String> {
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err("proxy_api_key no está configurado — ve a Ajustes → Metadatos y guarda tu API key del proxy".to_string());
+    }
+    let base = base_url.trim_end_matches('/');
+
+    let mut movies = search_proxy_direct(base, api_key, query, media_type, hint_year, provider).await?;
+
+    // FilmAffinity fallback: if the configured provider returned nothing, try FA to
+    // either obtain a ready TmdbMovie from embedded TMDB data (no extra request),
+    // or discover the canonical original title to re-query with.
+    if movies.is_empty() {
+        match filmaffinity_fallback(base, api_key, query, media_type, hint_year).await {
+            Some(FaFallback::FullMovie(movie)) => {
+                // FA already had embedded TMDB data — use it directly.
+                movies.push(movie);
+            }
+            Some(FaFallback::TitleHint(original_title)) => {
+                // Only retry when FA gave us something meaningfully different from the
+                // query we just tried — avoids a redundant identical request.
+                if crate::tmdb::normalise(&original_title) != crate::tmdb::normalise(query) {
+                    movies = search_proxy_direct(
+                        base,
+                        api_key,
+                        &original_title,
+                        media_type,
+                        hint_year,
+                        provider,
+                    )
+                    .await
+                    .unwrap_or_default();
+                }
+            }
+            None => {}
         }
     }
 

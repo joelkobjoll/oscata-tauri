@@ -2904,7 +2904,12 @@ export default function Library({
                 const [first] = episodes;
                 setFixMatchRequest({
                   itemIds: episodes.map((episode) => episode.id),
-                  initialQuery: getLocalizedTitle(first ?? tvShow, language),
+                  initialQuery:
+                    first?.title ??
+                    first?.filename ??
+                    tvShow?.title ??
+                    tvShow?.filename ??
+                    "",
                   initialMediaType:
                     tvShow.media_type === "documentary" ? "documentary" : "tv",
                 });
