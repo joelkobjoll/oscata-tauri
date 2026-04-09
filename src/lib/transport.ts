@@ -80,7 +80,12 @@ const WEB_ROUTES: Record<
   search_tmdb: (a) => [
     "POST",
     "/tmdb/search",
-    { query: a.query, media_type: a.mediaType, year: a.year },
+    {
+      query: a.query,
+      media_type: a.mediaType,
+      year: a.year,
+      manual_fallback: a.manualFallback,
+    },
   ],
   get_watchlist: ["GET", "/watchlist"],
   add_to_watchlist: (a) => [

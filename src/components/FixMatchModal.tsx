@@ -54,6 +54,7 @@ export default function FixMatchModal({
       const res = await call<TmdbResult[]>("search_tmdb", {
         query: nextQuery,
         mediaType: nextType,
+        manualFallback: true,
       });
       setResults(res);
       if (res.length === 0) setError(t(language, "modal.noResults"));

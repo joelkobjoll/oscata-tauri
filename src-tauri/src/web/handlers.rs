@@ -687,9 +687,13 @@ pub async fn search_tmdb_handler(
     let config = state.db.load_config().map_err(ApiError::from)?;
     let media_type = body.media_type.as_deref().unwrap_or("movie");
     let year = body.year.map(|y| y as u16);
-    let results = crate::metadata::search_multi_with_year(
-        &config, &body.query, media_type, year,
-    ).await.map_err(ApiError::from)?;
+    let results = if body.manual_fallback.unwrap_or(false) {
+        crate::metadata::search_manual_candidates(&config, &body.query, media_type, year)
+            .await
+    } else {
+        crate::metadata::search_multi_with_year(&config, &body.query, media_type, year).await
+    }
+    .map_err(ApiError::from)?;
     Ok(Json(results))
 }
 

@@ -69,6 +69,45 @@ pub async fn search_multi_with_year(
     }
 }
 
+/// Return manual-search candidates for the Match Editor.
+///
+/// Flow:
+/// 1. Run the normal configured search path first.
+/// 2. If that returns no results and a metadata-proxy is configured, issue a
+///    FilmAffinity fallback search to surface FA-enriched TMDB candidates or a
+///    better original-title re-query.
+pub async fn search_manual_candidates(
+    cfg: &AppConfig,
+    query: &str,
+    media_type: &str,
+    hint_year: Option<u16>,
+) -> Result<Vec<TmdbMovie>, String> {
+    let primary = search_multi_with_year(cfg, query, media_type, hint_year).await?;
+    if !primary.is_empty() {
+        return Ok(primary);
+    }
+
+    if cfg.proxy_url.trim().is_empty() || cfg.proxy_api_key.trim().is_empty() {
+        return Ok(primary);
+    }
+
+    let fallback_provider = if is_proxy(cfg) {
+        cfg.proxy_search_provider.as_str()
+    } else {
+        "tmdb"
+    };
+
+    crate::proxy::search_manual_filmaffinity_fallback(
+        &cfg.proxy_url,
+        &cfg.proxy_api_key,
+        query,
+        media_type,
+        hint_year,
+        fallback_provider,
+    )
+    .await
+}
+
 /// Fetch full movie/show details by TMDB numeric ID.
 pub async fn fetch_by_id(
     cfg: &AppConfig,

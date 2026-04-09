@@ -458,6 +458,84 @@ async fn filmaffinity_fallback(
     None
 }
 
+/// Manual-search-only FilmAffinity fallback used by the Match Editor.
+///
+/// This does **not** replace a non-empty primary result set. It is only meant
+/// to run after the normal search path returned zero results.
+pub async fn search_manual_filmaffinity_fallback(
+    base_url: &str,
+    api_key: &str,
+    query: &str,
+    media_type: &str,
+    hint_year: Option<u16>,
+    retry_provider: &str,
+) -> Result<Vec<TmdbMovie>, String> {
+    let base = base_url.trim_end_matches('/');
+    let fa_results = search_filmaffinity_results(base, api_key, query, media_type, hint_year).await;
+    if fa_results.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut scored: Vec<(FaSearchResult, f64)> = fa_results
+        .into_iter()
+        .map(|result| {
+            let score = score_fa_result(&result, query, hint_year);
+            (result, score)
+        })
+        .filter(|(_, score)| *score >= 25.0)
+        .collect();
+
+    scored.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut movies = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
+
+    for (result, _) in &scored {
+        if let Some(tmdb_data) = result.tmdb.clone() {
+            if tmdb_data.tmdb_id.is_some() {
+                if let Some(movie) = fa_tmdb_to_movie(
+                    tmdb_data,
+                    result.omdb.clone(),
+                    &result.local_title,
+                    &result.original_title,
+                ) {
+                    if seen_ids.insert(movie.id) {
+                        movies.push(movie);
+                    }
+                }
+            }
+        }
+        if movies.len() >= 10 {
+            break;
+        }
+    }
+
+    if !movies.is_empty() {
+        return Ok(movies);
+    }
+
+    let Some((best, _)) = scored.into_iter().next() else {
+        return Ok(vec![]);
+    };
+    let original_title = best.original_title.trim();
+    if original_title.is_empty()
+        || crate::tmdb::normalise(original_title) == crate::tmdb::normalise(query)
+    {
+        return Ok(vec![]);
+    }
+
+    Ok(search_proxy_direct(
+        base,
+        api_key,
+        original_title,
+        media_type,
+        hint_year,
+        retry_provider,
+    )
+    .await
+    .unwrap_or_default())
+}
+
 /// `GET /v1/search?query=…&type=…&year=…&provider=…`
 ///
 /// Returns TMDB-enriched results for the configured provider (tmdb/imdb).
@@ -954,5 +1032,28 @@ mod tests {
 
         assert!(proxy_match_score(&movie, "La semilla del diablo", Some(1968)) >= MIN_PROXY_MATCH_SCORE);
         assert!(proxy_match_score(&movie, "La semilla del diablo", Some(1968)) >= STRONG_PROXY_MATCH_SCORE);
+    }
+
+    #[tokio::test]
+    async fn manual_filmaffinity_fallback_hits_fa_and_returns_tmdb_candidate() {
+        let state = TestState::default();
+        let base_url = start_test_server(state.clone()).await;
+
+        let movies = search_manual_filmaffinity_fallback(
+            &base_url,
+            "test-key",
+            "La semilla del diablo",
+            "movie",
+            Some(1968),
+            "tmdb",
+        )
+        .await
+        .unwrap();
+
+        let hits = state.hits.lock().await.clone();
+        assert_eq!(hits.len(), 1, "expected only FilmAffinity fallback request, got {hits:?}");
+        assert!(hits[0].contains("provider=filmaffinity"), "manual fallback should hit FilmAffinity: {hits:?}");
+        assert_eq!(movies.first().map(|m| m.id), Some(805));
+        assert_eq!(movies.first().and_then(|m| m.title_en.as_deref()), Some("Rosemary's Baby"));
     }
 }

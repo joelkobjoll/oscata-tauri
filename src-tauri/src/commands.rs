@@ -2235,9 +2235,14 @@ pub async fn search_tmdb(
     query: String,
     media_type: String,
     year: Option<u16>,
+    manual_fallback: Option<bool>,
 ) -> Result<Vec<crate::tmdb::TmdbMovie>, String> {
     let config = state.load_config()?;
-    crate::metadata::search_multi_with_year(&config, &query, &media_type, year).await
+    if manual_fallback.unwrap_or(false) {
+        crate::metadata::search_manual_candidates(&config, &query, &media_type, year).await
+    } else {
+        crate::metadata::search_multi_with_year(&config, &query, &media_type, year).await
+    }
 }
 
 #[tauri::command]

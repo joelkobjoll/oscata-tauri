@@ -297,8 +297,8 @@ const messages = {
   "modal.useMatch": { es: "Usar match", en: "Use match" },
   "modal.applying": { es: "Aplicando…", en: "Applying…" },
   "modal.noResults": {
-    es: "No se encontraron resultados TMDB para esa búsqueda.",
-    en: "No TMDB results found for that search.",
+    es: "No se encontraron resultados para esa búsqueda.",
+    en: "No results found for that search.",
   },
   "modal.matchEditor": { es: "Editor de match", en: "Match editor" },
   "modal.untitled": { es: "Sin título", en: "Untitled" },

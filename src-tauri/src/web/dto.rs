@@ -127,6 +127,7 @@ pub struct TmdbSearchRequest {
     pub query: String,
     pub media_type: Option<String>,
     pub year: Option<i64>,
+    pub manual_fallback: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
