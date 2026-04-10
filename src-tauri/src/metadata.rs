@@ -34,41 +34,36 @@ pub async fn smart_search(
     preferred_type: &str,
 ) -> Result<Option<(TmdbMovie, &'static str)>, String> {
     if is_proxy(cfg) {
+        // Documentaries: FilmAffinity is the primary source — it has far better coverage
+        // for non-English documentary titles than TMDB/IMDb search.
+        if preferred_type == "documentary" {
+            let results = crate::proxy::search_proxy_documentary(
+                &cfg.proxy_url, &cfg.proxy_api_key, title, year, &cfg.proxy_search_provider,
+            ).await?;
+            if let Some((movie, mt)) = results.into_iter().next() {
+                return Ok(Some((movie, mt)));
+            }
+            return Ok(None);
+        }
+
         // Proxy search: try preferred type, accept opposite if score is low.
         let primary: &'static str = if preferred_type == "tv" { "tv" } else { "movie" };
         let other: &'static str = if preferred_type == "tv" { "movie" } else { "tv" };
 
-        let primary_results =
-            crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, primary, year, &cfg.proxy_search_provider)
-                .await?;
+        // Run both type searches concurrently — each call already searches all 3 providers
+        // (configured, other direct provider, FilmAffinity) in parallel internally.
+        let (primary_res, other_res) = tokio::join!(
+            crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, primary, year, &cfg.proxy_search_provider),
+            crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, other,   year, &cfg.proxy_search_provider),
+        );
 
-        if let Some(best) = primary_results.into_iter().next() {
-            return Ok(Some((best, primary)));
-        }
-
-        let other_results =
-            crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, other, year, &cfg.proxy_search_provider)
-                .await?;
-
-        if let Some(best) = other_results.into_iter().next() {
-            return Ok(Some((best, other)));
-        }
-
-        // Neither type returned a result with the configured provider.
-        // Fall back to the IMDb search provider if we weren't already using it —
-        // IMDb has broader coverage for non-English / obscure titles.
-        if cfg.proxy_search_provider != "imdb" {
-            let imdb_primary =
-                crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, primary, year, "imdb")
-                    .await?;
-            if let Some(best) = imdb_primary.into_iter().next() {
+        if let Ok(mut r) = primary_res {
+            if let Some(best) = r.drain(..).next() {
                 return Ok(Some((best, primary)));
             }
-
-            let imdb_other =
-                crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, title, other, year, "imdb")
-                    .await?;
-            if let Some(best) = imdb_other.into_iter().next() {
+        }
+        if let Ok(mut r) = other_res {
+            if let Some(best) = r.drain(..).next() {
                 return Ok(Some((best, other)));
             }
         }
@@ -87,7 +82,14 @@ pub async fn search_multi_with_year(
     hint_year: Option<u16>,
 ) -> Result<Vec<TmdbMovie>, String> {
     if is_proxy(cfg) {
-        crate::proxy::search_proxy(&cfg.proxy_url, &cfg.proxy_api_key, query, media_type, hint_year, &cfg.proxy_search_provider)
+        // For documentaries, FA is queried first (better coverage for non-English docs).
+        if media_type == "documentary" {
+            let results = crate::proxy::search_proxy_documentary(
+                &cfg.proxy_url, &cfg.proxy_api_key, query, hint_year, &cfg.proxy_search_provider,
+            ).await?;
+            return Ok(results.into_iter().map(|(m, _)| m).collect());
+        }
+        crate::proxy::search_proxy_fa_multi(&cfg.proxy_url, &cfg.proxy_api_key, query, media_type, hint_year, &cfg.proxy_search_provider)
             .await
     } else {
         crate::tmdb::search_tmdb_multi_with_year(

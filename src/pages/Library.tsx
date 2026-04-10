@@ -364,6 +364,7 @@ export default function Library({
     completionSummary,
     dismissCompletion,
     forceClearIndexing,
+    patchItem,
     indexError,
     clearIndexError,
     retryIndexing,
@@ -2862,9 +2863,10 @@ export default function Library({
             setSelectedGroupedView(false);
             setSelected(item);
           }}
-          onUpdated={(id, patch) =>
-            setSelected((s) => (s && s.id === id ? { ...s, ...patch } : s))
-          }
+          onUpdated={(id, patch) => {
+            patchItem(id, patch);
+            setSelected((s) => (s && s.id === id ? { ...s, ...patch } : s));
+          }}
           downloadItem={
             selected ? downloadMap.get(selected.ftp_path) : undefined
           }
@@ -2924,7 +2926,18 @@ export default function Library({
           initialQuery={fixMatchRequest.initialQuery}
           initialMediaType={fixMatchRequest.initialMediaType}
           language={language}
-          onApply={() => {}}
+          onApply={(id, movie) => {
+            patchItem(id, {
+              tmdb_id: movie.id,
+              tmdb_title: movie.title,
+              tmdb_title_en: movie.title_en,
+              tmdb_poster: movie.poster_path,
+              tmdb_poster_en: movie.poster_path_en,
+              tmdb_rating: movie.vote_average,
+              tmdb_overview: movie.overview,
+              tmdb_overview_en: movie.overview_en,
+            });
+          }}
           onClose={() => setFixMatchRequest(null)}
         />
       )}
@@ -2934,7 +2947,18 @@ export default function Library({
           itemIds={Array.from(checkedIds)}
           initialQuery=""
           language={language}
-          onApply={() => {}}
+          onApply={(id, movie) => {
+            patchItem(id, {
+              tmdb_id: movie.id,
+              tmdb_title: movie.title,
+              tmdb_title_en: movie.title_en,
+              tmdb_poster: movie.poster_path,
+              tmdb_poster_en: movie.poster_path_en,
+              tmdb_rating: movie.vote_average,
+              tmdb_overview: movie.overview,
+              tmdb_overview_en: movie.overview_en,
+            });
+          }}
           onClose={() => {
             setShowBulkFix(false);
             exitSelect();

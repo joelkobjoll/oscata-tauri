@@ -56,7 +56,7 @@ export default function FixMatchModal({
         mediaType: nextType,
       });
       setResults(res);
-      if (res.length === 0) setError(t(language, "modal.noResults"));
+      setError(res.length === 0 ? t(language, "modal.noResults") : "");
     } catch (e: any) {
       setError(String(e));
     } finally {

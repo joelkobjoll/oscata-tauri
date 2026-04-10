@@ -378,6 +378,17 @@ export function useIndexing() {
     metaRefreshProgress,
     completionSummary,
     dismissCompletion: () => setCompletionSummary(null),
+    /** Immediately patch one item in the items array by id. Used by FixMatch so the
+     * UI reflects the new metadata before the Tauri index:update event arrives. */
+    patchItem: (id: number, patch: Partial<MediaItem>) => {
+      setItems((prev) => {
+        const index = itemIndexRef.current.get(id);
+        if (index == null) return prev;
+        const next = prev.slice();
+        next[index] = { ...next[index], ...patch };
+        return next;
+      });
+    },
     /** Force-clear all indexing/TMDB state. Use when tasks are stuck and never complete. */
     forceClearIndexing: () => {
       setIsIndexing(false);

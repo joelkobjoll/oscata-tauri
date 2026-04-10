@@ -73,7 +73,7 @@ export default function WatchlistAddModal({
         mediaType,
       });
       setResults(res);
-      if (res.length === 0) setError(t(language, "watchlist.noResults"));
+      setError(res.length === 0 ? t(language, "watchlist.noResults") : "");
     } catch (e) {
       setError(String(e));
     } finally {

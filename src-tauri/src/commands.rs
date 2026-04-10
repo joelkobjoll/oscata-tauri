@@ -1248,14 +1248,11 @@ pub async fn rematch_all_internal(
             .or_else(|| item.tmdb_type.clone())
             .unwrap_or_else(|| "movie".to_string());
 
-        // TMDB search type: documentary series search as TV, documentary films as movie
+        // TMDB search type: pass "documentary" through so smart_search can apply
+        // FilmAffinity-first logic; proxy will infer movie/tv from search results.
         let tmdb_search_type = match mtype.as_str() {
             "tv" => "tv",
-            "documentary" => {
-                // Infer from filename if it has a season marker
-                let parsed = crate::parser::parse_media_path(&item.ftp_path, &item.filename);
-                if parsed.season.is_some() { "tv" } else { "movie" }
-            },
+            "documentary" => "documentary",
             _ => "movie",
         };
         let year = item.year.map(|y| y as u16);
@@ -1418,9 +1415,10 @@ pub async fn start_indexing_internal(
         };
         let media_type_str = media_type.as_deref();
 
-        // TMDB search type: documentaries with seasons search as TV shows
+        // TMDB search type: pass "documentary" through so smart_search can apply
+        // FilmAffinity-first logic; proxy will infer movie/tv from search results.
         let tmdb_search_type = match media_type.as_deref() {
-            Some("documentary") => if parsed.season.is_some() { "tv" } else { "movie" },
+            Some("documentary") => "documentary",
             Some("tv") => "tv",
             _ => "movie",
         }.to_string();
@@ -2054,10 +2052,7 @@ pub async fn refresh_all_metadata_internal(
             }
             let tmdb_search_type = match media_type.as_str() {
                 "tv" => "tv",
-                "documentary" => {
-                    let parsed = crate::parser::parse_media_path(&item.ftp_path, &item.filename);
-                    if parsed.season.is_some() { "tv" } else { "movie" }
-                },
+                "documentary" => "documentary",
                 _ => "movie",
             };
             let year = item.year.map(|y| y as u16);
